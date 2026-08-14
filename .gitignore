@@ -22,3 +22,7 @@ tools/*
 /idea-flex.skeleton
 /flyway.user.toml
 /flyway.toml
+
+# Gradle (CodeQuest Kotlin rewrite)
+/build/
+/.gradle/

@@ -1,0 +1,14 @@
+<idea-plugin>
+    <id>com.codequest</id>
+    <name>CodeQuest</name>
+    <vendor>CodeQuest Team</vendor>
+    <description><![CDATA[
+    CodeQuest is a competitive programming assistant for JetBrains IDEs.
+    Query problems, browse statements, submit solutions and track statistics
+    across LeetCode, LeetCode CN, CodeForces, AtCoder, Luogu and HackerRank.
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <idea-version since-build="252"/>
+</idea-plugin>
