@@ -1,3 +1,5 @@
+package com.codequest.infra
+
 /**
  * `infra` 层:基础设施实现,实现 `core` 仓库接口,不依赖 ui/platform。
  *
@@ -8,3 +10,4 @@
  * - messaging:ResourceHttpServer(本地静态资源 + REST 数据端点)
  * - anti-bot:Cloudflare Turnstile / 登录 JCEF 弹窗公共组件
  */
+object InfraLayer

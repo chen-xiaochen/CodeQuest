@@ -1,0 +1,39 @@
+# CodeQuest detekt 规则集(WP10)
+# 配合 `--build-upon-default-config` 使用:未列出的规则全部沿用 detekt 默认值,
+# 本文件仅做面向本项目的适度调整。
+
+complexity:
+  LongMethod:
+    threshold: 120
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 10
+  LargeClass:
+    threshold: 600
+  TooManyFunctions:
+    active: false # SPI 适配器按能力拆分后天然函数较多,交由 review 把关
+  CyclomaticComplexMethod:
+    threshold: 20
+
+style:
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 6
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    constantPattern: '[A-Za-z][A-Za-z0-9]*|[A-Z][_A-Z0-9]*'
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false # 平台适配器边界需要兜底 Exception 转领域异常
+  SwallowedException:
+    active: false # 轮询/清理路径允许吞异常并记日志
+
+coroutines:
+  active: true

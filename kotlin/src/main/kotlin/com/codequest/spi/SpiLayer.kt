@@ -1,3 +1,5 @@
+package com.codequest.spi
+
 /**
  * `spi` 层:OJ 平台能力接口 + 注册机制。
  *
@@ -10,3 +12,4 @@
  * 每平台通过 OJPlatformProvider(IntelliJ Extension Point)注册,新增 OJ = 新包 + plugin.xml 一行声明,
  * 不存在任何枚举 match 分发。
  */
+object SpiLayer

@@ -1,3 +1,5 @@
+package com.codequest.core
+
 /**
  * `core` 层:领域模型 + 用例服务 + 仓库接口。
  *
@@ -7,3 +9,4 @@
  * - 仓库接口:ProblemRepository / SubmissionRepository / ChallengeRepository 等(实现归 infra)
  * - 用例服务:面向 UI 的业务编排,只依赖仓库接口与 SPI,单测用内存假实现替换
  */
+object CoreLayer

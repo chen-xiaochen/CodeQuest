@@ -1,3 +1,5 @@
+package com.codequest.platform
+
 /**
  * `platform` 层:各 OJ 平台适配器,每平台一个子包(leetcode / leetcodecn / codeforces / atcoder / luogu / hackerrank)。
  *
@@ -9,3 +11,4 @@
  *
  * 约束:platform 各 OJ 子包之间禁止互相 import;不自带 UI 代码,不直接弹通知。
  */
+object PlatformLayer

@@ -1,3 +1,5 @@
+package com.codequest.ui
+
 /**
  * `ui` 层:最上层,只做界面壳与交互转发,可依赖 platform/spi/core/infra。
  *
@@ -10,3 +12,4 @@
  *
  * 异常到通知的统一映射在本层完成,平台适配器不直接弹通知。
  */
+object UiLayer
