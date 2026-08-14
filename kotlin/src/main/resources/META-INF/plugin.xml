@@ -9,6 +9,29 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- 2026.2 起 JCEF 从 IntelliJ Platform 拆为独立模块(发行版 plugins/jcef-plugin,
+         <id>com.intellij.modules.jcef</id>,已实测);未声明会导致运行时 NoClassDefFoundError -->
+    <depends>com.intellij.modules.jcef</depends>
 
     <idea-version since-build="252"/>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- WP11:本地资源/数据 HTTP 服务,随项目启动/关闭 -->
+        <projectService serviceImplementation="com.codequest.infra.messaging.CodeQuestHttpServerService"/>
+        <postStartupActivity implementation="com.codequest.infra.messaging.CqHttpServerStartupActivity"/>
+
+        <!-- WP11:工具窗口壳 -->
+        <toolWindow id="CodeQuest"
+                    factoryClass="com.codequest.ui.toolwindow.CodeQuestToolWindowFactory"
+                    anchor="left"
+                    icon="AllIcons.Toolwindows.ToolWindowProject"/>
+        <toolWindow id="CodeQuest Problem View"
+                    factoryClass="com.codequest.ui.toolwindow.ProblemViewToolWindowFactory"
+                    anchor="right"
+                    icon="AllIcons.Toolwindows.ToolWindowProject"/>
+        <toolWindow id="CodeQuest Submissions"
+                    factoryClass="com.codequest.ui.toolwindow.SubmissionsToolWindowFactory"
+                    anchor="bottom"
+                    icon="AllIcons.Toolwindows.ToolWindowProject"/>
+    </extensions>
 </idea-plugin>

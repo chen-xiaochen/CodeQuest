@@ -37,14 +37,37 @@ kotlin {
 
 dependencies {
     intellijPlatform {
-        intellijIdeaCommunity("2025.2")
+        // 2025.3 起 IC 不再单独发布,统一为单一 IntelliJ IDEA 发行版
+        intellijIdea("2026.2")
+        // 2026.2 起 JCEF 从平台拆为独立模块(插件 id: com.intellij.modules.jcef)
+        bundledPlugin("com.intellij.modules.jcef")
     }
+    // WP11:桥协议 JSON 信封解析(JsonElement 纯运行时用法,无需 compiler plugin)
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    // WP11:单元测试框架(显式指定 JUnit 5 变体,避免 kotlin-test 自动映射到 JUnit 4)
+    testImplementation(kotlin("test-junit5"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    // IntelliJ 平台注入的 JUnit5TestEnvironmentInitializer 初始化测试环境时需要 JUnit4 类
+    testImplementation("junit:junit:4.13.2")
+}
+
+tasks.withType<Test>().configureEach {
+    useJUnitPlatform()
+}
+
+// runIde 沙箱验收(WP11):自动打开一个轻量空项目,触发 postStartupActivity
+// (CodeQuestHttpServerService 启动,/api/health 可 curl)。默认欢迎屏不打开项目。
+tasks.withType<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>().configureEach {
+    val sandboxProject = layout.projectDirectory.dir(".intellijPlatform/sandbox-project")
+    args(sandboxProject.asFile.absolutePath)
+    // 跳过新项目信任对话框(沙箱验收需要项目真正打开以触发 postStartupActivity)
+    jvmArgs("-Didea.trust.all.projects=true")
 }
 
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "252"
+            sinceBuild = "262"
             untilBuild = provider { null }
         }
     }

@@ -26,3 +26,6 @@ tools/*
 # Gradle (CodeQuest Kotlin rewrite)
 /build/
 /.gradle/
+
+# IntelliJ Platform Gradle plugin runIde sandbox / local IDE caches (WP11+)
+/.intellijPlatform/
