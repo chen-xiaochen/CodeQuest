@@ -13,7 +13,7 @@
          <id>com.intellij.modules.jcef</id>,已实测);未声明会导致运行时 NoClassDefFoundError -->
     <depends>com.intellij.modules.jcef</depends>
 
-    <idea-version since-build="252"/>
+    <idea-version since-build="262"/>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- WP11:本地资源/数据 HTTP 服务,随项目启动/关闭 -->
