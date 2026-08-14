@@ -196,3 +196,34 @@ tasks.register("checkLayerDependencies") {
 tasks.named("check") {
     dependsOn("detekt", "ktlint", "checkLayerDependencies")
 }
+
+// ---------------------------------------------------------------------------
+// webview 前端构建产物接入(WP12)
+//
+// 两步流水线(Gradle 不直接调 npm,保持构建工具职责分离):
+//   1) cd frontend && npm install && npm run build   → 产出 frontend/dist/
+//   2) ./gradlew buildPlugin                          → copyWebviewDist 同步产物
+//      到 kotlin/src/main/resources/webview/(ResourceHttpServer 静态根)并打进 zip
+// frontend/dist 缺失时给出可行动的失败信息,而非静默打出缺页插件。
+// 产物目录不入库(.gitignore),CI 需先跑 npm build 再跑 Gradle。
+// ---------------------------------------------------------------------------
+val webviewDistDir = layout.projectDirectory.dir("frontend/dist")
+val webviewResourceDir = layout.projectDirectory.dir("kotlin/src/main/resources/webview")
+
+tasks.register<Sync>("copyWebviewDist") {
+    group = "build"
+    description = "Syncs frontend/dist into kotlin/src/main/resources/webview (ResourceHttpServer static root)."
+    doFirst {
+        if (!webviewDistDir.asFile.isDirectory) {
+            throw GradleException(
+                "frontend/dist 不存在:请先执行  cd frontend && npm install && npm run build  再运行 Gradle 构建。",
+            )
+        }
+    }
+    from(webviewDistDir)
+    into(webviewResourceDir)
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn("copyWebviewDist")
+}

@@ -29,3 +29,10 @@ tools/*
 
 # IntelliJ Platform Gradle plugin runIde sandbox / local IDE caches (WP11+)
 /.intellijPlatform/
+
+# CodeQuest webview frontend (WP12):依赖与构建产物不入库,CI 先 npm build 再 Gradle
+/frontend/node_modules/
+/frontend/dist/
+/kotlin/src/main/resources/webview/
+# 前端 lockfile 需要入库保证可复现安装(全局 package-lock.json 忽略规则的例外)
+!frontend/package-lock.json

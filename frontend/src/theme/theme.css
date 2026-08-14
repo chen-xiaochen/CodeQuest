@@ -1,0 +1,146 @@
+/**
+ * CodeQuest webview 统一主题变量体系(WP12)。
+ *
+ * ## 变量通道
+ *
+ * 每个 `--cq-*` 语义变量都优先读 `--jb-*` 注入值(Kotlin 侧后续从 IDE 主题
+ * 注入一段 `<style>` 设置 `--jb-background` 等),缺省回退到本地默认值。
+ * 因此:未注入时页面用本地亮/暗两套默认配色;注入后自动跟随 IDE。
+ *
+ * ## 暗色适配
+ *
+ * `[data-theme="dark"]` 提供完整的一套覆盖定义(所有变量都要有暗色值,
+ * 对比度按 WCAG AA 文本对比 ≥ 4.5:1 选色)。`html` 上由 theme.ts 切换。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* ---- 基础表面/文字(亮色默认) ---- */
+  --cq-bg: var(--jb-background, #ffffff);
+  --cq-fg: var(--jb-foreground, #1f2328);
+  --cq-muted: var(--jb-foreground-muted, #59636e);
+  --cq-border: var(--jb-border, #d1d5da);
+  --cq-panel: var(--jb-panel-background, #f6f8fa);
+  --cq-panel-raised: var(--jb-raised-background, #ffffff);
+
+  /* ---- 强调/状态 ---- */
+  --cq-accent: var(--jb-accent, #3574f0);
+  --cq-accent-fg: var(--jb-accent-foreground, #ffffff);
+  --cq-accent-soft: var(--jb-accent-soft, rgba(53, 116, 240, 0.12));
+  --cq-success: var(--jb-success, #1a7f37);
+  --cq-danger: var(--jb-error, #cf222e);
+  --cq-warning: var(--jb-warning, #9a6700);
+
+  /* ---- 难度色(沿用旧 statistics 页语义) ---- */
+  --cq-diff-easy: var(--jb-diff-easy, #1a7f37);
+  --cq-diff-medium: var(--jb-diff-medium, #9a6700);
+  --cq-diff-hard: var(--jb-diff-hard, #cf222e);
+  --cq-diff-advanced: var(--jb-diff-advanced, #8250df);
+  --cq-diff-expert: var(--jb-diff-expert, #b35900);
+  --cq-diff-other: var(--jb-diff-other, #59636e);
+
+  /* ---- 代码高亮(highlight.js token,亮色) ---- */
+  --cq-hl-keyword: #cf222e;
+  --cq-hl-string: #0a3069;
+  --cq-hl-number: #0550ae;
+  --cq-hl-comment: #59636e;
+  --cq-hl-function: #8250df;
+  --cq-hl-type: #953800;
+  --cq-hl-bg: #f6f8fa;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --cq-bg: var(--jb-background, #1e1f22);
+  --cq-fg: var(--jb-foreground, #dfe1e5);
+  --cq-muted: var(--jb-foreground-muted, #9da0a8);
+  --cq-border: var(--jb-border, #43454a);
+  --cq-panel: var(--jb-panel-background, #2b2d30);
+  --cq-panel-raised: var(--jb-raised-background, #393b40);
+
+  --cq-accent: var(--jb-accent, #7053ff);
+  --cq-accent-fg: var(--jb-accent-foreground, #ffffff);
+  --cq-accent-soft: var(--jb-accent-soft, rgba(112, 83, 255, 0.25));
+  --cq-success: var(--jb-success, #5fb865);
+  --cq-danger: var(--jb-error, #f75464);
+  --cq-warning: var(--jb-warning, #e0a33e);
+
+  --cq-diff-easy: var(--jb-diff-easy, #5fb865);
+  --cq-diff-medium: var(--jb-diff-medium, #e0a33e);
+  --cq-diff-hard: var(--jb-diff-hard, #f75464);
+  --cq-diff-advanced: var(--jb-diff-advanced, #b189ff);
+  --cq-diff-expert: var(--jb-diff-expert, #ff9e64);
+  --cq-diff-other: var(--jb-diff-other, #9da0a8);
+
+  --cq-hl-keyword: #ff7b72;
+  --cq-hl-string: #a5d6ff;
+  --cq-hl-number: #79c0ff;
+  --cq-hl-comment: #8b949e;
+  --cq-hl-function: #d2a8ff;
+  --cq-hl-type: #ffa657;
+  --cq-hl-bg: #2b2d30;
+}
+
+/* ---- 全局基线 ---- */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--cq-bg);
+  color: var(--cq-fg);
+  font-family:
+    'Inter', 'JetBrains Sans', -apple-system, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+a {
+  color: var(--cq-accent);
+}
+
+::selection {
+  background: var(--cq-accent-soft);
+}
+
+/* ---- highlight.js token 映射(替代外置主题 css,跟随 data-theme) ---- */
+.hljs {
+  color: var(--cq-fg);
+  background: var(--cq-hl-bg);
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-section {
+  color: var(--cq-hl-keyword);
+}
+.hljs-string,
+.hljs-attr,
+.hljs-template-string {
+  color: var(--cq-hl-string);
+}
+.hljs-number {
+  color: var(--cq-hl-number);
+}
+.hljs-comment,
+.hljs-quote {
+  color: var(--cq-hl-comment);
+  font-style: italic;
+}
+.hljs-function,
+.hljs-title.function_ {
+  color: var(--cq-hl-function);
+}
+.hljs-type,
+.hljs-class .hljs-title,
+.hljs-title.class_,
+.hljs-built_in {
+  color: var(--cq-hl-type);
+}
+
+/* ---- KaTeX 跟随前景色(字体经 npm 包本地打包,不走 CDN) ---- */
+.katex {
+  color: var(--cq-fg);
+}
