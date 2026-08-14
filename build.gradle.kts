@@ -1,6 +1,7 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.4.10"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
     id("org.jetbrains.intellij.platform") version "2.18.1"
 }
 
@@ -43,6 +44,7 @@ dependencies {
         bundledPlugin("com.intellij.modules.jcef")
     }
     // WP11:桥协议 JSON 信封解析(JsonElement 纯运行时用法,无需 compiler plugin)
+    // WP13:core 领域模型 @Serializable(需要 serialization compiler plugin,见 plugins 块)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     // WP11:单元测试框架(显式指定 JUnit 5 变体,避免 kotlin-test 自动映射到 JUnit 4)
     testImplementation(kotlin("test-junit5"))
