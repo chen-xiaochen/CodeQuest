@@ -120,7 +120,13 @@ class ResourceHttpServer(
             respond(exchange, STATUS_BAD_REQUEST, "text/plain; charset=UTF-8", "Bad Request".toByteArray())
             return
         }
-        val relative = rawRelative.ifEmpty { DEFAULT_INDEX }
+        // 目录路径(/problems/)解析到其 index.html;jar 内目录资源不可直接 getResource
+        val relative =
+            when {
+                rawRelative.isEmpty() -> DEFAULT_INDEX
+                rawRelative.endsWith("/") -> rawRelative + DEFAULT_INDEX
+                else -> rawRelative
+            }
         val resourceUrl = javaClass.classLoader.getResource("$resourceRoot/$relative")
         if (resourceUrl == null) {
             val message = "Resource not found: $path".toByteArray()

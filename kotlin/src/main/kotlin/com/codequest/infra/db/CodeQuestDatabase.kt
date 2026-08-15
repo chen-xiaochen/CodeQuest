@@ -127,6 +127,9 @@ private class SqliteDataSource(
     override fun isWrapperFor(iface: Class<*>): Boolean = iface.isInstance(this)
 
     private fun open(): Connection {
+        // 显式加载驱动:IntelliJ 插件类加载器下 JDBC4 的 ServiceLoader 自动注册不可靠
+        // (沙箱实测 DriverManager.getConnection 报 "No suitable driver",WP16 修复)
+        Class.forName("org.sqlite.JDBC")
         val connection = DriverManager.getConnection(url)
         connection.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
         connection.createStatement().use { it.execute("PRAGMA foreign_keys = ON") }
