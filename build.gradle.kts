@@ -50,9 +50,14 @@ dependencies {
     implementation("org.jetbrains.exposed:exposed-core:1.4.0")
     implementation("org.jetbrains.exposed:exposed-jdbc:1.4.0")
     implementation("org.xerial:sqlite-jdbc:3.53.2.1")
+    // WP18:HTTP 会话层——ktor-client + OkHttp 引擎(与 Kotlin 2.4 兼容的近期稳定版 3.5.x)
+    implementation("io.ktor:ktor-client-core:3.5.2")
+    implementation("io.ktor:ktor-client-okhttp:3.5.2")
     // WP11:单元测试框架(显式指定 JUnit 5 变体,避免 kotlin-test 自动映射到 JUnit 4)
     testImplementation(kotlin("test-junit5"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")
+    // WP18:HTTP 层单测用 MockEngine(Windows 下不真连网络)
+    testImplementation("io.ktor:ktor-client-mock:3.5.2")
     // IntelliJ 平台注入的 JUnit5TestEnvironmentInitializer 初始化测试环境时需要 JUnit4 类
     testImplementation("junit:junit:4.13.2")
 }
