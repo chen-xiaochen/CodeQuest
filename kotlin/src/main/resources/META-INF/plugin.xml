@@ -43,5 +43,11 @@
                     factoryClass="com.codequest.ui.toolwindow.SubmissionsToolWindowFactory"
                     anchor="bottom"
                     icon="AllIcons.Toolwindows.ToolWindowProject"/>
+
+        <!-- WP16:challenge 工作区(创建/多解法/测试用例/本地运行) -->
+        <toolWindow id="CodeQuest Challenge"
+                    factoryClass="com.codequest.ui.challenge.ChallengeWorkspaceToolWindowFactory"
+                    anchor="bottom"
+                    icon="AllIcons.Toolwindows.ToolWindowRun"/>
     </extensions>
 </idea-plugin>

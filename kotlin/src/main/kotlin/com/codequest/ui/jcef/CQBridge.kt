@@ -91,6 +91,11 @@ class CQBridge(
         dispatcher.on(topic, handler)
     }
 
+    /** 在当前页面执行任意 JS(WP16 供 echo 自检探针等宿主侧注入使用)。 */
+    fun evaluate(script: String) {
+        execute(script)
+    }
+
     /** 注销 handler(转发给 [dispatcher])。 */
     fun off(
         topic: String,

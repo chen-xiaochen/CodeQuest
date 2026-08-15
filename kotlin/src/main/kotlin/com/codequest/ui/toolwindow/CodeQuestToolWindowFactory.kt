@@ -1,5 +1,6 @@
 package com.codequest.ui.toolwindow
 
+import com.codequest.infra.messaging.CodeQuestHttpServerService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -11,11 +12,11 @@ import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 
 /**
- * CodeQuest 主工具窗口壳(WP11,左侧)。
+ * CodeQuest 主工具窗口壳(WP11 建立,WP16 挂载前端页面 URL)。
  *
- * Kotlin UI DSL 实现(无 GUI Designer .form):一个可切换面板容器(JBTabbedPane),
- * 预留 Problems / Contest / Statistics / Search 四个面板位;各面板内容区将由
- * WP12 的 webview JCEF 页面挂载(见 spec §4 ToolWindow 布局)。
+ * Kotlin UI DSL + JBTabbedPane 四面板;每面板一个 JCEF 浏览器,加载
+ * `http://127.0.0.1:<port>/<page>/`(端口取自 [CodeQuestHttpServerService],
+ * 服务随项目启动)。JCEF 不可用时该面板降级为提示面板。
  */
 class CodeQuestToolWindowFactory :
     ToolWindowFactory,
@@ -25,7 +26,7 @@ class CodeQuestToolWindowFactory :
         toolWindow: ToolWindow,
     ) {
         val tabs = JBTabbedPane()
-        PANELS.forEach { spec -> tabs.addTab(spec.title, placeholderPanel(spec)) }
+        PANELS.forEach { spec -> tabs.addTab(spec.title, spec.icon, pageComponent(project, spec)) }
 
         val root =
             panel {
@@ -41,21 +42,25 @@ class CodeQuestToolWindowFactory :
 
     override fun shouldBeAvailable(project: Project) = true
 
-    private fun placeholderPanel(spec: PanelSpec) =
-        panel {
-            row {
-                icon(spec.icon)
-            }
-            row {
-                text(
-                    "<b>${spec.title}</b><br>" +
-                        "${spec.description}<br><br>" +
-                        "Web content (webview/${spec.route}) mounts here in WP12.",
-                )
-            }
-        }
+    private fun pageComponent(
+        project: Project,
+        spec: PanelSpec,
+    ): java.awt.Component =
+        JcefToolWindowSupport.createContent(
+            disposableName = "codequest.${spec.route}",
+            fallbackText =
+                "<b>${spec.title}</b><br>${spec.description}<br><br>" +
+                    "This page requires JCEF; enable the 'Web Browser (JCEF)' plugin to render it.",
+            url = pageUrl(project, spec.route),
+        )
 
-    /** 面板占位描述(与 spec §4 的左侧侧栏四面板一一对应)。 */
+    /** 服务基地址 + 路由;服务未就绪(理论上不会,随项目启动)时回退空白页。 */
+    internal fun pageUrl(
+        project: Project,
+        route: String,
+    ): String? = project.getService(CodeQuestHttpServerService::class.java).baseUrl?.let { "$it/$route/" }
+
+    /** 面板描述(与 spec §4 的左侧侧栏四面板一一对应)。 */
     private data class PanelSpec(
         val title: String,
         val description: String,
