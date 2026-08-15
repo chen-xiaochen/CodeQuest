@@ -123,6 +123,15 @@ tasks.register<JavaExec>("ktlint") {
     args(kotlinMainSrc)
 }
 
+// ktlint 自动格式化(开发者按需执行,不进 check 链;与 ktlint 任务同引擎同配置)
+tasks.register<JavaExec>("ktlintFormat") {
+    group = "formatting"
+    description = "Runs ktlint --format over kotlin/src/main/kotlin."
+    mainClass = "com.pinterest.ktlint.Main"
+    classpath = ktlintCli
+    args("--format", kotlinMainSrc)
+}
+
 // 分层依赖检查(spec §1):依赖方向 ui → platform → spi → core,infra 实现 core 仓库接口。
 // 禁止反向 import:core→{spi,platform,infra,ui}、spi→{platform,infra,ui}、platform→{infra,ui}、infra→ui。
 // 另:platform 下各 OJ 子包(leetcode/leetcodecn/luogu/atcoder/codeforces/hackerrank...)互相 import 禁令。

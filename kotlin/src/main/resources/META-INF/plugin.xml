@@ -21,7 +21,23 @@
         <extensionPoint qualifiedName="com.codequest.ojPlatformProvider"
                         interface="com.codequest.spi.OJPlatformProvider"
                         dynamic="true"/>
+        <!-- WP19:传输层/凭据存储的 SPI→infra 注入点(platform 包不 import infra) -->
+        <extensionPoint qualifiedName="com.codequest.ojTransportProvider"
+                        interface="com.codequest.spi.OJTransportProvider"
+                        dynamic="true"/>
+        <extensionPoint qualifiedName="com.codequest.ojCredentialStoreProvider"
+                        interface="com.codequest.spi.OJCredentialStoreProvider"
+                        dynamic="true"/>
     </extensionPoints>
+
+    <extensions defaultExtensionNs="com.codequest">
+        <!-- WP19:LeetCode / 力扣CN 平台适配器 -->
+        <ojPlatformProvider implementation="com.codequest.platform.leetcode.LeetCodeProvider"/>
+        <ojPlatformProvider implementation="com.codequest.platform.leetcode.LeetCodeCnProvider"/>
+        <!-- WP19:SPI 传输/凭据接口的生产实现(均在 infra,经 EP 注入) -->
+        <ojTransportProvider implementation="com.codequest.infra.http.HttpOJTransportProvider"/>
+        <ojCredentialStoreProvider implementation="com.codequest.infra.secrets.SecretsStoreCredentialStoreProvider"/>
+    </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- WP11:本地资源/数据 HTTP 服务,随项目启动/关闭 -->
