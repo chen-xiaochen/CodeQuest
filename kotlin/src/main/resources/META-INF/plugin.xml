@@ -15,6 +15,14 @@
 
     <idea-version since-build="262"/>
 
+    <!-- WP17:OJ 平台能力 SPI 注册点。新增 OJ = platform/<oj> 包 + 此处一行
+         <ojPlatformProvider implementation="..."/> 声明(经 OJPlatformRegistry 查询) -->
+    <extensionPoints>
+        <extensionPoint qualifiedName="com.codequest.ojPlatformProvider"
+                        interface="com.codequest.spi.OJPlatformProvider"
+                        dynamic="true"/>
+    </extensionPoints>
+
     <extensions defaultExtensionNs="com.intellij">
         <!-- WP11:本地资源/数据 HTTP 服务,随项目启动/关闭 -->
         <projectService serviceImplementation="com.codequest.infra.messaging.CodeQuestHttpServerService"/>
