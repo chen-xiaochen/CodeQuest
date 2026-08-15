@@ -2,8 +2,10 @@ package com.codequest.infra.messaging
 
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
+import kotlinx.coroutines.runBlocking
 import java.net.InetSocketAddress
 import java.net.URLConnection
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -18,12 +20,15 @@ import java.util.logging.Logger
  * JCEF 桥消息只留给命令与事件,消灭旧版大数据量消息序列化卡顿。
  *
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
- * - REST 数据端点:`/api/` 前缀,当前提供 `GET /api/health`,其余骨架 404
+ * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
+ *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`,
+ *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
  */
 class ResourceHttpServer(
     private val resourceRoot: String = DEFAULT_RESOURCE_ROOT,
+    private val problemApi: ProblemApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -90,6 +95,7 @@ class ResourceHttpServer(
         exchange: HttpExchange,
         path: String,
     ) {
+        val query = parseQuery(exchange)
         when {
             path == "/api/health" && exchange.isGet() -> {
                 respond(
@@ -100,11 +106,75 @@ class ResourceHttpServer(
                 )
             }
 
+            path == "/api/platforms" && exchange.isGet() -> {
+                runProblemApi(exchange) { it.listPlatforms() }
+            }
+
+            path == "/api/problems" && exchange.isGet() -> {
+                runProblemApi(exchange) { api -> api.listProblems(query) }
+            }
+
+            path.startsWith(PROBLEM_DETAIL_PREFIX) && exchange.isGet() -> {
+                val remoteId =
+                    path
+                        .removePrefix(PROBLEM_DETAIL_PREFIX)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::urlDecode)
+                if (remoteId.isNullOrEmpty()) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, BAD_REQUEST_RESPONSE)
+                } else {
+                    runProblemApi(exchange) { api -> api.problemDetail(remoteId, query) }
+                }
+            }
+
             else -> {
                 respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
             }
         }
     }
+
+    /** 执行 [ProblemApi] 调用(suspend,阻塞 HTTP 工作线程可接受)并回写应答。 */
+    private fun runProblemApi(
+        exchange: HttpExchange,
+        block: suspend (ProblemApi) -> ProblemApiResponse,
+    ) {
+        val api = problemApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    private fun respondJson(
+        exchange: HttpExchange,
+        status: Int,
+        json: String,
+        headers: Map<String, String> = emptyMap(),
+    ) {
+        headers.forEach { (name, value) -> exchange.responseHeaders.add(name, value) }
+        respond(exchange, status, "application/json; charset=UTF-8", json.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    /** 解析 rawQuery 为解码后的参数表(重复键取首个)。 */
+    private fun parseQuery(exchange: HttpExchange): Map<String, String> {
+        val raw = exchange.requestURI.rawQuery ?: return emptyMap()
+        return raw
+            .split('&')
+            .filter { it.isNotEmpty() }
+            .associate { pair ->
+                val index = pair.indexOf('=')
+                if (index < 0) {
+                    urlDecode(pair) to ""
+                } else {
+                    urlDecode(pair.substring(0, index)) to urlDecode(pair.substring(index + 1))
+                }
+            }
+    }
+
+    private fun urlDecode(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
 
     private fun handleStatic(
         exchange: HttpExchange,
@@ -190,14 +260,17 @@ class ResourceHttpServer(
         private const val PORT_ANY = 0
         private const val BACKLOG = 0
         private const val API_PREFIX = "/api/"
+        private const val PROBLEM_DETAIL_PREFIX = "/api/problem/"
         private const val SHUTDOWN_DELAY_SECONDS = 0
         private const val STATUS_OK = 200
         private const val STATUS_BAD_REQUEST = 400
         private const val STATUS_NOT_FOUND = 404
         private const val STATUS_INTERNAL_ERROR = 500
         private const val STATUS_METHOD_NOT_ALLOWED = 405
+        private const val STATUS_SERVICE_UNAVAILABLE = 503
         private const val EMPTY_BODY = -1L
         private const val HEALTH_RESPONSE = """{"status":"ok","version":"0.1.0"}"""
         private const val NOT_FOUND_RESPONSE = """{"error":"not found"}"""
+        private const val BAD_REQUEST_RESPONSE = """{"error":"bad-request","message":"missing remoteId path segment"}"""
     }
 }

@@ -34,6 +34,9 @@ export type BridgeHandler = (payload: unknown) => void
 export const TOPIC_ECHO = 'bridge:echo'
 export const TOPIC_ECHO_REPLY = 'bridge:echo:reply'
 
+/** WP20:题目列表页点击行 → Kotlin 侧打开题面工具窗口;payload {platformId, remoteId}。 */
+export const TOPIC_NAV_OPEN_PROBLEM = 'nav:openProblem'
+
 declare global {
   interface Window {
     /** JBCefJSQuery 注入的 JS→Kotlin 发送函数。 */

@@ -1,0 +1,130 @@
+/**
+ * 题面正文排版(WP20):problem-view 页 .statement 容器下的渲染产物样式,
+ * 亮/暗主题共用 theme.css 变量(--cq-*),无额外变量。
+ */
+
+.statement {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--cq-fg);
+  overflow-wrap: break-word;
+}
+
+.statement > *:first-child {
+  margin-top: 0;
+}
+
+.statement h1,
+.statement h2,
+.statement h3,
+.statement h4,
+.statement h5,
+.statement h6 {
+  margin: 1.2em 0 0.5em;
+  font-size: 1.05em;
+  font-weight: 650;
+}
+
+.statement p {
+  margin: 0.6em 0;
+}
+
+.statement ul,
+.statement ol {
+  margin: 0.6em 0;
+  padding-left: 1.6em;
+}
+
+.statement li {
+  margin: 0.2em 0;
+}
+
+.statement blockquote {
+  margin: 0.8em 0;
+  padding: 0.4em 1em;
+  border-left: 3px solid var(--cq-border);
+  background: var(--cq-panel);
+  color: var(--cq-muted);
+  border-radius: 0 6px 6px 0;
+}
+
+.statement code {
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: var(--cq-hl-bg);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.statement pre {
+  margin: 0.8em 0;
+  padding: 10px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-hl-bg);
+  overflow-x: auto;
+}
+
+.statement pre code {
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.statement .statement-table {
+  margin: 0.8em 0;
+  overflow-x: auto;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+}
+
+.statement table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.statement th,
+.statement td {
+  border-bottom: 1px solid var(--cq-border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.statement th {
+  background: var(--cq-panel);
+  font-weight: 600;
+}
+
+.statement tr:last-child td {
+  border-bottom: none;
+}
+
+.statement img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.statement hr {
+  border: none;
+  border-top: 1px solid var(--cq-border);
+  margin: 1.2em 0;
+}
+
+.statement sup,
+.statement sub {
+  font-size: 0.75em;
+}
+
+.statement .statement-math {
+  margin: 0.8em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.statement .statement-math-inline {
+  display: inline-block;
+}

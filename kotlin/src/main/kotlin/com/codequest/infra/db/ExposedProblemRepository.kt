@@ -20,10 +20,11 @@ import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.sql.SQLException
 
-/** ProblemRepository 的 Exposed/SQLite 实现(WP14)。 */
+/** ProblemRepository 的 Exposed/SQLite 实现(WP14;WP20 追加实现 [ProblemStore] 端点端口)。 */
 class ExposedProblemRepository(
     private val db: CodeQuestDatabase,
-) : ProblemRepository {
+) : ProblemRepository,
+    ProblemStore {
     override suspend fun save(problem: Problem) =
         db.write {
             // upsert = 全量替换(先清主档与关联,再写入;标签随 problem_tag 一并落库)
@@ -77,6 +78,18 @@ class ExposedProblemRepository(
                 .map { problem -> problem.withTags(tagsFor(problem.id.value)) }
         }
     }
+
+    override suspend fun findByRemoteId(
+        platformId: PlatformId,
+        remoteId: String,
+    ): Problem? =
+        db.read {
+            Problems
+                .selectAll()
+                .where { (Problems.platformId eq platformId.value) and (Problems.remoteId eq remoteId) }
+                .firstOrNull()
+                ?.let { row -> row.toProblem().withTags(tagsFor(row[Problems.id])) }
+        }
 
     override suspend fun findByTag(tagId: TagId): List<Problem> =
         db.read {

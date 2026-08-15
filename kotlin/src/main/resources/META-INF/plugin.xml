@@ -44,6 +44,9 @@
         <projectService serviceImplementation="com.codequest.infra.messaging.CodeQuestHttpServerService"/>
         <postStartupActivity implementation="com.codequest.infra.messaging.CqHttpServerStartupActivity"/>
 
+        <!-- WP20:题面工具窗口导航(nav:openProblem 桥消息 → 打开题目) -->
+        <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewNavigator"/>
+
         <!-- WP15:设置持久化 + 数据库管理(项目级服务,随项目启动/关闭) -->
         <projectService serviceImplementation="com.codequest.infra.settings.CodeQuestSettings"/>
         <projectService serviceImplementation="com.codequest.infra.db.DatabaseManager"/>

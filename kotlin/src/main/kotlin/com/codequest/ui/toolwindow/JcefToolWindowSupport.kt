@@ -39,12 +39,15 @@ object JcefToolWindowSupport {
      * @param disposableName Disposer 树节点名,随 content 销毁释放浏览器与桥
      * @param fallbackText JCEF 不可用时的提示文案
      * @param url 页面 URL;null 时保持 about:blank(无页面的裸壳)
+     * @param configure 浏览器与桥创建后的宿主侧挂载点(WP20:注册业务桥 handler、
+     *   把浏览器引用交给导航服务等);在页面加载开始前调用
      */
     @JvmOverloads
     fun createContent(
         disposableName: String,
         fallbackText: String,
         url: String? = null,
+        configure: ((JBCefBrowser, CQBridge) -> Unit)? = null,
     ): JComponent {
         if (!JBCefApp.isSupported()) {
             return panel {
@@ -56,6 +59,7 @@ object JcefToolWindowSupport {
         Disposer.register(disposable, browser)
         val bridge = CQBridge(browser, disposable)
         attachEchoVerification(bridge, browser, disposable, disposableName)
+        configure?.invoke(browser, bridge)
         browser.loadURL(url ?: "about:blank")
         return browser.component.also {
             it.putClientProperty(DISPOSABLE_KEY, disposable)

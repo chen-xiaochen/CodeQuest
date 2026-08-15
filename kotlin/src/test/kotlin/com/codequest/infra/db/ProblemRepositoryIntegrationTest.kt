@@ -23,10 +23,11 @@ class ProblemRepositoryIntegrationTest {
         title: String,
         tags: List<Tag> = emptyList(),
         platform: String = "codeforces",
+        remoteId: String = "1927A",
     ) = Problem(
         id = ProblemId(id),
         platformId = PlatformId(platform),
-        remoteId = "1927A",
+        remoteId = remoteId,
         title = title,
         difficulty = Difficulty("easy"),
         url = "https://codeforces.com/problemset/problem/1927/A",
@@ -69,6 +70,18 @@ class ProblemRepositoryIntegrationTest {
     fun `find by id returns null when missing`() = integrationTest { db ->
         val repo = ExposedProblemRepository(db)
         assertNull(repo.findById(ProblemId("nope")))
+    }
+
+    @Test
+    fun `find by remote id matches exactly within platform and loads tags`() = integrationTest { db ->
+        val repo = ExposedProblemRepository(db)
+        repo.save(problem("p-1", "Two Sum", listOf(Tag(TagId("t-1"), "array")), platform = "leetcode", remoteId = "two-sum"))
+        repo.save(problem("p-2", "Same Slug Other Platform", platform = "codeforces", remoteId = "two-sum"))
+
+        val hit = repo.findByRemoteId(PlatformId("leetcode"), "two-sum")
+        assertEquals("p-1", hit?.id?.value)
+        assertEquals(listOf("array"), hit?.tags?.map { it.name })
+        assertNull(repo.findByRemoteId(PlatformId("leetcode"), "no-such-slug"))
     }
 
     @Test

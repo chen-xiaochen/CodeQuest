@@ -1,6 +1,7 @@
 package com.codequest.ui.toolwindow
 
 import com.codequest.infra.messaging.CodeQuestHttpServerService
+import com.codequest.ui.jcef.CQBridge
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -10,6 +11,7 @@ import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
+import java.util.logging.Logger
 
 /**
  * CodeQuest 主工具窗口壳(WP11 建立,WP16 挂载前端页面 URL)。
@@ -52,7 +54,25 @@ class CodeQuestToolWindowFactory :
                 "<b>${spec.title}</b><br>${spec.description}<br><br>" +
                     "This page requires JCEF; enable the 'Web Browser (JCEF)' plugin to render it.",
             url = pageUrl(project, spec.route),
+            // WP20:problems 面板注册「点击行 → 打开题面工具窗口」的导航桥 handler
+            configure = if (spec.route == PROBLEMS_ROUTE) { _, bridge -> attachOpenProblemNavigation(project, bridge) } else null,
         )
+
+    /** `nav:openProblem {platformId, remoteId}` → [ProblemViewNavigator.openProblem]。 */
+    private fun attachOpenProblemNavigation(
+        project: Project,
+        bridge: CQBridge,
+    ) {
+        val navigator = project.getService(ProblemViewNavigator::class.java)
+        bridge.on(ProblemViewNavigator.TOPIC_NAV_OPEN_PROBLEM) { payload ->
+            val request = parseOpenProblemPayload(payload)
+            if (request == null) {
+                LOGGER.warning("dropping malformed ${ProblemViewNavigator.TOPIC_NAV_OPEN_PROBLEM} payload: $payload")
+            } else {
+                navigator.openProblem(request.platformId, request.remoteId)
+            }
+        }
+    }
 
     /** 服务基地址 + 路由;服务未就绪(理论上不会,随项目启动)时回退空白页。 */
     internal fun pageUrl(
@@ -69,6 +89,10 @@ class CodeQuestToolWindowFactory :
     )
 
     private companion object {
+        private val LOGGER = Logger.getLogger(CodeQuestToolWindowFactory::class.java.name)
+
+        private const val PROBLEMS_ROUTE = "problems"
+
         val PANELS =
             listOf(
                 PanelSpec(

@@ -1,5 +1,6 @@
 package com.codequest.infra.messaging
 
+import com.codequest.infra.db.DatabaseManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -22,7 +23,14 @@ class CodeQuestHttpServerService(
 ) : Disposable {
     private val logger = Logger.getLogger(CodeQuestHttpServerService::class.java.name)
 
-    val httpServer: ResourceHttpServer = ResourceHttpServer()
+    val httpServer: ResourceHttpServer =
+        ResourceHttpServer(
+            // WP20:题目数据端点——平台经 SPI 注册表,存储按请求解析(数据库切换即时生效)
+            problemApi =
+                ProblemApi(
+                    store = { project.getService(DatabaseManager::class.java).problemStore },
+                ),
+        )
 
     /** 服务基地址;未启动时为 null。 */
     val baseUrl: String?

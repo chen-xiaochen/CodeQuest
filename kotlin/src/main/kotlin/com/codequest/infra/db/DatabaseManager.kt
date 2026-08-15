@@ -40,6 +40,10 @@ class ManagedDatabase(
     val problemRepository: ProblemRepository
         get() = handle.problem
 
+    /** 端点用存取端口(WP20),与 [problemRepository] 同一实现实例。 */
+    val problemStore: ProblemStore
+        get() = handle.problem
+
     val submissionRepository: SubmissionRepository
         get() = handle.submission
 
@@ -83,7 +87,8 @@ class ManagedDatabase(
         val db: CodeQuestDatabase,
         val folder: Path,
     ) : AutoCloseable {
-        val problem by lazy { ExposedProblemRepository(db) }
+        // 具体类型暴露(WP20):同一实例同时充当 ProblemRepository 与 ProblemStore
+        val problem: ExposedProblemRepository by lazy { ExposedProblemRepository(db) }
         val submission by lazy { ExposedSubmissionRepository(db) }
         val challenge by lazy { ExposedChallengeRepository(db) }
         val solution by lazy { ExposedSolutionRepository(db) }
@@ -117,6 +122,10 @@ class DatabaseManager(
 
     val problemRepository: ProblemRepository
         get() = managed.problemRepository
+
+    /** 端点用题目存取端口(WP20):ProblemRepository + 按 remoteId 精确查;随切库指向新句柄。 */
+    val problemStore: ProblemStore
+        get() = managed.problemStore
 
     val submissionRepository: SubmissionRepository
         get() = managed.submissionRepository

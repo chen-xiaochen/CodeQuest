@@ -1,162 +1,176 @@
 <script setup lang="ts">
 /**
- * 题面工具窗口页(WP12 空壳)。
- *
- * 附带「桥自测」区块:点击发送 bridge:echo,回声 bridge:echo:reply 展示在页面上。
- * - IDE 内(JCEF + Kotlin 注入 cqSend):真实走 CQBridge 往返
- * - 纯浏览器(dev):cq-bridge mock 回环,直接收到回声
- * 这是 WP11 留下的沙箱验收测试点的页面侧入口。
+ * 题面页(WP20 真实数据):URL query `?platform=&remoteId=`(Kotlin 侧
+ * ProblemViewNavigator 构造)→ /api/problem 拉取 → 渲染管线(清洗+hljs/KaTeX)。
  */
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import {
-  TOPIC_ECHO,
-  TOPIC_ECHO_REPLY,
-  cqBridge,
-} from '../../bridge/cq-bridge'
-import { renderCode } from '../../lib/highlight'
-import { renderMath } from '../../lib/katex-render'
+import { ApiError, fetchProblemDetail, type ProblemDetail } from '../../lib/api'
+import { difficultyClass } from '../../lib/difficulty'
+import { renderStatement } from '../../lib/statement'
 
-const SAMPLE_CODE = `fun main() {
-    val n = readLine()!!.toInt()
-    println(if (n % 2 == 0) "even" else "odd")
-}`
+const detail = ref<ProblemDetail | null>(null)
+const loading = ref(false)
+const error = ref('')
 
-const bridge = cqBridge()
-const echoState = ref<'idle' | 'waiting' | 'ok'>('idle')
-const echoDetail = ref('')
-const codeBlock = ref<HTMLElement | null>(null)
-const mathInline = ref<HTMLElement | null>(null)
-const mathDisplay = ref<HTMLElement | null>(null)
+const params = new URLSearchParams(window.location.search)
+const platform = params.get('platform') ?? ''
+const remoteId = params.get('remoteId') ?? ''
+
+const renderedHtml = computed(() => {
+  if (!detail.value) return ''
+  return renderStatement(detail.value.content, detail.value.contentFormat)
+})
+
+function describeError(cause: unknown): string {
+  if (cause instanceof ApiError) {
+    return `[${cause.code}] ${cause.message}`
+  }
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
+async function load(): Promise<void> {
+  if (!platform || !remoteId) return
+  loading.value = true
+  error.value = ''
+  try {
+    detail.value = await fetchProblemDetail(platform, remoteId)
+  } catch (cause) {
+    error.value = describeError(cause)
+  } finally {
+    loading.value = false
+  }
+}
 
 onMounted(() => {
-  // 走通 highlight.ts / katex-render.ts 封装(产物内为本地资源,不引 CDN)
-  renderCode(codeBlock.value, SAMPLE_CODE, 'kotlin')
-  renderMath(mathInline.value, 'a^2 + b^2 = c^2', false)
-  renderMath(mathDisplay.value, '\\int_0^1 x^2\\,dx = \\frac{1}{3}', true)
+  void load()
 })
-
-const offReply = bridge.on(TOPIC_ECHO_REPLY, (payload) => {
-  echoState.value = 'ok'
-  echoDetail.value = JSON.stringify(payload)
-})
-
-onUnmounted(offReply)
-
-function runEchoTest(): void {
-  echoState.value = 'waiting'
-  echoDetail.value = ''
-  bridge.send(TOPIC_ECHO, { hello: 'cq' })
-}
 </script>
 
 <template>
-  <AppShell
-    title="Problem View"
-    subtitle="Problem statement rendering with markdown, code highlight and KaTeX."
-  >
-    <section class="placeholder">
-      <p class="placeholder__mark">Problem View</p>
-      <p>Problem statement rendering with markdown, code highlight and KaTeX.</p>
-      <p class="placeholder__hint">
-        Placeholder page mounted by WP12 scaffolding. Statement content will be
-        fetched from the local ResourceHttpServer REST endpoints.
-      </p>
-    </section>
+  <AppShell title="Problem View" subtitle="Problem statement with sanitized HTML / markdown rendering.">
+    <p v-if="!platform || !remoteId" class="state">
+      No problem selected. Open one from the Problems list.
+    </p>
 
-    <section class="render-demo">
-      <h2>Renderers preview</h2>
-      <div ref="codeBlock" class="render-demo__code" aria-label="code highlight sample"></div>
-      <p>
-        Inline math: <span ref="mathInline"></span>
-      </p>
-      <div ref="mathDisplay" aria-label="display math sample"></div>
-    </section>
+    <p v-else-if="error" class="state state--error" role="alert">
+      {{ error }}
+      <button type="button" class="state__retry" @click="load">Retry</button>
+    </p>
 
-    <section class="echo">
-      <button type="button" class="echo__btn" @click="runEchoTest">
-        Bridge self-test (bridge:echo)
-      </button>
-      <span class="echo__state" :data-state="echoState">
-        <template v-if="echoState === 'idle'">not run</template>
-        <template v-else-if="echoState === 'waiting'">waiting for bridge:echo:reply…</template>
-        <template v-else>reply {{ echoDetail }}</template>
-      </span>
-      <span class="echo__mode">
-        {{ bridge.isRealBridge() ? 'real bridge' : 'mock loopback' }}
-      </span>
-    </section>
+    <p v-else-if="loading" class="state">Loading problem statement…</p>
+
+    <template v-else-if="detail">
+      <header class="statement-header">
+        <h2 class="statement-header__title">
+          <span class="statement-header__remote">{{ detail.remoteId }}</span>
+          {{ detail.title }}
+        </h2>
+        <p class="statement-header__meta">
+          <span class="diff-badge" :class="difficultyClass(detail.difficulty)">{{ detail.difficulty }}</span>
+          <span class="statement-header__source" :data-source="detail.source">{{ detail.source }}</span>
+          <a
+            v-if="detail.url"
+            :href="detail.url"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            open on site
+          </a>
+        </p>
+      </header>
+
+      <!-- eslint-disable-next-line vue/no-v-html — 内容经 renderStatement 白名单清洗 -->
+      <article class="statement" v-html="renderedHtml"></article>
+    </template>
   </AppShell>
 </template>
 
 <style scoped>
-.placeholder {
-  color: var(--cq-muted);
-  border: 1px dashed var(--cq-border);
+.state {
+  margin: 16px 0;
+  padding: 10px 12px;
   border-radius: 8px;
-  padding: 24px;
-  background: var(--cq-panel);
-}
-
-.placeholder__mark {
-  margin: 0 0 4px;
-  font-size: 20px;
-  font-weight: 650;
-  color: var(--cq-fg);
-}
-
-.placeholder__hint {
-  font-size: 12px;
-}
-
-.render-demo {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--cq-border);
-  border-radius: 8px;
-  background: var(--cq-panel);
-}
-
-.render-demo h2 {
-  margin: 0 0 8px;
   font-size: 13px;
   color: var(--cq-muted);
+  border: 1px dashed var(--cq-border);
 }
 
-.render-demo__code {
-  font-size: 12px;
-  overflow-x: auto;
+.state--error {
+  color: var(--cq-danger);
+  border: 1px solid var(--cq-danger);
+  background: var(--cq-panel);
 }
 
-.echo {
-  margin-top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--cq-muted);
-}
-
-.echo__btn {
+.state__retry {
+  margin-left: 10px;
+  padding: 2px 10px;
   border: 1px solid var(--cq-border);
+  border-radius: 6px;
   background: var(--cq-panel-raised);
   color: var(--cq-fg);
-  border-radius: 6px;
-  padding: 4px 12px;
   cursor: pointer;
 }
 
-.echo__btn:hover {
-  border-color: var(--cq-accent);
+.statement-header {
+  margin-bottom: 12px;
 }
 
-.echo__state[data-state='ok'] {
-  color: var(--cq-success);
+.statement-header__title {
+  margin: 0 0 6px;
+  font-size: 17px;
+  line-height: 1.4;
 }
 
-.echo__mode {
+.statement-header__remote {
+  display: block;
+  font-size: 11px;
+  color: var(--cq-muted);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+}
+
+.statement-header__meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--cq-muted);
+}
+
+.statement-header__source {
+  padding: 1px 8px;
   border: 1px solid var(--cq-border);
   border-radius: 999px;
+}
+
+.statement-header__source[data-source='cache'] {
+  color: var(--cq-success);
+  border-color: var(--cq-success);
+}
+
+.diff-badge {
+  display: inline-block;
   padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.diff-badge--easy {
+  background: var(--cq-diff-easy);
+}
+
+.diff-badge--medium {
+  background: var(--cq-diff-medium);
+}
+
+.diff-badge--hard {
+  background: var(--cq-diff-hard);
+}
+
+.diff-badge--other {
+  background: var(--cq-diff-other);
 }
 </style>
