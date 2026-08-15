@@ -20,6 +20,16 @@
         <projectService serviceImplementation="com.codequest.infra.messaging.CodeQuestHttpServerService"/>
         <postStartupActivity implementation="com.codequest.infra.messaging.CqHttpServerStartupActivity"/>
 
+        <!-- WP15:设置持久化 + 数据库管理(项目级服务,随项目启动/关闭) -->
+        <projectService serviceImplementation="com.codequest.infra.settings.CodeQuestSettings"/>
+        <projectService serviceImplementation="com.codequest.infra.db.DatabaseManager"/>
+        <postStartupActivity implementation="com.codequest.infra.db.DatabaseManagerStartupActivity"/>
+        <projectConfigurable id="codequest.settings"
+                             groupId="tools"
+                             bundle="messages.PluginBundle"
+                             key="settings.displayName"
+                             instance="com.codequest.ui.settings.CodeQuestSettingsConfigurable"/>
+
         <!-- WP11:工具窗口壳 -->
         <toolWindow id="CodeQuest"
                     factoryClass="com.codequest.ui.toolwindow.CodeQuestToolWindowFactory"
