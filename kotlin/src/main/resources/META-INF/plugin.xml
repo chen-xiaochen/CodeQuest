@@ -13,6 +13,9 @@
          <id>com.intellij.modules.jcef</id>,已实测);未声明会导致运行时 NoClassDefFoundError -->
     <depends>com.intellij.modules.jcef</depends>
 
+    <!-- WP21:plugin.xml 内 %key% 本地化(action 菜单文案)统一指向 PluginBundle -->
+    <resource-bundle>messages.PluginBundle</resource-bundle>
+
     <idea-version since-build="262"/>
 
     <!-- WP17:OJ 平台能力 SPI 注册点。新增 OJ = platform/<oj> 包 + 此处一行
@@ -76,5 +79,18 @@
                     factoryClass="com.codequest.ui.challenge.ChallengeWorkspaceToolWindowFactory"
                     anchor="bottom"
                     icon="AllIcons.Toolwindows.ToolWindowRun"/>
+
+        <!-- WP21:提交结果通知组(AC 绿/失败红气球) -->
+        <notificationGroup id="codequest.submissions" displayType="BALLOON"/>
     </extensions>
+
+    <actions>
+        <!-- WP21:编辑器提交 action(右键菜单;区域标记代码 → SPI submit → 轮询 → 落库) -->
+        <action id="CodeQuest.SubmitToOj"
+                class="com.codequest.ui.submission.SubmitToOjAction"
+                text="%action.submitToOj.text"
+                description="%action.submitToOj.description">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>

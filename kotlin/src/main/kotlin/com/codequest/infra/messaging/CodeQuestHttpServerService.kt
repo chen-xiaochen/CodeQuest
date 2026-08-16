@@ -30,6 +30,12 @@ class CodeQuestHttpServerService(
                 ProblemApi(
                     store = { project.getService(DatabaseManager::class.java).problemStore },
                 ),
+            // WP21:提交记录端点——本地库分页查询,同样按请求解析(切库即时生效)
+            submissionsApi =
+                SubmissionsApi(
+                    submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
+                    challenges = { project.getService(DatabaseManager::class.java).challengeRepository },
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

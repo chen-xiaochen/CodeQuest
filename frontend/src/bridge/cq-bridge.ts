@@ -37,6 +37,9 @@ export const TOPIC_ECHO_REPLY = 'bridge:echo:reply'
 /** WP20:题目列表页点击行 → Kotlin 侧打开题面工具窗口;payload {platformId, remoteId}。 */
 export const TOPIC_NAV_OPEN_PROBLEM = 'nav:openProblem'
 
+/** WP21:提交落库后 Kotlin 侧推送;payload {challengeId, submissionId, challengeName, verdict}。 */
+export const TOPIC_SUBMISSION_UPDATED = 'submission:updated'
+
 declare global {
   interface Window {
     /** JBCefJSQuery 注入的 JS→Kotlin 发送函数。 */

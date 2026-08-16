@@ -21,7 +21,8 @@ import java.util.logging.Logger
  *
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
- *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`,
+ *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`;
+ *   提交记录端点(WP21,经 [submissionsApi] 注入后启用):`GET /api/submissions`;
  *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
@@ -29,6 +30,7 @@ import java.util.logging.Logger
 class ResourceHttpServer(
     private val resourceRoot: String = DEFAULT_RESOURCE_ROOT,
     private val problemApi: ProblemApi? = null,
+    private val submissionsApi: SubmissionsApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -125,6 +127,17 @@ class ResourceHttpServer(
                 } else {
                     runProblemApi(exchange) { api -> api.problemDetail(remoteId, query) }
                 }
+            }
+
+            path == "/api/submissions" && exchange.isGet() -> {
+                val api = submissionsApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        runBlocking { api.listSubmissions(query) }
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
             }
 
             else -> {

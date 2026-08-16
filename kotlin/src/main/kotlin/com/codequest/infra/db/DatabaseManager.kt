@@ -4,7 +4,6 @@ import com.codequest.core.repository.ChallengeRepository
 import com.codequest.core.repository.ContestReminderRepository
 import com.codequest.core.repository.ProblemRepository
 import com.codequest.core.repository.SolutionRepository
-import com.codequest.core.repository.SubmissionRepository
 import com.codequest.core.repository.TagRepository
 import com.codequest.core.repository.TestCaseRepository
 import com.codequest.infra.settings.CodeQuestSettings
@@ -44,7 +43,8 @@ class ManagedDatabase(
     val problemStore: ProblemStore
         get() = handle.problem
 
-    val submissionRepository: SubmissionRepository
+    /** 具体类型(WP21):除 [SubmissionRepository] 契约外提供 submissions 端点用的分页查询。 */
+    val submissionRepository: ExposedSubmissionRepository
         get() = handle.submission
 
     val challengeRepository: ChallengeRepository
@@ -127,7 +127,7 @@ class DatabaseManager(
     val problemStore: ProblemStore
         get() = managed.problemStore
 
-    val submissionRepository: SubmissionRepository
+    val submissionRepository: ExposedSubmissionRepository
         get() = managed.submissionRepository
 
     val challengeRepository: ChallengeRepository

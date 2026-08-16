@@ -57,6 +57,29 @@ class ExposedSubmissionRepository(
                 .orderBy(Submissions.submittedAt to SortOrder.DESC, Submissions.id to SortOrder.ASC)
                 .map { it.toSubmission() }
         }
+
+    /**
+     * 分页列表(WP21,submissions 端点数据源):排序契约与 [findByChallenge] 一致;
+     * [challengeId] 为 null 时列出全部工作区的提交。
+     */
+    suspend fun listPage(
+        challengeId: ChallengeId?,
+        limit: Int,
+        offset: Int,
+    ): List<Submission> =
+        db.read {
+            val query =
+                if (challengeId == null) {
+                    Submissions.selectAll()
+                } else {
+                    Submissions.selectAll().where { Submissions.challengeId eq challengeId.value }
+                }
+            query
+                .orderBy(Submissions.submittedAt to SortOrder.DESC, Submissions.id to SortOrder.ASC)
+                .limit(limit)
+                .offset(offset.toLong())
+                .map { it.toSubmission() }
+        }
 }
 
 private fun ResultRow.toSubmission() =

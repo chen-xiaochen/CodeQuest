@@ -114,3 +114,57 @@ export function fetchProblemDetail(
     `/api/problem/${encodeURIComponent(remoteId)}?${params.toString()}`,
   )
 }
+
+/** 提交判定(Kotlin 侧 SubmissionResult 多态 JSON,discriminator `type`)。 */
+export interface SubmissionVerdict {
+  type: string
+  /** PartialScore 得分比例 (0, 1)。 */
+  score?: number
+  /** Unknown 平台原文。 */
+  raw?: string
+}
+
+export interface SubmissionListItem {
+  id: string
+  challengeId: string
+  /** challenge 主档被删除时缺省,前端回退显示 challengeId。 */
+  challengeName?: string
+  platformId: string
+  remoteSubmissionId: string
+  language: string
+  verdict: SubmissionVerdict
+  timeMs?: number | null
+  memoryKb?: number | null
+  /** ISO-8601 即时字符串。 */
+  submittedAt: string
+}
+
+export interface SubmissionListResult {
+  /** 过滤的 challenge id;缺省 = 全部工作区。 */
+  challengeId?: string | null
+  offset: number
+  limit: number
+  items: SubmissionListItem[]
+  hasMore: boolean
+}
+
+export interface SubmissionListQuery {
+  challengeId?: string
+  limit?: number
+  offset?: number
+}
+
+/** WP21:提交历史列表(按提交时间倒序,来自本地库)。 */
+export function fetchSubmissions(query: SubmissionListQuery): Promise<SubmissionListResult> {
+  const params = new URLSearchParams()
+  if (query.challengeId && query.challengeId.trim().length > 0) {
+    params.set('challengeId', query.challengeId.trim())
+  }
+  if (query.limit !== undefined) {
+    params.set('limit', String(query.limit))
+  }
+  if (query.offset !== undefined && query.offset > 0) {
+    params.set('offset', String(query.offset))
+  }
+  return getJson<SubmissionListResult>(`/api/submissions?${params.toString()}`)
+}
