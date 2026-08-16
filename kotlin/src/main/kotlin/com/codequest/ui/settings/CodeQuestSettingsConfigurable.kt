@@ -26,6 +26,9 @@ import javax.swing.JComponent
  *
  * apply 成功后经项目消息总线发布 [CodeQuestSettings.DATABASE_FOLDER_TOPIC],
  * `infra.db.DatabaseManager` 收到后 close 旧库并按新路径重建。
+ *
+ * WP22 修复:`settings.databaseFolder.description` 必须保持**纯文本**——UI DSL `comment()`
+ * 在 2026.2 不再按 JLabel HTML 渲染,含 `<html>` 标签会触发 UiDslException SEVERE 日志。
  */
 class CodeQuestSettingsConfigurable(
     private val project: Project,
