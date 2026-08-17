@@ -49,6 +49,24 @@ interface OJTransport {
         headers: Map<String, String> = emptyMap(),
     ): String
 
+    /**
+     * POST 表单(`application/x-www-form-urlencoded`,WP25):键值的 URL 编码与
+     * 表单 Content-Type 由实现负责,返回响应体文本;非 2xx 抛领域异常。
+     *
+     * 自 WP24 的 platform.codeforces.FormPostCapable 探测接口提升而来——CF 与
+     * AtCoder 的提交端点只收表单编码(`postJson` 固定 JSON Content-Type,服务端
+     * 不解析),CF 已随本提升迁移,FormPostCapable 退场删除。
+     *
+     * [form] 按键值整体提交;调用方需要字段顺序时传 `linkedMapOf`/`mapOf`
+     * (均为插入有序)。键重复时行为由实现决定(生产实现取后值)。
+     */
+    suspend fun postForm(
+        platformId: PlatformId,
+        url: String,
+        form: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
+    ): String
+
     /** 预置 cookie(登录注入):写入该平台 CookieJar,之后的请求自动携带。 */
     suspend fun updateCookies(
         platformId: PlatformId,

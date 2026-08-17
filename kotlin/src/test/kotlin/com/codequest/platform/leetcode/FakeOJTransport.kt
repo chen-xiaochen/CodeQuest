@@ -67,6 +67,29 @@ class FakeOJTransport : OJTransport {
             headers,
         )
 
+    /** postForm 的记录形态(WP25:表单字段为 Map,插入序即提交序)。 */
+    data class FormRecorded(
+        val url: String,
+        val form: Map<String, String>,
+        val headers: Map<String, String>,
+    )
+
+    val forms = mutableListOf<FormRecorded>()
+
+    /** 表单 POST 响应脚本(与 [handler] 独立分发);默认返回占位体。 */
+    var formHandler: suspend (FormRecorded) -> String = { "{}" }
+
+    override suspend fun postForm(
+        platformId: PlatformId,
+        url: String,
+        form: Map<String, String>,
+        headers: Map<String, String>,
+    ): String {
+        val request = FormRecorded(url, form, headers)
+        forms += request
+        return formHandler(request)
+    }
+
     override suspend fun updateCookies(
         platformId: PlatformId,
         url: String,

@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
  * (MockEngine → OJHttpClient → HttpOJTransport),断言公开 REST 端点的
  * 请求 URL 与响应解析(problemset.problems 双调用/acmsguru 99999 修正、
  * contest.list、contest.standings、题面页 URL、FAILED 错误信封)。
- * 全程不上网络。表单 POST 端点(提交/轮询)的传输缺口见 FormPostCapable,
+ * 全程不上网络。表单 POST 端点(提交/轮询)已随 WP25 提升进 OJTransport.postForm,
  * 由 CodeForcesSubmissionServiceTest 以假传输覆盖。
  */
 class CodeForcesApiTest {

@@ -264,4 +264,51 @@ class OJHttpClientTest {
         val sentEnvelope = Json.parseToJsonElement(recorded.single().body).jsonObject
         assertEquals("query { currentUser { username } }", sentEnvelope["query"]!!.jsonPrimitive.content)
     }
+
+    // -------------------------------------------------------------------
+    // postForm(WP25 提升:CF / AtCoder 提交端点共用)
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `postForm sends urlencoded content type with encoded body`() = runBlocking {
+        val body =
+            client.postForm(
+                leetcode,
+                leetcodeUrl,
+                form =
+                    linkedMapOf(
+                        "csrf_token" to "a=b&c",
+                        "sourceCode" to "fun main() {}",
+                    ),
+            )
+
+        assertEquals("""{"ok":true}""", body)
+        val request = recorded.single()
+        assertTrue(
+            request.bodyContentType?.startsWith("application/x-www-form-urlencoded") == true,
+            "Content-Type 应为 application/x-www-form-urlencoded,实际 ${request.bodyContentType}",
+        )
+        // 值中的保留字符被转义(& = 空格),空格走表单编码的 +
+        assertEquals("csrf_token=a%3Db%26c&sourceCode=fun+main%28%29+%7B%7D", request.body)
+    }
+
+    @Test
+    fun `postForm applies extra headers and maps non-2xx to domain exception`() = runBlocking {
+        client.postForm(
+            leetcode,
+            leetcodeUrl,
+            form = mapOf("k" to "v"),
+            headers = mapOf("x-csrf-token" to "tok", "Referer" to "https://leetcode.com/my"),
+        )
+
+        val headers = recorded.single().headers
+        assertEquals("tok", headers["x-csrf-token"])
+        assertEquals("https://leetcode.com/my", headers["Referer"])
+        assertEquals(OJHttpClient.DEFAULT_USER_AGENT, headers["User-Agent"])
+
+        handler = { _, _ -> respond("unauthorized", HttpStatusCode.Unauthorized) }
+        assertFailsWith<AuthExpiredException> {
+            runBlocking { client.postForm(leetcode, leetcodeUrl, form = mapOf("k" to "v")) }
+        }
+    }
 }

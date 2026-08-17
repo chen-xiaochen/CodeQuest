@@ -27,8 +27,8 @@ import kotlin.random.Random
  *   (缺失 = 评测未开始,旧实现保持 Processing 的事实)。
  *
  * CF REST 信封:`{"status":"OK","result":...}` / `{"status":"FAILED","comment":...}`
- * (HTTP 200)——本层统一校验,FAILED 抛 [OJException]。提交/轮询的表单 POST 经
- * [FormPostCapable](传输实现未接入时诚实抛错,见其 KDoc)。
+ * (HTTP 200)——本层统一校验,FAILED 抛 [OJException]。提交/轮询的表单 POST 走
+ * `OJTransport.postForm`(WP25 自本包 FormPostCapable 探测接口提升而来,该接口已删除)。
  */
 class CodeForcesApi(
     private val transport: OJTransport,
@@ -298,21 +298,12 @@ class CodeForcesApi(
             relativeTimeSeconds = contest.longOrNull("relativeTimeSeconds") ?: 0L,
         )
 
-    /** 表单 POST 经 [FormPostCapable];传输未接入时抛带接入指引的领域异常。 */
+    /** 表单 POST(字段唯一,`toMap` 转 [Map] 后保持插入序;WP25 起走 SPI postForm)。 */
     private suspend fun postForm(
         url: String,
         fields: List<Pair<String, String>>,
         headers: Map<String, String> = emptyMap(),
-    ): String {
-        val capable =
-            transport as? FormPostCapable
-                ?: throw OJException(
-                    "CodeForces 该端点需要 application/x-www-form-urlencoded POST,当前传输实现" +
-                        "${transport::class.qualifiedName} 未实现 platform.codeforces.FormPostCapable。" +
-                        "接入方式:传输层实现该接口(URL 编码 + 表单 Content-Type),或经 SPI 增量提升为通用方法。",
-                )
-        return capable.postForm(CODEFORCES_PLATFORM_ID, url, fields, headers)
-    }
+    ): String = transport.postForm(CODEFORCES_PLATFORM_ID, url, fields.toMap(), headers)
 
     /** 9 位 hex 缓存穿透参数(旧实现 `Random.nextLong().toHexString.substring(0,9)`)。 */
     private fun randomRv(): String =

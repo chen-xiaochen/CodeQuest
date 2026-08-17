@@ -18,6 +18,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Cookie
 import io.ktor.http.HttpHeaders
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.URLBuilder
 import io.ktor.http.contentType
 import io.ktor.util.date.GMTDate
@@ -132,6 +133,30 @@ class OJHttpClient(
                 operationName?.let { put("operationName", JsonPrimitive(it)) }
             }.toString()
         return postJson(platform, url, envelope, headers)
+    }
+
+    /**
+     * POST 表单(WP25):body 为 `name=value&...` 的
+     * `application/x-www-form-urlencoded`(键值经 [encodeURLParameter] 转义,
+     * 空格转 `+`),错误映射照旧走 [requestText]。CF/AtCoder 提交端点共用。
+     */
+    suspend fun postForm(
+        platform: PlatformId,
+        url: String,
+        form: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
+    ): String {
+        val encodedBody =
+            form.entries.joinToString(separator = "&") { (name, value) ->
+                name.encodeURLParameter(spaceToPlus = true) + "=" + value.encodeURLParameter(spaceToPlus = true)
+            }
+        return requestText(platform) {
+            post(urlString = url) {
+                applyBaseHeaders(headers)
+                contentType(ContentType.Application.FormUrlEncoded)
+                setBody(encodedBody)
+            }
+        }
     }
 
     /**

@@ -36,6 +36,13 @@ class HttpOJTransport(
         headers: Map<String, String>,
     ): String = client.postGraphQL(platformId, url, query, variables, operationName, headers)
 
+    override suspend fun postForm(
+        platformId: PlatformId,
+        url: String,
+        form: Map<String, String>,
+        headers: Map<String, String>,
+    ): String = client.postForm(platformId, url, form, headers)
+
     override suspend fun updateCookies(
         platformId: PlatformId,
         url: String,

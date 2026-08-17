@@ -7,7 +7,6 @@ import com.codequest.core.model.SubmissionTimeoutException
 import com.codequest.platform.leetcode.FakeOJTransport
 import com.codequest.spi.AntiBotChallengeHandler
 import com.codequest.spi.BaseSubmissionFlow
-import com.codequest.spi.OJTransport
 import com.codequest.spi.SubmitRequest
 import com.codequest.spi.TurnstileConfig
 import kotlinx.coroutines.flow.toList
@@ -21,38 +20,10 @@ import kotlin.test.assertTrue
 /**
  * [unit] WP24:CodeForcesSubmissionService——Turnstile 四元组获取、提交表单
  * 字段(旧 UrlForm 逐字事实)、HTML 错误/成功解析、经 BaseSubmissionFlow 的
- * 轮询状态转换(verdict 映射)、超时与上下文丢失。经假传输(FormPost 夹具),
- * 不上网络。
+ * 轮询状态转换(verdict 映射)、超时与上下文丢失。经假传输(postForm 夹具,
+ * WP25 起为 OJTransport 正式方法),不上网络。
  */
 class CodeForcesSubmissionServiceTest {
-    /** 表单版假 transport:组合 WP19 通用夹具(其 class 为 final)+ CF 的 FormPostCapable。 */
-    private class FakeFormTransport(
-        val base: FakeOJTransport = FakeOJTransport(),
-    ) : OJTransport by base,
-        FormPostCapable {
-        data class FormRecorded(
-            val url: String,
-            val fields: List<Pair<String, String>>,
-            val headers: Map<String, String>,
-        )
-
-        val forms = mutableListOf<FormRecorded>()
-
-        /** 按完整 url(去 query)分发响应体;未脚本化走默认。 */
-        var formHandler: suspend (FormRecorded) -> String = { error("unexpected form POST ${it.url}") }
-
-        override suspend fun postForm(
-            platformId: com.codequest.core.model.PlatformId,
-            url: String,
-            fields: List<Pair<String, String>>,
-            headers: Map<String, String>,
-        ): String {
-            val record = FormRecorded(url, fields, headers)
-            forms += record
-            return formHandler(record)
-        }
-    }
-
     /** 可脚本化的反爬处理器:默认返回合法四元组。 */
     private class FakeAntiBot(
         var result: String? = "csrf-1,ts-1,ftaa-1,bfaa-1",
@@ -71,8 +42,8 @@ class CodeForcesSubmissionServiceTest {
         <div class="datatable"><table><tr data-submission-id="291234567"><td>291234567</td></tr></table></div>
         """.trimIndent()
 
-    private fun transport(verdictScript: List<String>): FakeFormTransport {
-        val transport = FakeFormTransport()
+    private fun transport(verdictScript: List<String>): FakeOJTransport {
+        val transport = FakeOJTransport()
         var verdictIndex = 0
         transport.formHandler = { record ->
             val url = record.url.substringBefore('?')
@@ -93,7 +64,7 @@ class CodeForcesSubmissionServiceTest {
         BaseSubmissionFlow.PollConfig(initialIntervalMs = 100, maxIntervalMs = 100, maxAttempts = maxAttempts)
 
     private fun service(
-        transport: FakeFormTransport,
+        transport: FakeOJTransport,
         antiBot: FakeAntiBot = FakeAntiBot(),
         delays: MutableList<Long> = mutableListOf(),
         maxAttempts: Int = 10,
@@ -118,7 +89,7 @@ class CodeForcesSubmissionServiceTest {
         val solved = antiBot.solved.single()
         assertEquals(CODEFORCES_SUBMIT_TURNSTILE, solved)
         // 提交表单字段:旧 UrlForm 逐字事实
-        val form = transport.forms.first { it.url.endsWith("/problemset/submit") }.fields.toMap()
+        val form = transport.forms.first { it.url.endsWith("/problemset/submit") }.form
         assertEquals("csrf-1", form["csrf_token"])
         assertEquals("ts-1", form["turnstileToken"])
         assertEquals("ts-1", form["cf-turnstile-response"])
@@ -207,8 +178,8 @@ class CodeForcesSubmissionServiceTest {
         assertEquals(listOf(100L), delays)
         // 轮询请求:submissionId + csrf_token 字段 + x-csrf-token/Referer 头(旧实现事实)
         val poll = transport.forms.first { it.url.contains("/data/submitSource") }
-        assertEquals("291234567", poll.fields.toMap()["submissionId"])
-        assertEquals("csrf-1", poll.fields.toMap()["csrf_token"])
+        assertEquals("291234567", poll.form["submissionId"])
+        assertEquals("csrf-1", poll.form["csrf_token"])
         assertEquals("csrf-1", poll.headers["x-csrf-token"])
         assertEquals("https://codeforces.com/contest/1927/my", poll.headers["Referer"])
         assertTrue(poll.url.contains("rv="))
