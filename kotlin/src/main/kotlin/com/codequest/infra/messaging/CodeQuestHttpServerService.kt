@@ -36,6 +36,11 @@ class CodeQuestHttpServerService(
                     submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
                     challenges = { project.getService(DatabaseManager::class.java).challengeRepository },
                 ),
+            // WP23:竞赛端点——ContestCapable 平台拉取 + 提醒落库(仓库按请求解析,切库即时生效)
+            contestApi =
+                ContestApi(
+                    reminders = { project.getService(DatabaseManager::class.java).contestReminderRepository },
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

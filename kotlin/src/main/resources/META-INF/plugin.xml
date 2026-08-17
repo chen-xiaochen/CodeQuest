@@ -31,6 +31,14 @@
         <extensionPoint qualifiedName="com.codequest.ojCredentialStoreProvider"
                         interface="com.codequest.spi.OJCredentialStoreProvider"
                         dynamic="true"/>
+        <!-- WP23:交互登录装配(SubmissionPlatforms 经此解析,消灭按平台 id 的 when);
+             anti-bot 人机验证处理器(JCEF Turnstile 弹窗,平台零 UI 依赖) -->
+        <extensionPoint qualifiedName="com.codequest.ojAuthPromptProvider"
+                        interface="com.codequest.spi.OJAuthPromptProvider"
+                        dynamic="true"/>
+        <extensionPoint qualifiedName="com.codequest.antiBotHandlerProvider"
+                        interface="com.codequest.spi.AntiBotChallengeHandlerProvider"
+                        dynamic="true"/>
     </extensionPoints>
 
     <extensions defaultExtensionNs="com.codequest">
@@ -40,6 +48,9 @@
         <!-- WP19:SPI 传输/凭据接口的生产实现(均在 infra,经 EP 注入) -->
         <ojTransportProvider implementation="com.codequest.infra.http.HttpOJTransportProvider"/>
         <ojCredentialStoreProvider implementation="com.codequest.infra.secrets.SecretsStoreCredentialStoreProvider"/>
+        <!-- WP23:交互登录装配实现(LeetCode cookie 对话框)+ 反爬 JCEF 弹窗处理器 -->
+        <ojAuthPromptProvider implementation="com.codequest.ui.submission.LeetCodeAuthPromptProvider"/>
+        <antiBotHandlerProvider implementation="com.codequest.ui.antibot.JcefAntiBotChallengeHandlerProvider"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
@@ -82,6 +93,12 @@
 
         <!-- WP21:提交结果通知组(AC 绿/失败红气球) -->
         <notificationGroup id="codequest.submissions" displayType="BALLOON"/>
+        <!-- WP23:竞赛提醒通知组 -->
+        <notificationGroup id="codequest.contests" displayType="BALLOON"/>
+
+        <!-- WP23:竞赛提醒后台调度(周期 findDue → 通知 → markNotified) -->
+        <projectService serviceImplementation="com.codequest.ui.contest.ContestReminderScheduler"/>
+        <postStartupActivity implementation="com.codequest.ui.contest.ContestReminderSchedulerStartupActivity"/>
     </extensions>
 
     <actions>

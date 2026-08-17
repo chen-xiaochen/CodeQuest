@@ -23,6 +23,8 @@ import java.util.logging.Logger
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
  *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`;
  *   提交记录端点(WP21,经 [submissionsApi] 注入后启用):`GET /api/submissions`;
+ *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
+ *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
  *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
@@ -31,6 +33,7 @@ class ResourceHttpServer(
     private val resourceRoot: String = DEFAULT_RESOURCE_ROOT,
     private val problemApi: ProblemApi? = null,
     private val submissionsApi: SubmissionsApi? = null,
+    private val contestApi: ContestApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -141,9 +144,76 @@ class ResourceHttpServer(
             }
 
             else -> {
-                respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
+                // WP23:竞赛路由单独提取(handleApi 圈复杂度门禁);未命中再回 404
+                if (!handleContestRoutes(exchange, path, query)) {
+                    respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
+                }
             }
         }
+    }
+
+    /** 竞赛端点路由(WP23):列表(无参=平台标签)、详情、提醒订阅(POST/DELETE/回显)。 */
+    private fun handleContestRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        val method = exchange.requestMethod.uppercase()
+        when {
+            path == "/api/contests" && exchange.isGet() && query["platform"].isNullOrBlank() -> {
+                runContestApi(exchange) { api -> api.listContestPlatforms() }
+            }
+
+            path == "/api/contests" && exchange.isGet() -> {
+                runContestApi(exchange) { api -> api.listContests(query) }
+            }
+
+            path == "/api/contests/reminders" && exchange.isGet() -> {
+                runContestApi(exchange) { api -> api.listReminders(query) }
+            }
+
+            path == "/api/contests/reminders" && method == "POST" -> {
+                val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                runContestApi(exchange) { api -> api.subscribeReminder(body) }
+            }
+
+            path == "/api/contests/reminders" && method == "DELETE" -> {
+                runContestApi(exchange) { api -> api.unsubscribeReminder(query) }
+            }
+
+            path.startsWith(CONTEST_DETAIL_PREFIX) && exchange.isGet() -> {
+                val remoteId =
+                    path
+                        .removePrefix(CONTEST_DETAIL_PREFIX)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::urlDecode)
+                if (remoteId.isNullOrEmpty()) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, BAD_REQUEST_RESPONSE)
+                } else {
+                    runContestApi(exchange) { api -> api.contestDetail(remoteId, query) }
+                }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 执行 [ContestApi] 调用并回写应答(形态同 [runProblemApi])。 */
+    private fun runContestApi(
+        exchange: HttpExchange,
+        block: suspend (ContestApi) -> ProblemApiResponse,
+    ) {
+        val api = contestApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
     }
 
     /** 执行 [ProblemApi] 调用(suspend,阻塞 HTTP 工作线程可接受)并回写应答。 */
@@ -274,6 +344,7 @@ class ResourceHttpServer(
         private const val BACKLOG = 0
         private const val API_PREFIX = "/api/"
         private const val PROBLEM_DETAIL_PREFIX = "/api/problem/"
+        private const val CONTEST_DETAIL_PREFIX = "/api/contest/"
         private const val SHUTDOWN_DELAY_SECONDS = 0
         private const val STATUS_OK = 200
         private const val STATUS_BAD_REQUEST = 400

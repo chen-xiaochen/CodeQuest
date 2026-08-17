@@ -98,19 +98,22 @@ interface OJCredentialStoreProvider {
 }
 
 /**
- * SPI 运行时环境(WP19):平台适配器获取 transport / 凭据存储的统一入口。
+ * SPI 运行时环境(WP19):平台适配器获取 transport / 凭据存储 / 反爬处理器的统一入口。
  *
  * 实现经 IntelliJ Extension Point 注入(生产:infra 的 HttpOJTransport 与
  * SecretsStoreCredentialStore,plugin.xml 声明),平台 provider 在 `create()` 时
  * 经本对象取依赖注入平台实例——platform 包全程不 import infra。
  *
- * 测试可覆盖 [transportSource]/[credentialStoreSource] 脱离 IntelliJ 平台运行,
- * 用法与 [OJPlatformRegistry.providerSource] 一致(测后调 [resetToDefaults] 恢复)。
+ * 测试可覆盖 [transportSource]/[credentialStoreSource]/[antiBotSource] 脱离
+ * IntelliJ 平台运行,用法与 [OJPlatformRegistry.providerSource] 一致
+ * (测后调 [resetToDefaults] 恢复)。
  */
 object OJRuntime {
     private val TRANSPORT_EP = ExtensionPointName<OJTransportProvider>("com.codequest.ojTransportProvider")
     private val CREDENTIAL_STORE_EP =
         ExtensionPointName<OJCredentialStoreProvider>("com.codequest.ojCredentialStoreProvider")
+    private val ANTI_BOT_EP =
+        ExtensionPointName<AntiBotChallengeHandlerProvider>("com.codequest.antiBotHandlerProvider")
 
     private const val TRANSPORT_EP_HINT =
         "未注册 com.codequest.ojTransportProvider 扩展点" +
@@ -128,11 +131,20 @@ object OJRuntime {
         CREDENTIAL_STORE_EP.extensionList.firstOrNull()?.create() ?: error(CREDENTIAL_STORE_EP_HINT)
     }
 
+    // WP23:反爬处理器是可选能力(仅需要人机验证的平台使用),无注册时给
+    // 「抛 AntiBotChallengeException」的缺省处理器,而非 error() 硬失败
+    private val defaultAntiBotSource: () -> AntiBotChallengeHandler = {
+        ANTI_BOT_EP.extensionList.firstOrNull()?.create() ?: unavailableAntiBotHandler()
+    }
+
     @Volatile
     internal var transportSource: () -> OJTransport = defaultTransportSource
 
     @Volatile
     internal var credentialStoreSource: () -> OJCredentialStore = defaultCredentialStoreSource
+
+    @Volatile
+    internal var antiBotSource: () -> AntiBotChallengeHandler = defaultAntiBotSource
 
     /** 传输层实现(进程内共享,由实现自决定单例语义)。 */
     fun transport(): OJTransport = transportSource()
@@ -140,9 +152,16 @@ object OJRuntime {
     /** 凭据存储实现。 */
     fun credentialStore(): OJCredentialStore = credentialStoreSource()
 
+    /**
+     * 反爬挑战处理器(WP23):平台命中 Turnstile 等人机验证时,经它弹出 UI 引导
+     * 用户完成验证并取回结果串;详见 [AntiBotChallengeHandler]。
+     */
+    fun antiBotHandler(): AntiBotChallengeHandler = antiBotSource()
+
     /** 测试恢复默认来源(EP 解析)。 */
     internal fun resetToDefaults() {
         transportSource = defaultTransportSource
         credentialStoreSource = defaultCredentialStoreSource
+        antiBotSource = defaultAntiBotSource
     }
 }

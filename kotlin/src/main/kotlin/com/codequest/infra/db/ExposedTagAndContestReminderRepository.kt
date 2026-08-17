@@ -2,6 +2,7 @@ package com.codequest.infra.db
 
 import com.codequest.core.model.ContestId
 import com.codequest.core.model.ContestReminder
+import com.codequest.core.model.PlatformId
 import com.codequest.core.model.ProblemId
 import com.codequest.core.model.Tag
 import com.codequest.core.model.TagId
@@ -13,6 +14,7 @@ import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.lessEq
+import org.jetbrains.exposed.v1.core.like
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -100,6 +102,16 @@ class ExposedContestReminderRepository(
                 .where { ContestReminders.contestId eq contestId.value }
                 .firstOrNull()
                 ?.toReminder()
+        }
+
+    override suspend fun findByPlatform(platformId: PlatformId): List<ContestReminder> =
+        db.read {
+            // contestId 约定 `<platform>:<remoteId>`;平台 id 不含 SQL like 通配符,前缀匹配安全
+            ContestReminders
+                .selectAll()
+                .where { ContestReminders.contestId like "${platformId.value}:%" }
+                .orderBy(ContestReminders.remindAt to SortOrder.ASC)
+                .map { it.toReminder() }
         }
 
     override suspend fun findDue(now: Instant): List<ContestReminder> =

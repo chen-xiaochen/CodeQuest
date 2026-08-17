@@ -56,6 +56,27 @@ export class ApiError extends Error {
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: 'application/json' } })
+  return unwrap<T>(response)
+}
+
+/** WP23:POST/DELETE 请求(getJson 同款错误解包)。 */
+async function sendJson<T>(
+  path: string,
+  method: 'POST' | 'DELETE',
+  body?: string,
+): Promise<T> {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body,
+  })
+  return unwrap<T>(response)
+}
+
+async function unwrap<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let code = 'http-error'
     let message = `HTTP ${response.status}`
@@ -167,4 +188,86 @@ export function fetchSubmissions(query: SubmissionListQuery): Promise<Submission
     params.set('offset', String(query.offset))
   }
   return getJson<SubmissionListResult>(`/api/submissions?${params.toString()}`)
+}
+
+// ---------------------------------------------------------------------------
+// WP23:竞赛(contest 页数据源;ContestCapable 平台经 /api/contests)
+// ---------------------------------------------------------------------------
+
+/** 竞赛阶段(Kotlin ContestPhase 枚举名)。 */
+export type ContestPhase =
+  | 'BEFORE'
+  | 'CODING'
+  | 'PENDING_SYSTEM_TEST'
+  | 'SYSTEM_TEST'
+  | 'FINISHED'
+
+export interface ContestSummary {
+  remoteId: string
+  title: string
+  /** ISO-8601 即时字符串。 */
+  startTime: string
+  durationMinutes: number
+  phase: ContestPhase
+  url: string
+}
+
+export interface ContestProblemRef {
+  remoteId: string
+  index?: string | null
+  title: string
+}
+
+export interface ContestDetailResult extends ContestSummary {
+  platform: string
+  problems: ContestProblemRef[]
+  joinable: boolean
+}
+
+export interface ContestReminderItem {
+  platform: string
+  remoteId: string
+  /** ISO-8601 即时字符串。 */
+  remindAt: string
+  notified: boolean
+}
+
+export interface ContestSubscribeRequest {
+  platform: string
+  remoteId: string
+  /** ISO-8601 即时字符串(来自列表项 startTime)。 */
+  startTime: string
+  /** 提前量(分钟);缺省后端 24h。 */
+  leadTimeMinutes?: number
+}
+
+/** 支持(实现 ContestCapable)竞赛查询的平台。 */
+export function fetchContestPlatforms(): Promise<PlatformSummary[]> {
+  return getJson<{ platforms: PlatformSummary[] }>('/api/contests').then((body) => body.platforms)
+}
+
+export function fetchContests(platform: string): Promise<ContestSummary[]> {
+  const params = new URLSearchParams({ platform })
+  return getJson<{ platform: string; items: ContestSummary[] }>(`/api/contests?${params}`).then(
+    (body) => body.items,
+  )
+}
+
+export function fetchContestReminders(platform: string): Promise<ContestReminderItem[]> {
+  const params = new URLSearchParams({ platform })
+  return getJson<{ platform: string; items: ContestReminderItem[] }>(
+    `/api/contests/reminders?${params}`,
+  ).then((body) => body.items)
+}
+
+export function subscribeContestReminder(request: ContestSubscribeRequest): Promise<ContestReminderItem> {
+  return sendJson<ContestReminderItem>('/api/contests/reminders', 'POST', JSON.stringify(request))
+}
+
+export function unsubscribeContestReminder(
+  platform: string,
+  remoteId: string,
+): Promise<{ deleted: boolean }> {
+  const params = new URLSearchParams({ platform, remoteId })
+  return sendJson(`/api/contests/reminders?${params}`, 'DELETE')
 }
