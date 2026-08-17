@@ -45,11 +45,15 @@
         <!-- WP19:LeetCode / 力扣CN 平台适配器 -->
         <ojPlatformProvider implementation="com.codequest.platform.leetcode.LeetCodeProvider"/>
         <ojPlatformProvider implementation="com.codequest.platform.leetcode.LeetCodeCnProvider"/>
+        <!-- WP24:CodeForces 平台适配器(含竞赛能力) -->
+        <ojPlatformProvider implementation="com.codequest.platform.codeforces.CodeForcesProvider"/>
         <!-- WP19:SPI 传输/凭据接口的生产实现(均在 infra,经 EP 注入) -->
         <ojTransportProvider implementation="com.codequest.infra.http.HttpOJTransportProvider"/>
         <ojCredentialStoreProvider implementation="com.codequest.infra.secrets.SecretsStoreCredentialStoreProvider"/>
         <!-- WP23:交互登录装配实现(LeetCode cookie 对话框)+ 反爬 JCEF 弹窗处理器 -->
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.LeetCodeAuthPromptProvider"/>
+        <!-- WP24:CodeForces cookie 粘贴登录装配 -->
+        <ojAuthPromptProvider implementation="com.codequest.ui.submission.CodeForcesAuthPromptProvider"/>
         <antiBotHandlerProvider implementation="com.codequest.ui.antibot.JcefAntiBotChallengeHandlerProvider"/>
     </extensions>
 
