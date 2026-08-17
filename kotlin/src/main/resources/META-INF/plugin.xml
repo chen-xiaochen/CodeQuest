@@ -47,6 +47,8 @@
         <ojPlatformProvider implementation="com.codequest.platform.leetcode.LeetCodeCnProvider"/>
         <!-- WP24:CodeForces 平台适配器(含竞赛能力) -->
         <ojPlatformProvider implementation="com.codequest.platform.codeforces.CodeForcesProvider"/>
+        <!-- WP25:AtCoder 平台适配器(Turnstile 提交) -->
+        <ojPlatformProvider implementation="com.codequest.platform.atcoder.AtCoderProvider"/>
         <!-- WP19:SPI 传输/凭据接口的生产实现(均在 infra,经 EP 注入) -->
         <ojTransportProvider implementation="com.codequest.infra.http.HttpOJTransportProvider"/>
         <ojCredentialStoreProvider implementation="com.codequest.infra.secrets.SecretsStoreCredentialStoreProvider"/>
@@ -54,6 +56,8 @@
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.LeetCodeAuthPromptProvider"/>
         <!-- WP24:CodeForces cookie 粘贴登录装配 -->
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.CodeForcesAuthPromptProvider"/>
+        <!-- WP25:AtCoder cookie 粘贴登录装配 -->
+        <ojAuthPromptProvider implementation="com.codequest.ui.submission.AtCoderAuthPromptProvider"/>
         <antiBotHandlerProvider implementation="com.codequest.ui.antibot.JcefAntiBotChallengeHandlerProvider"/>
     </extensions>
 
