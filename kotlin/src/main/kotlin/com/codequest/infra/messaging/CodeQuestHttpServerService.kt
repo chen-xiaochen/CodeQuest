@@ -43,6 +43,11 @@ class CodeQuestHttpServerService(
                 ),
             // WP26:题解引用端点——SolutionViewCapable 平台拉取(纯透传,不落库)
             solutionsApi = SolutionsApi(),
+            // WP29:统计端点——submission 表经 StatisticsService 聚合(仓库按请求解析,切库即时生效)
+            statsApi =
+                StatisticsApi(
+                    submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

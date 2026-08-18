@@ -26,7 +26,9 @@ import java.util.logging.Logger
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
  *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
  *   题解引用端点(WP26,经 [solutionsApi] 注入后启用):
- *   `GET /api/problem/{remoteId}/solutions?platform=`;其余骨架 404
+ *   `GET /api/problem/{remoteId}/solutions?platform=`;
+ *   统计端点(WP29,经 [statsApi] 注入后启用):`GET /api/stats?platform=&days=`;
+ *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
  */
@@ -36,6 +38,7 @@ class ResourceHttpServer(
     private val submissionsApi: SubmissionsApi? = null,
     private val contestApi: ContestApi? = null,
     private val solutionsApi: SolutionsApi? = null,
+    private val statsApi: StatisticsApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -150,6 +153,22 @@ class ResourceHttpServer(
                 }
             }
 
+            else -> {
+                // WP23/WP29:竞赛与本地库数据路由单独提取(handleApi 圈复杂度门禁);未命中再回 404
+                if (!handleContestRoutes(exchange, path, query) && !handleLocalDataRoutes(exchange, path, query)) {
+                    respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
+                }
+            }
+        }
+    }
+
+    /** 本地库数据端点路由(WP21 submissions / WP29 stats;形态同 [handleContestRoutes])。 */
+    private fun handleLocalDataRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        when {
             path == "/api/submissions" && exchange.isGet() -> {
                 val api = submissionsApi
                 val response =
@@ -161,13 +180,23 @@ class ResourceHttpServer(
                 respondJson(exchange, response.status, response.json, response.headers)
             }
 
+            // WP29:刷题统计(summary + 热力图 + 趋势)
+            path == "/api/stats" && exchange.isGet() -> {
+                val api = statsApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        runBlocking { api.statistics(query) }
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
+            }
+
             else -> {
-                // WP23:竞赛路由单独提取(handleApi 圈复杂度门禁);未命中再回 404
-                if (!handleContestRoutes(exchange, path, query)) {
-                    respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
-                }
+                return false
             }
         }
+        return true
     }
 
     /** 竞赛端点路由(WP23):列表(无参=平台标签)、详情、提醒订阅(POST/DELETE/回显)。 */
