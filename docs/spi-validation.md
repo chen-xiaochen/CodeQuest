@@ -163,3 +163,55 @@ M4 以同一 SPI 连续接入 CodeForces / AtCoder / 洛谷 / HackerRank 四平�
 - 限定一(一次性 SPI 增量):WP25 postForm 进 OJTransport(+18 行),此后不再重复;
 - 限定二(声明成本):每站 plugin.xml 两行(provider + authPrompt),见 §6.3;
 - 限定三(统一功能随平台首发):题解端点/外链出口随首个消费平台(WP26 洛谷)落地在 infra/ui——属 SPI 之上的功能扩展,后续同类平台零改动复用(与 WP20/21 端点先例同性质)。
+
+---
+
+# 7. M5 增强层偏差记录(WP32 集成验收,2026-08-19)
+
+M5(统计可视化 / 跨题检索 / 题解正文)是 SPI 之上的**功能增强里程碑**:不新增平台、不扩平台矩阵,主战场在 core 聚合 + infra 端点 + 前端页。以下按 WP29/30/31/32 四提交(`c8d419b` / `89bae42` / `851c041` / WP32)如实汇总与 spec(`2026-08-14-codequest-kotlin-rewrite-design.md`)的偏差与设计取舍。
+
+## 7.1 SPI 增量:fetchSolutionContent 签名(WP31)
+
+spec §2 只定义了 `fetchSolutions(id: ProblemId): List<SolutionArticle>`;实际 SPI 为两级:
+
+| 项 | 实际实现 | 取舍原因 |
+|---|---|---|
+| 列表签名 | `fetchSolutions(remoteId): List<SolutionArticleRef>` | M3 §4.3 已记录(remoteId 与本地主档 id 的口径差异),不重复展开 |
+| **正文签名** | `fetchSolutionContent(remoteId, solutionId): SolutionArticleContent`,**两个定位参数而非 SolutionArticleRef** | REST 端点路由 `/api/problem/{remoteId}/solutions/{sid}` 只持有二元组;SolutionArticleRef 的 title/url 在列表响应里,端点若拼 ref 需二次拉列表;洛谷正文寻址需要 pid(= remoteId)而 ref 不携带。签名与路由 1:1 映射(SolutionViewCapable.kt KDoc) |
+| **默认实现而非抽象方法** | 默认抛 `OJException`(502 + 「该平台未实现题解正文拉取」文案) | 正文是列表之后的增强能力;强制抽象会迫使所有 SolutionViewCapable 平台同步实现,违反能力接口「按需组合」精神。未接入平台保持可编译,调用方经标准错误映射得到明确文案 |
+| 正文 DTO | `SolutionArticleContent(id, title, content, contentFormat)` | contentFormat 复用 core 既有 `ContentFormat`(HTML/MARKDOWN),交前端统一管线,不新造枚举 |
+
+## 7.2 数据层与端点口径(设计意图,非缺陷)
+
+| 项 | spec 表述 | 实际口径 | 说明 |
+|---|---|---|---|
+| 全文检索 | `problem_content` + `solution.note_md` 建 FTS5,LIKE 降级 | 一致,另有第三源**标题/remoteId LIKE** 与命中来源标记 matchedSources(title/content/note) | 标题源是 spec 未明写的自然补全;来源标记支撑前端 chips |
+| 检索语义 | 「跨题检索(FTS+标签)」 | keyword 与 tags **均为空 = 浏览模式**(返回近期题目,搜索页兼作本地题库浏览);有关键字但零命中 = 空结果,**不退化浏览全表** | 浏览模式为语义增强;零命中短路是防歧义的正确性约束(ExposedSearchStore.search 首行) |
+| 中文 FTS | 未细化 | 关键字 < 3 字符走 LIKE 降级(FTS5 trigram 最小长度) | 功能等价,索引效率差异如实 |
+| stats 汇总口径 | 「刷题统计(热力图/趋势)」 | summary 卡片为**全量历史口径**(只受平台过滤,不随 days 窗口漂移);heatmap=days(缺省 365,1..731),trend=min(days,30) | 卡片数字稳定可预期;窗口只影响图形(StatisticsService KDoc 明示) |
+| stats 前端 | Statistics 面板 | 后端 `/api/stats?platform=` 支持平台过滤;**前端 stats 页暂无平台选择器**(展示全量) | 后端能力就绪,选择器留后续;如实记录 |
+| 数据源端口 | 未涉及 | core 新增 `SubmissionQuery` fun interface(全量列表),**不改既有 SubmissionRepository** | 该接口只有按 challenge 查询;以最小端口补「列全量」能力,避免牵连既有实现与测试(StatisticsService.kt KDoc) |
+
+## 7.3 平台侧已知限制(如实)
+
+- **洛谷题解第二页楼层不可达**:洛谷无单篇题解端点,WP31 实现复用 solution 列表页 payload 按楼层 id 筛 content,列表第二页及以后的楼层取不到正文——已知限制,登录后翻页验证步骤见 m5-manual-checklist B3-6。
+- **题解正文不落库**:纯透传(体积数十 KB/篇、平台侧随时编辑、按需低频),重复查看重复请求上游为预期;离线回看需求出现再引入 problem_content 同款缓存表(YAGNI,SolutionsApi.kt KDoc)。WP32 沙箱以计数复核(A13)。
+- **leetcode.com 题解匿名 401**(站点要求登录);**力扣CN 匿名可用**(WP32 沙箱实测列表+公开正文 200);**LC 会员文章正文 502** 如实报错(平台侧付费墙,不绕过)。
+- AtCoder/CodeForces/HackerRank 不实现 SolutionViewCapable(与 spec 能力矩阵一致),题解端点对它们 404 unknown-platform。
+
+## 7.4 分层触碰(M5 三提交 git diff-tree 汇总)
+
+| 层 | WP29 统计 | WP30 检索 | WP31 题解正文 |
+|---|---|---|---|
+| core | +StatisticsService(+SubmissionQuery 端口) | 0 | 0 |
+| spi | 0 | 0 | +SolutionViewCapable 增量(默认方法)+SolutionArticleContent |
+| platform | 0 | 0 | leetcode(+208)/luogu(+71)正文实现(能力增强,不改既有签名) |
+| infra(db) | 0 | +SearchStore/ExposedSearchStore(+9 DatabaseManager) | 0 |
+| infra(messaging) | +StatisticsApi(路由挂载) | +SearchApi(路由挂载) | +SolutionsApi 正文路由(ResourceHttpServer +80) |
+| frontend | +stats 页(stats-api.ts+App.vue) | +search 页真实化 | +problem-view 应用内阅读器 |
+
+要点:M5 主体落在 **core 用例 + infra 端点 + 前端页**,平台包仅洛谷/力扣系为既有能力补正文实现,未新增平台、未触碰六平台注册与提交通道——「SPI 之上统一功能,平台包按能力接口按需实现」的分层在增强类迭代中同样成立。题解正文对未接入平台零破坏(默认实现,7.1)。
+
+## 7.5 对照 spec 成功标准的结论(M5 版)
+
+spec §5 测试要求「统计聚合、检索逻辑单测全覆盖」:达成(StatisticsServiceTest 11 例 + StatisticsApiHttpTest 6 例 + SearchApiHttpTest 真实 server/临时库 + 洛谷/LC 正文解析 Mock 单测;全量 517 Kotlin + 95 Vitest,WP32 复跑全绿)。spec §3 前端六路由页(含 /stats /search)全部真实化入包(WP32 产物核验)。
