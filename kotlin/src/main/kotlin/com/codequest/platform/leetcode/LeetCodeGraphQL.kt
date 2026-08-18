@@ -156,4 +156,33 @@ internal object LeetCodeGraphQL {
           }
         }
         """.trimIndent()
+
+    /**
+     * 官方题解正文(discussTopic_cn.graphql,CN 站点;WP31,仅取正文所需字段)。
+     * 旧资源文件还请求 next/prev(文章间跳转导航),SPI 无此契约,不取。
+     */
+    val SOLUTION_ARTICLE_CN: String =
+        """
+        query discussTopic(${'$'}slug: String) {
+          solutionArticle(slug: ${'$'}slug, orderBy: DEFAULT) {
+            uuid
+            title
+            content
+            slug
+          }
+        }
+        """.trimIndent()
+
+    /** 官方题解正文(ugcArticleSolutionArticle.graphql,COM 站点;WP31,仅取正文所需字段)。 */
+    val SOLUTION_ARTICLE_COM: String =
+        """
+        query ugcArticleSolutionArticle(${'$'}articleId: ID, ${'$'}topicId: ID, ${'$'}slug: String) {
+          ugcArticleSolutionArticle(articleId: ${'$'}articleId, topicId: ${'$'}topicId, slug: ${'$'}slug) {
+            uuid
+            title
+            content
+            slug
+          }
+        }
+        """.trimIndent()
 }

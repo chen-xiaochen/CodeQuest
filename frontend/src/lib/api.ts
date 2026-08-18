@@ -136,7 +136,7 @@ export function fetchProblemDetail(
   )
 }
 
-/** WP26:题解引用(正文渲染 M5;url 为站外浏览器兜底出口)。 */
+/** WP26:题解引用(WP31 起点击在应用内展开正文;url 为站外浏览器兜底出口)。 */
 export interface SolutionArticle {
   id: string
   title: string
@@ -149,6 +149,16 @@ export interface SolutionListResult {
   items: SolutionArticle[]
 }
 
+/** WP31:题解文章正文(contentFormat 决定 MD/HTML 渲染管线)。 */
+export interface SolutionArticleContent {
+  platform: string
+  remoteId: string
+  id: string
+  title: string
+  content: string
+  contentFormat: 'HTML' | 'MARKDOWN'
+}
+
 /** WP26:题解引用列表(SolutionViewCapable 平台,如洛谷;可能要求登录态)。 */
 export function fetchProblemSolutions(
   platform: string,
@@ -157,6 +167,18 @@ export function fetchProblemSolutions(
   const params = new URLSearchParams({ platform })
   return getJson<SolutionListResult>(
     `/api/problem/${encodeURIComponent(remoteId)}/solutions?${params.toString()}`,
+  )
+}
+
+/** WP31:单篇题解正文(SPI fetchSolutionContent 纯透传,不落库)。 */
+export function fetchSolutionArticleContent(
+  platform: string,
+  remoteId: string,
+  solutionId: string,
+): Promise<SolutionArticleContent> {
+  const params = new URLSearchParams({ platform })
+  return getJson<SolutionArticleContent>(
+    `/api/problem/${encodeURIComponent(remoteId)}/solutions/${encodeURIComponent(solutionId)}?${params.toString()}`,
   )
 }
 

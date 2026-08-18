@@ -245,6 +245,46 @@ class LeetCodeApiTest {
         )
     }
 
+    @Test
+    fun `solution article detail uses site-specific operation and parses markdown content`() = runBlocking {
+        // 旧 getSolutionArticle 事实:CN discussTopic → data.solutionArticle、
+        // COM ugcArticleSolutionArticle → data.ugcArticleSolutionArticle,变量均为 {slug}
+        graphqlResponses["discussTopic"] =
+            """{"data":{"solutionArticle":{"uuid":"u1","title":"[题解] two-sum","content":"## 思路\n\n哈希表 ${'$'}O(n)${'$'}","slug":"ts-sol"}}}"""
+        graphqlResponses["ugcArticleSolutionArticle"] =
+            """{"data":{"ugcArticleSolutionArticle":{"uuid":"u2","title":"Official","content":"one\\ntwo \\u4e2d","slug":"off"}}}"""
+
+        val cnDetail = cnApi.fetchSolutionArticleDetail("ts-sol")
+        val comDetail = api.fetchSolutionArticleDetail("off")
+
+        assertEquals("[题解] two-sum", cnDetail.title)
+        assertEquals("ts-sol", cnDetail.slug)
+        assertTrue(cnDetail.content.startsWith("## 思路"), cnDetail.content)
+        // COM 站点原始 content 保持二次转义形态原样透传(反转义在 LeetCodeSolutions 层);
+        // 断言 raw string 中单反斜杠即字面序列:JSON 已剥一层,此处仍剩 \n、中
+        assertEquals("""one\ntwo \u4e2d""", comDetail.content)
+
+        val cnRecord = graphqlRecord("discussTopic")
+        assertEquals("discussTopic", envelopeOf(cnRecord)["operationName"]!!.jsonPrimitive.content)
+        assertEquals("ts-sol", variablesOf(cnRecord)["slug"]!!.jsonPrimitive.content)
+        val comRecord = graphqlRecord("ugcArticleSolutionArticle")
+        assertEquals("off", variablesOf(comRecord)["slug"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `solution article detail maps missing article or content to OJException`() {
+        graphqlResponses["discussTopic"] = """{"data":{"solutionArticle":null}}"""
+        graphqlResponses["ugcArticleSolutionArticle"] =
+            """{"data":{"ugcArticleSolutionArticle":{"uuid":"u2","title":"Official","content":null,"slug":"off"}}}"""
+
+        assertFailsWith<OJException> {
+            runBlocking { cnApi.fetchSolutionArticleDetail("ghost") }
+        }
+        assertFailsWith<OJException> {
+            runBlocking { api.fetchSolutionArticleDetail("off") }
+        }
+    }
+
     // -------------------------------------------------------------------
     // 提交(REST)与轮询(REST)
     // -------------------------------------------------------------------

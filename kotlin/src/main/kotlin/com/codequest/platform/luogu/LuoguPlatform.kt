@@ -15,6 +15,7 @@ import com.codequest.spi.ProblemFilter
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.ProblemStatement
 import com.codequest.spi.ProblemSummary
+import com.codequest.spi.SolutionArticleContent
 import com.codequest.spi.SolutionArticleRef
 import com.codequest.spi.SolutionViewCapable
 import com.codequest.spi.SubmissionCapable
@@ -70,6 +71,11 @@ class LuoguPlatform(
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = submissionService.watchSubmission(handle)
 
     override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId)
+
+    override suspend fun fetchSolutionContent(
+        remoteId: String,
+        solutionId: String,
+    ): SolutionArticleContent = solutions.fetchSolutionContent(remoteId, solutionId)
 }
 
 /** 洛谷注册(plugin.xml `<ojPlatformProvider implementation=.../>`)。 */

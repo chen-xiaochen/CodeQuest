@@ -12,13 +12,18 @@ import kotlinx.serialization.json.Json
 import java.util.logging.Logger
 
 /**
- * 题解数据 REST 端点逻辑(WP26,infra 层):SolutionViewCapable 平台的题解
- * 引用列表经 SPI(OJPlatformRegistry)拉取,纯透传不落库(正文拉取与缓存是 M5)。
+ * 题解数据 REST 端点逻辑(WP26 列表 / WP31 正文,infra 层):SolutionViewCapable
+ * 平台的题解数据经 SPI(OJPlatformRegistry)拉取,纯透传不落库。
  * 照 [ProblemApi] 模式(平台来源以 lambda 注入,按请求解析,纯 Kotlin 可测)。
  *
  * 端点契约(由 [ResourceHttpServer] 挂载):
  * - `GET /api/problem/{remoteId}/solutions?platform=`:题解引用列表
  *   `{platform, remoteId, items:[{id,title,url}]}`;
+ * - `GET /api/problem/{remoteId}/solutions/{sid}?platform=`(WP31):单篇题解正文
+ *   `{platform, remoteId, id, title, content, contentFormat}`。**不落库的取舍**:
+ *   正文体积(数十 KB/篇)远超引用,生命周期跟随平台侧编辑(缓存易陈旧),
+ *   且查看属按需低频动作——本期纯透传,离线回看需求出现再引入
+ *   problem_content 同款缓存表(YAGNI);
  * - 领域异常 → HTTP 状态 + JSON 错误体(AuthExpired 401 / RateLimited 429 /
  *   AntiBot 403 / 其余 OJException 502 / 参数问题 400 / 未知平台 404),
  *   状态码与错误码语义与 ProblemApi 一致。
@@ -34,13 +39,7 @@ class SolutionsApi(
     ): ProblemApiResponse {
         val id = query["platform"]?.trim().orEmpty()
         if (id.isEmpty()) return badRequest("missing required query param: platform")
-        val platform =
-            platforms()
-                .firstOrNull { candidate -> candidate.id.value == id && candidate is SolutionViewCapable }
-                ?: return errorResponse(
-                    STATUS_NOT_FOUND,
-                    SolutionsErrorDto(error = CODE_UNKNOWN_PLATFORM, message = "no solution-capable platform registered for id '$id'"),
-                )
+        val platform = solutionCapablePlatform(id) ?: return unknownPlatform(id)
         val capable = platform as SolutionViewCapable
         val refs =
             try {
@@ -56,6 +55,45 @@ class SolutionsApi(
             ),
         )
     }
+
+    /** `/api/problem/{remoteId}/solutions/{sid}`:经 SPI fetchSolutionContent 拉单篇正文(不落库)。 */
+    suspend fun solutionContent(
+        remoteId: String,
+        solutionId: String,
+        query: Map<String, String>,
+    ): ProblemApiResponse {
+        val id = query["platform"]?.trim().orEmpty()
+        if (id.isEmpty()) return badRequest("missing required query param: platform")
+        if (solutionId.isEmpty()) return badRequest("missing solution id path segment")
+        val platform = solutionCapablePlatform(id) ?: return unknownPlatform(id)
+        val capable = platform as SolutionViewCapable
+        val content =
+            try {
+                capable.fetchSolutionContent(remoteId, solutionId)
+            } catch (error: Throwable) {
+                return error.toErrorResponse()
+            }
+        return ok(
+            SolutionContentResponseDto(
+                platform = platform.id.value,
+                remoteId = remoteId,
+                id = content.id,
+                title = content.title,
+                content = content.content,
+                contentFormat = content.contentFormat.name,
+            ),
+        )
+    }
+
+    /** 按 id 找已注册且具备题解能力的平台(列表/正文端点共用)。 */
+    private fun solutionCapablePlatform(id: String): OJPlatform? =
+        platforms().firstOrNull { candidate -> candidate.id.value == id && candidate is SolutionViewCapable }
+
+    private fun unknownPlatform(id: String): ProblemApiResponse =
+        errorResponse(
+            STATUS_NOT_FOUND,
+            SolutionsErrorDto(error = CODE_UNKNOWN_PLATFORM, message = "no solution-capable platform registered for id '$id'"),
+        )
 
     // ------------------------------------------------------------------
     // 序列化与错误映射(语义与 ProblemApi 对齐;SolutionsApi 无本地存储,
@@ -107,6 +145,7 @@ class SolutionsApi(
     private fun Json.encodeDto(dto: Any): String =
         when (dto) {
             is SolutionsResponseDto -> encodeToString(SolutionsResponseDto.serializer(), dto)
+            is SolutionContentResponseDto -> encodeToString(SolutionContentResponseDto.serializer(), dto)
             is SolutionsErrorDto -> encodeToString(SolutionsErrorDto.serializer(), dto)
             else -> throw IllegalArgumentException("unsupported dto: $dto")
         }
@@ -167,6 +206,17 @@ private data class SolutionsResponseDto(
     val platform: String,
     val remoteId: String,
     val items: List<SolutionItemDto>,
+)
+
+/** 单篇题解正文响应(WP31;contentFormat = ContentFormat.name:HTML / MARKDOWN)。 */
+@Serializable
+private data class SolutionContentResponseDto(
+    val platform: String,
+    val remoteId: String,
+    val id: String,
+    val title: String,
+    val content: String,
+    val contentFormat: String,
 )
 
 @Serializable

@@ -2,8 +2,11 @@
 /**
  * 题面页(WP20 真实数据):URL query `?platform=&remoteId=`(Kotlin 侧
  * ProblemViewNavigator 构造)→ /api/problem 拉取 → 渲染管线(清洗+hljs/KaTeX)。
- * WP26:题解引用列表区块——SolutionViewCapable 平台(洛谷)附加拉取,
- * 点击经 `nav:openUrl` 桥消息在系统浏览器打开(正文渲染 M5 不做)。
+ * WP26:题解引用列表区块(SolutionViewCapable 平台附加拉取)。
+ * WP31:题解列表→应用内正文阅读器(同区块内切换,不另开页面)——
+ * 复用题面 MD/HTML 渲染管线,浏览器风格导航工具栏(后退/前进/刷新),
+ * 历史栈页内维护(cursor -1 = 列表根视图,同浏览器语义);站外打开仍留作
+ * 兜底出口(经 `nav:openUrl` 桥消息)。
  */
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -12,8 +15,10 @@ import {
   ApiError,
   fetchProblemDetail,
   fetchProblemSolutions,
+  fetchSolutionArticleContent,
   type ProblemDetail,
   type SolutionArticle,
+  type SolutionArticleContent,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
 import { renderStatement } from '../../lib/statement'
@@ -27,6 +32,15 @@ const solutionsLoading = ref(false)
 /** 题解是附属区块:拉取失败只降级提示(如未登录),不影响题面主体。 */
 const solutionsError = ref('')
 
+/** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
+const readerHistory = ref<SolutionArticle[]>([])
+const readerCursor = ref(-1)
+const content = ref<SolutionArticleContent | null>(null)
+const contentLoading = ref(false)
+const contentError = ref('')
+/** 已读正文缓存(id → 响应):后退/前进即时切换;刷新按 id 失效。 */
+const contentCache = new Map<string, SolutionArticleContent>()
+
 const params = new URLSearchParams(window.location.search)
 const platform = params.get('platform') ?? ''
 const remoteId = params.get('remoteId') ?? ''
@@ -34,6 +48,18 @@ const remoteId = params.get('remoteId') ?? ''
 const renderedHtml = computed(() => {
   if (!detail.value) return ''
   return renderStatement(detail.value.content, detail.value.contentFormat)
+})
+
+const inReader = computed(() => readerCursor.value >= 0)
+const currentArticle = computed(() => readerHistory.value[readerCursor.value] ?? null)
+const canBack = computed(() => readerCursor.value >= 0)
+const canForward = computed(() => readerCursor.value < readerHistory.value.length - 1)
+const readerTitle = computed(() => content.value?.title || currentArticle.value?.title || '')
+
+/** 正文经同一渲染管线(白名单清洗 + hljs + KaTeX + 表格包装)。 */
+const renderedContentHtml = computed(() => {
+  if (!content.value) return ''
+  return renderStatement(content.value.content, content.value.contentFormat)
 })
 
 function describeError(cause: unknown): string {
@@ -69,6 +95,69 @@ async function loadSolutions(): Promise<void> {
   } finally {
     solutionsLoading.value = false
   }
+}
+
+/** 列表点击 → 打开阅读器(截断前进分支后压栈,同浏览器新建历史条目)。 */
+function openArticle(article: SolutionArticle): void {
+  readerHistory.value = readerHistory.value.slice(0, readerCursor.value + 1)
+  readerHistory.value.push(article)
+  readerCursor.value = readerHistory.value.length - 1
+  void showArticle(article)
+}
+
+async function showArticle(article: SolutionArticle): Promise<void> {
+  const cached = contentCache.get(article.id)
+  if (cached) {
+    content.value = cached
+    contentError.value = ''
+    return
+  }
+  contentLoading.value = true
+  contentError.value = ''
+  try {
+    const fetched = await fetchSolutionArticleContent(platform, remoteId, article.id)
+    contentCache.set(article.id, fetched)
+    // 竞态守卫:后退/刷新期间的迟到响应只落缓存,不覆盖当前展示
+    if (currentArticle.value?.id === article.id) {
+      content.value = fetched
+    }
+  } catch (cause) {
+    if (currentArticle.value?.id === article.id) {
+      contentError.value = describeError(cause)
+    }
+  } finally {
+    contentLoading.value = false
+  }
+}
+
+function goBack(): void {
+  if (!canBack.value) return
+  readerCursor.value -= 1
+  const target = currentArticle.value
+  if (target) {
+    void showArticle(target)
+  }
+}
+
+function goForward(): void {
+  if (!canForward.value) return
+  readerCursor.value += 1
+  const target = currentArticle.value
+  if (target) {
+    void showArticle(target)
+  }
+}
+
+/** 刷新:正文态重拉当前篇(清缓存);列表根视图重拉题解列表。 */
+async function refresh(): Promise<void> {
+  const article = currentArticle.value
+  if (!article) {
+    await loadSolutions()
+    return
+  }
+  contentCache.delete(article.id)
+  content.value = null
+  await showArticle(article)
 }
 
 /** 外链出口:真实桥经 Kotlin 打开系统浏览器;dev/测试无桥回退 window.open。 */
@@ -121,27 +210,95 @@ onMounted(() => {
       <!-- eslint-disable-next-line vue/no-v-html — 内容经 renderStatement 白名单清洗 -->
       <article class="statement" v-html="renderedHtml"></article>
 
-      <!-- WP26:题解引用列表(点击外链经桥消息打开系统浏览器;正文渲染 M5) -->
+      <!-- WP26/WP31:题解区块——列表 ↔ 应用内正文阅读器切换 + 浏览器风格导航工具栏 -->
       <section class="solutions" aria-label="Solutions">
-        <h3 class="solutions__title">Solutions</h3>
-        <p v-if="solutionsLoading" class="solutions__state">Loading solutions…</p>
-        <p v-else-if="solutionsError" class="solutions__state solutions__state--error" role="alert">
-          {{ solutionsError }}
-        </p>
-        <p v-else-if="solutions.length === 0" class="solutions__state">No solutions available.</p>
-        <ul v-else class="solutions__list">
-          <li v-for="article in solutions" :key="article.id" class="solutions__item">
-            <span class="solutions__item-title">{{ article.title }}</span>
+        <div class="solutions__bar">
+          <h3 class="solutions__title">Solutions</h3>
+          <div class="solutions__nav" role="toolbar" aria-label="Solution reader navigation">
             <button
               type="button"
-              class="solutions__open"
-              :title="article.url"
-              @click="openSolution(article.url)"
+              class="solutions__nav-btn"
+              :disabled="!canBack"
+              title="Back to list / previous article"
+              aria-label="Back"
+              @click="goBack"
             >
-              open
+              ←
             </button>
-          </li>
-        </ul>
+            <button
+              type="button"
+              class="solutions__nav-btn"
+              :disabled="!canForward"
+              title="Forward to next article"
+              aria-label="Forward"
+              @click="goForward"
+            >
+              →
+            </button>
+            <button
+              type="button"
+              class="solutions__nav-btn"
+              :disabled="contentLoading || solutionsLoading"
+              title="Refresh current view"
+              aria-label="Refresh"
+              @click="refresh"
+            >
+              ⟳
+            </button>
+          </div>
+        </div>
+
+        <!-- 列表根视图 -->
+        <template v-if="!inReader">
+          <p v-if="solutionsLoading" class="solutions__state">Loading solutions…</p>
+          <p v-else-if="solutionsError" class="solutions__state solutions__state--error" role="alert">
+            {{ solutionsError }}
+          </p>
+          <p v-else-if="solutions.length === 0" class="solutions__state">No solutions available.</p>
+          <ul v-else class="solutions__list">
+            <li v-for="article in solutions" :key="article.id" class="solutions__item">
+              <button
+                type="button"
+                class="solutions__open"
+                :title="article.title"
+                @click="openArticle(article)"
+              >
+                <span class="solutions__item-title">{{ article.title }}</span>
+                <span class="solutions__read">read ›</span>
+              </button>
+            </li>
+          </ul>
+        </template>
+
+        <!-- 正文阅读器 -->
+        <article v-else class="reader">
+          <header class="reader__header">
+            <h4 class="reader__title">{{ readerTitle }}</h4>
+            <button
+              v-if="currentArticle"
+              type="button"
+              class="reader__external"
+              :title="currentArticle.url"
+              @click="openSolution(currentArticle.url)"
+            >
+              open on site ↗
+            </button>
+          </header>
+          <p v-if="contentLoading" class="reader__state">Loading article…</p>
+          <p v-else-if="contentError" class="reader__state reader__state--error" role="alert">
+            {{ contentError }}
+            <button
+              v-if="currentArticle"
+              type="button"
+              class="state__retry"
+              @click="showArticle(currentArticle)"
+            >
+              Retry
+            </button>
+          </p>
+          <!-- eslint-disable-next-line vue/no-v-html — 正文经 renderStatement 白名单清洗 -->
+          <div v-else-if="content" class="reader__body statement" v-html="renderedContentHtml"></div>
+        </article>
       </section>
     </template>
   </AppShell>
@@ -241,12 +398,42 @@ onMounted(() => {
   border-top: 1px dashed var(--cq-border);
 }
 
+.solutions__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
 .solutions__title {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 13px;
   color: var(--cq-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.solutions__nav {
+  display: flex;
+  gap: 4px;
+}
+
+.solutions__nav-btn {
+  min-width: 26px;
+  padding: 1px 6px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.solutions__nav-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .solutions__state {
@@ -266,11 +453,27 @@ onMounted(() => {
 }
 
 .solutions__item {
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.solutions__open {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
-  font-size: 13px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cq-fg);
+  text-align: left;
+  cursor: pointer;
+}
+
+.solutions__open:hover {
+  border-color: var(--cq-border);
+  background: var(--cq-panel);
 }
 
 .solutions__item-title {
@@ -281,13 +484,59 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.solutions__open {
+.solutions__read {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--cq-muted);
+}
+
+.reader {
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel);
+  padding: 10px 12px;
+}
+
+.reader__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.reader__title {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.reader__external {
+  flex-shrink: 0;
   padding: 1px 10px;
   border: 1px solid var(--cq-border);
   border-radius: 6px;
   background: var(--cq-panel-raised);
   color: var(--cq-fg);
   font-size: 11px;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.reader__state {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--cq-muted);
+}
+
+.reader__state--error {
+  color: var(--cq-danger);
+}
+
+.reader__body {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 </style>

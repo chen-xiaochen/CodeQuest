@@ -1,18 +1,44 @@
 package com.codequest.spi
 
+import com.codequest.core.model.ContentFormat
+import com.codequest.core.model.OJException
 import kotlinx.serialization.Serializable
 
 /**
  * 题解浏览能力(WP17):平台适配器按需实现(LeetCode/力扣CN/洛谷)。
  *
- * 本期只返回题解引用列表;正文拉取(fetchSolutionArticle)与统一前端文章页
- * 留到 M5 扩展——接口位已预留在本包(SolutionArticleRef 携带定位所需的 id/url)。
+ * 列表(WP26)与正文拉取(WP31)两级:
+ * - [fetchSolutions]:题解引用列表;
+ * - [fetchSolutionContent]:单篇正文(默认抛异常,见方法 KDoc 的取舍说明)。
+ *
+ * ## WP31 签名取舍:两个定位参数而非 SolutionArticleRef
+ *
+ * 调用方(REST 端点 `/api/problem/{remoteId}/solutions/{sid}`)只持有
+ * remoteId + sid,没有完整 [SolutionArticleRef](title/url 在列表响应里);
+ * 且洛谷正文寻址需要 pid(= remoteId), [SolutionArticleRef] 不携带。
+ * 故签名取 `(remoteId, solutionId)`,与端点路由 1:1 映射,避免端点侧
+ * 为拼 ref 而二次拉取列表。
  *
  * 线程/协程约定见 [OJPlatform];实现只抛 core 领域异常体系。
  */
 interface SolutionViewCapable {
     /** 拉取指定题目的题解引用列表(remoteId 与 [ProblemSummary.remoteId] 同源)。 */
     suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef>
+
+    /**
+     * 拉取单篇题解正文([solutionId] 即 [SolutionArticleRef.id])。
+     *
+     * **默认抛 [OJException] 而非声明抽象**:题解正文是列表之后的增强能力,
+     * 强求抽象会迫使所有 SolutionViewCapable 平台同步实现(违反能力接口
+     * 「按需组合」的精神,也牵连既有实现与测试桩)。默认实现让未接入正文
+     * 的平台保持可编译可用;调用方(REST 端点)经标准错误映射得到 502 +
+     * 明确文案,而非链接期破坏。实现只抛 core 领域异常体系——故默认抛
+     * OJException 而非 UnsupportedOperationException。
+     */
+    suspend fun fetchSolutionContent(
+        remoteId: String,
+        solutionId: String,
+    ): SolutionArticleContent = throw OJException("该平台未实现题解正文拉取: solution '$solutionId' of '$remoteId'")
 }
 
 /** 题解文章引用(WP17 最小集:id 定位 + 标题 + 外链)。 */
@@ -23,4 +49,15 @@ data class SolutionArticleRef(
     val title: String,
     /** 平台侧文章 URL(可直接在浏览器打开的兜底出口)。 */
     val url: String,
+)
+
+/** 题解文章正文(WP31):标题 + 原文 + 渲染格式,交前端统一管线处理。 */
+@Serializable
+data class SolutionArticleContent(
+    /** 平台侧题解文章标识(回显定位用,与 [SolutionArticleRef.id] 同源)。 */
+    val id: String,
+    val title: String,
+    /** 正文原文(Markdown 或 HTML,由 [contentFormat] 决定渲染管线)。 */
+    val content: String,
+    val contentFormat: ContentFormat,
 )

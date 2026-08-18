@@ -38,6 +38,7 @@ import java.nio.charset.StandardCharsets
  *   按 [buildStatementMarkdown] 拼装(旧 makeDescriptionMarkdown 逐字);
  * - 题解:`/problem/solution/{pid}?_contentOnly=1` → `data.solutions.result`
  *   (需登录,未登录 HTTP 401 由 transport 翻译为 AuthExpiredException);
+ *   列表项内嵌 `content`(该楼层 Markdown 全文,WP31 正文复用同一端点);
  * - 提交:`POST /fe/api/problem/submit/{pid}`,JSON `{lang:int, enableO2:1, code}`,
  *   头另带 Referer,响应 `{rid}`。403(易盾/图片验证码)旧实现有 JCEF 弹窗链路,
  *   依赖未迁移的旧 webview 静态资源,本 WP 按 transport 错误映射兜底(AuthExpired);
@@ -244,6 +245,48 @@ class LuoguApi(
                     },
             )
         }
+    }
+
+    // -------------------------------------------------------------------
+    // 题解正文(WP31)
+    // -------------------------------------------------------------------
+
+    /** 题解正文数据:content 为 Markdown 原文(含 LaTeX 公式与代码块)。 */
+    data class LuoguSolutionDetail(
+        val id: String,
+        val title: String,
+        val content: String,
+    )
+
+    /**
+     * 单篇题解正文(WP31)。**洛谷无单篇题解端点**——正文内嵌于题解列表页
+     * payload(luogu-api-docs:SolutionsData.solutions 为 List<ArticleDetails>,
+     * Article.content 即该楼层 Markdown 全文),故复用列表端点按 id 筛出目标
+     * 楼层;与 [fetchSolutionList] 同一首页 payload,列表翻页寻址超出本期
+     * 范围(YAGNI)。未登录时平台可能下发截断正文(contentFull=false),
+     * 本实现按当前登录态会话原样透传。
+     */
+    suspend fun fetchSolutionDetail(
+        pid: String,
+        solutionId: String,
+    ): LuoguSolutionDetail {
+        val solutions =
+            getLentilleJson(luoguSolutionListUrl(pid), commonHeaders()).obj("data")?.obj("solutions")
+                ?: throw OJException("洛谷题解页缺少 data.solutions 结构(未登录或页面结构变化): $pid")
+        val item =
+            solutions
+                .arrayOrEmpty("result")
+                .map { element -> element.jsonObject }
+                .firstOrNull { candidate -> candidate.intOrNullField("id")?.toString() == solutionId }
+                ?: throw OJException("洛谷题解不存在或不在首页楼层列表中: $pid/$solutionId")
+        return LuoguSolutionDetail(
+            id = solutionId,
+            title =
+                item.stringOrEmpty("title").ifEmpty {
+                    item.obj("author")?.stringOrEmpty("name").orEmpty()
+                },
+            content = item.stringOrEmpty("content"),
+        )
     }
 
     // -------------------------------------------------------------------

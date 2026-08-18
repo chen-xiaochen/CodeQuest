@@ -25,8 +25,9 @@ import java.util.logging.Logger
  *   提交记录端点(WP21,经 [submissionsApi] 注入后启用):`GET /api/submissions`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
  *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
- *   题解引用端点(WP26,经 [solutionsApi] 注入后启用):
- *   `GET /api/problem/{remoteId}/solutions?platform=`;
+ *   题解端点(WP26 列表 / WP31 正文,经 [solutionsApi] 注入后启用):
+ *   `GET /api/problem/{remoteId}/solutions?platform=`、
+ *   `GET /api/problem/{remoteId}/solutions/{sid}?platform=`;
  *   统计端点(WP29,经 [statsApi] 注入后启用):`GET /api/stats?platform=&days=`;
  *   检索端点(WP30,经 [searchApi] 注入后启用):`GET /api/search`、`GET /api/tags`;
  *   其余骨架 404
@@ -126,9 +127,43 @@ class ResourceHttpServer(
                 runProblemApi(exchange) { api -> api.listProblems(query) }
             }
 
-            // WP26:题解引用列表(`/api/problem/{remoteId}/solutions`,需在详情路由
-            // 之前匹配——两者共享 `/api/problem/` 前缀)
-            path.startsWith(PROBLEM_DETAIL_PREFIX) && path.endsWith(SOLUTIONS_ROUTE_SUFFIX) && exchange.isGet() -> {
+            else -> {
+                // WP20/WP23/WP29/WP31:各路由家族单独提取(handleApi 圈复杂度门禁);未命中再回 404
+                if (!handleProblemRoutes(exchange, path, query) &&
+                    !handleContestRoutes(exchange, path, query) &&
+                    !handleLocalDataRoutes(exchange, path, query)
+                ) {
+                    respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
+                }
+            }
+        }
+    }
+
+    /**
+     * `/api/problem/` 家族路由(WP20 详情 / WP26 列表 / WP31 正文;三者共享
+     * 前缀,匹配顺序:正文(含 `/solutions/` 中缀)→ 列表(`/solutions` 后缀)
+     * → 详情(其余))。非 GET 或前缀不匹配返回 false 交回上层。
+     */
+    private fun handleProblemRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        if (!path.startsWith(PROBLEM_DETAIL_PREFIX) || !exchange.isGet()) return false
+        when {
+            // WP31:题解正文 `/api/problem/{remoteId}/solutions/{sid}`
+            path.contains(SOLUTIONS_CONTENT_MARKER) -> {
+                val parsed = parseSolutionContentPath(path)
+                if (parsed == null) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, SOLUTION_CONTENT_BAD_REQUEST)
+                } else {
+                    val (remoteId, solutionId) = parsed
+                    runSolutionsApi(exchange) { api -> api.solutionContent(remoteId, solutionId, query) }
+                }
+            }
+
+            // WP26:题解引用列表 `/api/problem/{remoteId}/solutions`
+            path.endsWith(SOLUTIONS_ROUTE_SUFFIX) -> {
                 val remoteId =
                     path
                         .removePrefix(PROBLEM_DETAIL_PREFIX)
@@ -142,7 +177,8 @@ class ResourceHttpServer(
                 }
             }
 
-            path.startsWith(PROBLEM_DETAIL_PREFIX) && exchange.isGet() -> {
+            // WP20:题目详情 `/api/problem/{remoteId}`
+            else -> {
                 val remoteId =
                     path
                         .removePrefix(PROBLEM_DETAIL_PREFIX)
@@ -154,14 +190,8 @@ class ResourceHttpServer(
                     runProblemApi(exchange) { api -> api.problemDetail(remoteId, query) }
                 }
             }
-
-            else -> {
-                // WP23/WP29:竞赛与本地库数据路由单独提取(handleApi 圈复杂度门禁);未命中再回 404
-                if (!handleContestRoutes(exchange, path, query) && !handleLocalDataRoutes(exchange, path, query)) {
-                    respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
-                }
-            }
         }
+        return true
     }
 
     /** 本地库数据端点路由(WP21 submissions / WP29 stats / WP30 search;形态同 [handleContestRoutes])。 */
@@ -344,6 +374,23 @@ class ResourceHttpServer(
             }
     }
 
+    /**
+     * 解析题解正文路径 `/api/problem/{remoteId}/solutions/{sid}`(WP31)。
+     *
+     * @return (remoteId, solutionId);任一段缺失/为空返回 null(交由调用方回 400)。
+     *         分隔以首个 `/solutions/` 标记为准——remoteId(LC slug/洛谷 pid)
+     *         不含路径段,标记前的所有内容都归 remoteId。
+     */
+    private fun parseSolutionContentPath(path: String): Pair<String, String>? {
+        val rest = path.removePrefix(PROBLEM_DETAIL_PREFIX)
+        val markerIndex = rest.indexOf(SOLUTIONS_CONTENT_MARKER)
+        if (markerIndex <= 0) return null
+        val remoteId = urlDecode(rest.substring(0, markerIndex))
+        val solutionId = urlDecode(rest.substring(markerIndex + SOLUTIONS_CONTENT_MARKER.length))
+        if (remoteId.isEmpty() || solutionId.isEmpty()) return null
+        return remoteId to solutionId
+    }
+
     private fun urlDecode(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)
 
     private fun handleStatic(
@@ -434,6 +481,9 @@ class ResourceHttpServer(
 
         /** WP26:题解引用列表路由后缀(拼在 remoteId 之后)。 */
         private const val SOLUTIONS_ROUTE_SUFFIX = "/solutions"
+
+        /** WP31:题解正文路由中缀(`/solutions/` 夹在 remoteId 与 sid 之间)。 */
+        private const val SOLUTIONS_CONTENT_MARKER = "/solutions/"
         private const val CONTEST_DETAIL_PREFIX = "/api/contest/"
         private const val SHUTDOWN_DELAY_SECONDS = 0
         private const val STATUS_OK = 200
@@ -446,5 +496,9 @@ class ResourceHttpServer(
         private const val HEALTH_RESPONSE = """{"status":"ok","version":"0.1.0"}"""
         private const val NOT_FOUND_RESPONSE = """{"error":"not found"}"""
         private const val BAD_REQUEST_RESPONSE = """{"error":"bad-request","message":"missing remoteId path segment"}"""
+
+        /** WP31:题解正文路由的 remoteId/sid 缺段错误体。 */
+        private const val SOLUTION_CONTENT_BAD_REQUEST =
+            """{"error":"bad-request","message":"missing remoteId or solutionId path segment"}"""
     }
 }

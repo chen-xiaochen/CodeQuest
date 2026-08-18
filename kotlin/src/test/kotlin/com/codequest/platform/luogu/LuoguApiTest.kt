@@ -130,6 +130,37 @@ class LuoguApiTest {
     }
 
     @Test
+    fun `solution detail extracts markdown content from solution page payload`() = runBlocking {
+        responses["/problem/solution/P1001?_contentOnly=1"] = solutionWithContentHtml()
+
+        val detail = api.fetchSolutionDetail(pid = "P1001", solutionId = "123456")
+
+        assertEquals("123456", detail.id)
+        assertEquals("一份题解", detail.title)
+        // 洛谷正文内嵌于列表项 content 字段(Markdown 原文,含 LaTeX 与代码块)
+        assertTrue(detail.content.startsWith("## 思路"), detail.content)
+        assertTrue("${'$'}a_i+b_i${'$'}" in detail.content, detail.content)
+        assertTrue("```cpp" in detail.content, detail.content)
+        // 端点复用:正文与列表同一 solution 页请求
+        assertTrue(recorded.any { it.path == "/problem/solution/P1001?_contentOnly=1" })
+    }
+
+    @Test
+    fun `solution detail falls back to author name and maps unknown id to OJException`() {
+        responses["/problem/solution/P1001?_contentOnly=1"] = solutionWithContentHtml()
+
+        runBlocking {
+            val untitled = api.fetchSolutionDetail("P1001", "123457")
+            // title 缺失回退作者名(与列表语义一致)
+            assertEquals("bob", untitled.title)
+            assertEquals("untitled body", untitled.content)
+        }
+        assertFailsWith<OJException> {
+            runBlocking { api.fetchSolutionDetail("P1001", "999999") }
+        }.let { assertTrue(it.message!!.contains("999999"), it.message) }
+    }
+
+    @Test
     fun `submit posts legacy json body with csrf referer and requested-with headers`() = runBlocking {
         responses["/fe/api/problem/submit/P1001"] = """{"rid":9876543}"""
 
@@ -275,6 +306,17 @@ class LuoguApiTest {
             {"data":{"solutions":{"count":42,"perPage":10,"result":[
                {"id":123456,"title":"一份题解","author":{"uid":1,"name":"alice"}},
                {"id":123457,"author":{"uid":2,"name":"bob"}}
+            ]}}}
+            </script></body></html>""".trimIndent().replace("\n", "")
+
+        /** WP31:题解正文夹具——列表项内嵌 content(Markdown 原文,含 LaTeX/代码块)。 */
+        fun solutionWithContentHtml(): String =
+            """<html><head><title>题解 - 洛谷</title></head><body>
+            <script id="lentille-context" type="application/json">
+            {"data":{"solutions":{"count":42,"perPage":10,"result":[
+               {"id":123456,"title":"一份题解","author":{"uid":1,"name":"alice"},
+                "content":"## 思路\n\n前缀和 ${'$'}a_i+b_i${'$'} 满足单调性。\n\n```cpp\nint main() { return 0; }\n```"},
+               {"id":123457,"author":{"uid":2,"name":"bob"},"content":"untitled body"}
             ]}}}
             </script></body></html>""".trimIndent().replace("\n", "")
 

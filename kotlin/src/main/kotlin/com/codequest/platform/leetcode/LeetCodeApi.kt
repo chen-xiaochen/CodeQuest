@@ -26,7 +26,10 @@ import kotlinx.serialization.json.put
  * - 提交轮询:REST `GET /submissions/detail/{id}/check/`(`state` ∈ STARTED/PENDING/SUCCESS,
  *   SUCCESS 时 `status_msg` 给出判定);
  * - 题解列表:CN `questionTopicsList` → `data.questionSolutionArticles`、
- *   COM `ugcArticleSolutionArticles` → `data.ugcArticleSolutionArticles`。
+ *   COM `ugcArticleSolutionArticles` → `data.ugcArticleSolutionArticles`;
+ * - 题解正文(WP31):CN `discussTopic` → `data.solutionArticle`、COM
+ *   `ugcArticleSolutionArticle` → `data.ugcArticleSolutionArticle`
+ *   (content 为 Markdown 原文,COM 站点为二次转义形态)。
  *
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
@@ -381,6 +384,51 @@ class LeetCodeApi(
                 slug = node["slug"]?.jsonPrimitive?.content.orEmpty(),
             )
         }
+    }
+
+    /** 官方题解正文(WP31;content 为 Markdown 原文,COM 站点为二次转义形态)。 */
+    data class LeetCodeSolutionArticleDetail(
+        val title: String,
+        val slug: String,
+        val content: String,
+    )
+
+    /**
+     * 官方题解正文(CN `discussTopic` → `data.solutionArticle` / COM
+     * `ugcArticleSolutionArticle` → `data.ugcArticleSolutionArticle`,
+     * 变量均为 `{slug}`——旧 getSolutionArticle 事实)。content 缺失
+     * (文章不可见/会员限定)抛 [OJException];COM 站点的反转义由
+     * [LeetCodeSolutions] 承担(与旧 ArticleDetailPresenter 同层)。
+     */
+    suspend fun fetchSolutionArticleDetail(articleSlug: String): LeetCodeSolutionArticleDetail {
+        val operationName: String
+        val query: String
+        val dataField: String
+        if (variant.isCn) {
+            operationName = "discussTopic"
+            query = LeetCodeGraphQL.SOLUTION_ARTICLE_CN
+            dataField = "solutionArticle"
+        } else {
+            operationName = "ugcArticleSolutionArticle"
+            query = LeetCodeGraphQL.SOLUTION_ARTICLE_COM
+            dataField = "ugcArticleSolutionArticle"
+        }
+        val variables =
+            buildJsonObject {
+                put("slug", articleSlug)
+            }
+        val data = graphql(operationName, query, variables)
+        val node =
+            data[dataField] as? JsonObject
+                ?: throw OJException("LeetCode 题解文章不存在或不可见: $articleSlug")
+        val content =
+            node["content"]?.jsonPrimitive?.contentOrNullIfNull()
+                ?: throw OJException("LeetCode 题解文章正文不可见(可能需要登录或会员): $articleSlug")
+        return LeetCodeSolutionArticleDetail(
+            title = node["title"]?.jsonPrimitive?.content.orEmpty(),
+            slug = node["slug"]?.jsonPrimitive?.content ?: articleSlug,
+            content = content,
+        )
     }
 
     // -------------------------------------------------------------------
