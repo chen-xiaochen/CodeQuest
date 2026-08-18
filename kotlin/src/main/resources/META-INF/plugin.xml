@@ -51,6 +51,8 @@
         <ojPlatformProvider implementation="com.codequest.platform.atcoder.AtCoderProvider"/>
         <!-- WP26:洛谷平台适配器(题解列表) -->
         <ojPlatformProvider implementation="com.codequest.platform.luogu.LuoguProvider"/>
+        <!-- WP27:HackerRank 平台适配器(M4 收官) -->
+        <ojPlatformProvider implementation="com.codequest.platform.hackerrank.HackerRankProvider"/>
         <!-- WP19:SPI 传输/凭据接口的生产实现(均在 infra,经 EP 注入) -->
         <ojTransportProvider implementation="com.codequest.infra.http.HttpOJTransportProvider"/>
         <ojCredentialStoreProvider implementation="com.codequest.infra.secrets.SecretsStoreCredentialStoreProvider"/>
@@ -62,6 +64,8 @@
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.AtCoderAuthPromptProvider"/>
         <!-- WP26:洛谷 cookie 粘贴登录装配 -->
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.LuoguAuthPromptProvider"/>
+        <!-- WP27:HackerRank cookie 粘贴登录装配 -->
+        <ojAuthPromptProvider implementation="com.codequest.ui.submission.HackerRankAuthPromptProvider"/>
         <antiBotHandlerProvider implementation="com.codequest.ui.antibot.JcefAntiBotChallengeHandlerProvider"/>
     </extensions>
 
