@@ -5,8 +5,8 @@ package com.codequest.spi
  *
  * 仅依赖 `core` 领域模型,定义能力型接口(按需组合,suspend + Flow 风格):
  * - OJPlatform:平台身份(id / domain / PlatformInfo)
- * - AuthCapable / ProblemQueryCapable / SubmissionCapable / SolutionViewCapable
- *   (ContestCapable 留待 M4 随 CodeForces 接入再加)
+ * - AuthCapable / ProblemQueryCapable / SubmissionCapable / SolutionViewCapable /
+ *   ContestCapable(M4 随 CodeForces 接入:竞赛列表/详情 + 提醒订阅)
  * - BaseSubmissionFlow:通用「提交→轮询→终态」状态机(指数退避 + 超时),各平台只实现 fetchRemoteStatus() 钩子
  * - 领域异常体系(OJException / AuthExpiredException / AntiBotChallengeException /
  *   RateLimitedException / SubmissionTimeoutException)落位 core/model:语义平台无关,
