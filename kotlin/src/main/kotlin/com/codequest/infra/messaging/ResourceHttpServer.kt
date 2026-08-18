@@ -25,7 +25,8 @@ import java.util.logging.Logger
  *   提交记录端点(WP21,经 [submissionsApi] 注入后启用):`GET /api/submissions`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
  *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
- *   其余骨架 404
+ *   题解引用端点(WP26,经 [solutionsApi] 注入后启用):
+ *   `GET /api/problem/{remoteId}/solutions?platform=`;其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
  */
@@ -34,6 +35,7 @@ class ResourceHttpServer(
     private val problemApi: ProblemApi? = null,
     private val submissionsApi: SubmissionsApi? = null,
     private val contestApi: ContestApi? = null,
+    private val solutionsApi: SolutionsApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -117,6 +119,22 @@ class ResourceHttpServer(
 
             path == "/api/problems" && exchange.isGet() -> {
                 runProblemApi(exchange) { api -> api.listProblems(query) }
+            }
+
+            // WP26:题解引用列表(`/api/problem/{remoteId}/solutions`,需在详情路由
+            // 之前匹配——两者共享 `/api/problem/` 前缀)
+            path.startsWith(PROBLEM_DETAIL_PREFIX) && path.endsWith(SOLUTIONS_ROUTE_SUFFIX) && exchange.isGet() -> {
+                val remoteId =
+                    path
+                        .removePrefix(PROBLEM_DETAIL_PREFIX)
+                        .removeSuffix(SOLUTIONS_ROUTE_SUFFIX)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::urlDecode)
+                if (remoteId.isNullOrEmpty()) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, BAD_REQUEST_RESPONSE)
+                } else {
+                    runSolutionsApi(exchange) { api -> api.listSolutions(remoteId, query) }
+                }
             }
 
             path.startsWith(PROBLEM_DETAIL_PREFIX) && exchange.isGet() -> {
@@ -207,6 +225,21 @@ class ResourceHttpServer(
         block: suspend (ContestApi) -> ProblemApiResponse,
     ) {
         val api = contestApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 执行 [SolutionsApi] 调用并回写应答(形态同 [runProblemApi],WP26)。 */
+    private fun runSolutionsApi(
+        exchange: HttpExchange,
+        block: suspend (SolutionsApi) -> ProblemApiResponse,
+    ) {
+        val api = solutionsApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
@@ -344,6 +377,9 @@ class ResourceHttpServer(
         private const val BACKLOG = 0
         private const val API_PREFIX = "/api/"
         private const val PROBLEM_DETAIL_PREFIX = "/api/problem/"
+
+        /** WP26:题解引用列表路由后缀(拼在 remoteId 之后)。 */
+        private const val SOLUTIONS_ROUTE_SUFFIX = "/solutions"
         private const val CONTEST_DETAIL_PREFIX = "/api/contest/"
         private const val SHUTDOWN_DELAY_SECONDS = 0
         private const val STATUS_OK = 200

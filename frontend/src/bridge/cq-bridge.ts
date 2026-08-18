@@ -37,6 +37,9 @@ export const TOPIC_ECHO_REPLY = 'bridge:echo:reply'
 /** WP20:题目列表页点击行 → Kotlin 侧打开题面工具窗口;payload {platformId, remoteId}。 */
 export const TOPIC_NAV_OPEN_PROBLEM = 'nav:openProblem'
 
+/** WP26:题解列表外链 → Kotlin 侧经系统浏览器打开;payload {url}。 */
+export const TOPIC_NAV_OPEN_URL = 'nav:openUrl'
+
 /** WP21:提交落库后 Kotlin 侧推送;payload {challengeId, submissionId, challengeName, verdict}。 */
 export const TOPIC_SUBMISSION_UPDATED = 'submission:updated'
 

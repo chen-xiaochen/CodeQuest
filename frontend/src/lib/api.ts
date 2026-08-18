@@ -136,6 +136,30 @@ export function fetchProblemDetail(
   )
 }
 
+/** WP26:题解引用(正文渲染 M5;url 为站外浏览器兜底出口)。 */
+export interface SolutionArticle {
+  id: string
+  title: string
+  url: string
+}
+
+export interface SolutionListResult {
+  platform: string
+  remoteId: string
+  items: SolutionArticle[]
+}
+
+/** WP26:题解引用列表(SolutionViewCapable 平台,如洛谷;可能要求登录态)。 */
+export function fetchProblemSolutions(
+  platform: string,
+  remoteId: string,
+): Promise<SolutionListResult> {
+  const params = new URLSearchParams({ platform })
+  return getJson<SolutionListResult>(
+    `/api/problem/${encodeURIComponent(remoteId)}/solutions?${params.toString()}`,
+  )
+}
+
 /** 提交判定(Kotlin 侧 SubmissionResult 多态 JSON,discriminator `type`)。 */
 export interface SubmissionVerdict {
   type: string

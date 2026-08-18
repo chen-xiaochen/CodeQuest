@@ -41,6 +41,8 @@ class CodeQuestHttpServerService(
                 ContestApi(
                     reminders = { project.getService(DatabaseManager::class.java).contestReminderRepository },
                 ),
+            // WP26:题解引用端点——SolutionViewCapable 平台拉取(纯透传,不落库)
+            solutionsApi = SolutionsApi(),
         )
 
     /** 服务基地址;未启动时为 null。 */
