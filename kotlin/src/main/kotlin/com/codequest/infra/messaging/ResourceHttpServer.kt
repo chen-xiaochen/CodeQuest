@@ -28,6 +28,7 @@ import java.util.logging.Logger
  *   题解引用端点(WP26,经 [solutionsApi] 注入后启用):
  *   `GET /api/problem/{remoteId}/solutions?platform=`;
  *   统计端点(WP29,经 [statsApi] 注入后启用):`GET /api/stats?platform=&days=`;
+ *   检索端点(WP30,经 [searchApi] 注入后启用):`GET /api/search`、`GET /api/tags`;
  *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
@@ -39,6 +40,7 @@ class ResourceHttpServer(
     private val contestApi: ContestApi? = null,
     private val solutionsApi: SolutionsApi? = null,
     private val statsApi: StatisticsApi? = null,
+    private val searchApi: SearchApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -162,7 +164,7 @@ class ResourceHttpServer(
         }
     }
 
-    /** 本地库数据端点路由(WP21 submissions / WP29 stats;形态同 [handleContestRoutes])。 */
+    /** 本地库数据端点路由(WP21 submissions / WP29 stats / WP30 search;形态同 [handleContestRoutes])。 */
     private fun handleLocalDataRoutes(
         exchange: HttpExchange,
         path: String,
@@ -188,6 +190,29 @@ class ResourceHttpServer(
                         ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
                     } else {
                         runBlocking { api.statistics(query) }
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
+            }
+
+            // WP30:跨题全文检索(三源聚合 + 标签/平台过滤)与标签清单
+            path == "/api/search" && exchange.isGet() -> {
+                val api = searchApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        runBlocking { api.search(query) }
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
+            }
+
+            path == "/api/tags" && exchange.isGet() -> {
+                val api = searchApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        runBlocking { api.listTags(query) }
                     }
                 respondJson(exchange, response.status, response.json, response.headers)
             }

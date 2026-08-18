@@ -48,6 +48,11 @@ class CodeQuestHttpServerService(
                 StatisticsApi(
                     submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
                 ),
+            // WP30:检索端点——本地库三源聚合 + 标签/平台过滤(store 按请求解析,切库即时生效)
+            searchApi =
+                SearchApi(
+                    store = { project.getService(DatabaseManager::class.java).searchStore },
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

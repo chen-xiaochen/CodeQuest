@@ -295,3 +295,82 @@ export function unsubscribeContestReminder(
   const params = new URLSearchParams({ platform, remoteId })
   return sendJson(`/api/contests/reminders?${params}`, 'DELETE')
 }
+
+// ---------------------------------------------------------------------------
+// WP30:跨题全文检索(search 页数据源;/api/search + /api/tags)
+// ---------------------------------------------------------------------------
+
+/** 关键字命中来源:标题/remoteId、题面、题解笔记;浏览模式为空数组。 */
+export type SearchMatchSource = 'title' | 'content' | 'note'
+
+export interface SearchItem {
+  platform: string
+  remoteId: string
+  title: string
+  difficulty: string
+  url: string
+  tags: string[]
+  matchedSources: SearchMatchSource[]
+}
+
+export interface SearchResult {
+  /** 本次检索关键字;缺省 = 浏览模式。 */
+  keyword?: string | null
+  /** 过滤的平台 id;缺省 = 全部平台。 */
+  platform?: string | null
+  /** 本次过滤的标签(AND 语义)。 */
+  tags: string[]
+  offset: number
+  limit: number
+  /** 过滤后命中总数(分页前)。 */
+  total: number
+  items: SearchItem[]
+  hasMore: boolean
+}
+
+export interface SearchQuery {
+  keyword?: string
+  tags?: string[]
+  platform?: string
+  limit?: number
+  offset?: number
+}
+
+/** WP30:三源聚合检索(标题/题面/题解笔记 + 标签 AND + 平台过滤)。 */
+export function fetchSearch(query: SearchQuery): Promise<SearchResult> {
+  const params = new URLSearchParams()
+  if (query.keyword && query.keyword.trim().length > 0) {
+    params.set('keyword', query.keyword.trim())
+  }
+  if (query.tags && query.tags.length > 0) {
+    params.set('tags', query.tags.join(','))
+  }
+  if (query.platform) {
+    params.set('platform', query.platform)
+  }
+  if (query.limit !== undefined) {
+    params.set('limit', String(query.limit))
+  }
+  if (query.offset !== undefined && query.offset > 0) {
+    params.set('offset', String(query.offset))
+  }
+  return getJson<SearchResult>(`/api/search?${params.toString()}`)
+}
+
+export interface TagSummary {
+  name: string
+  /** 关联题目数。 */
+  count: number
+}
+
+/** WP30:标签清单(名称 + 关联题数,题数降序);platform 过滤可选。 */
+export function fetchTags(platform?: string): Promise<TagSummary[]> {
+  const params = new URLSearchParams()
+  if (platform) {
+    params.set('platform', platform)
+  }
+  const qs = params.toString()
+  return getJson<{ tags: TagSummary[] }>(`/api/tags${qs.length > 0 ? `?${qs}` : ''}`).then(
+    (body) => body.tags,
+  )
+}

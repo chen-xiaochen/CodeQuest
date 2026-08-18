@@ -43,6 +43,10 @@ class ManagedDatabase(
     val problemStore: ProblemStore
         get() = handle.problem
 
+    /** 跨题全文检索端口(WP30),独立实现实例(不改既有仓库)。 */
+    val searchStore: SearchStore
+        get() = handle.search
+
     /** 具体类型(WP21):除 [SubmissionRepository] 契约外提供 submissions 端点用的分页查询。 */
     val submissionRepository: ExposedSubmissionRepository
         get() = handle.submission
@@ -89,6 +93,7 @@ class ManagedDatabase(
     ) : AutoCloseable {
         // 具体类型暴露(WP20):同一实例同时充当 ProblemRepository 与 ProblemStore
         val problem: ExposedProblemRepository by lazy { ExposedProblemRepository(db) }
+        val search: ExposedSearchStore by lazy { ExposedSearchStore(db) }
         val submission by lazy { ExposedSubmissionRepository(db) }
         val challenge by lazy { ExposedChallengeRepository(db) }
         val solution by lazy { ExposedSolutionRepository(db) }
@@ -126,6 +131,10 @@ class DatabaseManager(
     /** 端点用题目存取端口(WP20):ProblemRepository + 按 remoteId 精确查;随切库指向新句柄。 */
     val problemStore: ProblemStore
         get() = managed.problemStore
+
+    /** 跨题全文检索端口(WP30):三源聚合 + 标签/平台过滤;随切库指向新句柄。 */
+    val searchStore: SearchStore
+        get() = managed.searchStore
 
     val submissionRepository: ExposedSubmissionRepository
         get() = managed.submissionRepository
