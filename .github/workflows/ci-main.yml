@@ -8,84 +8,14 @@ on:
   pull_request:
     branches: [ main ]
 
+# 单轨 Gradle CI(M6/WP34 收敛):
+# - 旧 Scala/sbt 构建随旧工程于 M6/WP33 删除,本文件不再含 sbt job
+# - 前端产物(frontend/dist)不入库,必须先 npm build 再跑 Gradle
+#   (copyWebviewDist 校验 frontend/dist 存在,缺失即失败)
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    name: Build with IntelliJ ${{ matrix.intellij-version }}
-    
-    strategy:
-      matrix:
-        java-version: [17]
-        intellij-version: [233, 241, 252]
-      fail-fast: true  # 允许其他版本继续构建，即使某个版本失败
-        
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Java ${{ matrix.java-version }}
-      uses: actions/setup-java@v4
-      with:
-        java-version: ${{ matrix.java-version }}
-        distribution: 'temurin'
-        
-    - name: Setup SBT
-      uses: olafurpg/setup-scala@v14
-      with:
-        java-version: ${{ matrix.java-version }}
-        
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        
-    - name: Cache SBT dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.sbt
-          ~/.ivy2/cache
-          ~/.cache/coursier
-        key: ${{ runner.os }}-sbt-intellij${{ matrix.intellij-version }}-${{ hashFiles('**/build.sbt', 'project/build.properties', 'project/plugins.sbt') }}
-        restore-keys: |
-          ${{ runner.os }}-sbt-intellij${{ matrix.intellij-version }}-
-          ${{ runner.os }}-sbt-
-          
-    - name: Cache npm dependencies
-      uses: actions/cache@v4
-      with:
-        path: ~/.npm
-        key: ${{ runner.os }}-node-${{ hashFiles('webview/package-lock.json') }}
-        restore-keys: |
-          ${{ runner.os }}-node
-          
-    - name: Install npm dependencies
-      run: |
-        cd webview
-        npm i
-
-    - name: Show IntelliJ version configuration
-      run: sbt -Dintellij.version=${{ matrix.intellij-version }} 'show intellijBuild'
-      env:
-        INTELLIJ_VERSION: ${{ matrix.intellij-version }}
-
-    - name: Build package artifact on merge to main
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      run: sbt -Dintellij.version=${{ matrix.intellij-version }} clean packageArtifact
-      env:
-        INTELLIJ_VERSION: ${{ matrix.intellij-version }}
-
-    - name: Publish plugin to JetBrains Marketplace
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-      run: sbt -Dintellij.version=${{ matrix.intellij-version }} clean packageArtifact publishPlugin
-      env:
-        IJ_PLUGIN_REPO_TOKEN: ${{ secrets.IJ_PLUGIN_REPO_TOKEN }}
-
-  # Kotlin/Gradle 重写侧 CI(WP10):与上方 sbt job 完全独立,互不影响。
-  # 跑 test + detekt + ktlint + 分层依赖检查(check)+ buildPlugin,全绿才通过。
   gradle:
     runs-on: ubuntu-latest
-    name: Gradle (Kotlin rewrite)
+    name: Gradle (Kotlin)
 
     steps:
     - name: Checkout code
@@ -100,6 +30,19 @@ jobs:
     - name: Setup Gradle (with dependency caching)
       uses: gradle/actions/setup-gradle@v4
 
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Build webview frontend
+      run: |
+        cd frontend
+        npm ci
+        npm run build
+
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
@@ -109,6 +52,6 @@ jobs:
     - name: Upload plugin distribution
       uses: actions/upload-artifact@v4
       with:
-        name: codequest-gradle-plugin-zip
+        name: codequest-plugin-zip
         path: build/distributions/*.zip
         if-no-files-found: error
