@@ -10,7 +10,7 @@
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_URL, cqBridge } from '../../bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   fetchProblemDetail,
@@ -55,6 +55,31 @@ function handleLoginResult(payload: unknown): void {
     void load()
     void loadSolutions()
   }
+}
+
+/** 一键开刷(1.0.x):题面数据全量自动带入,Kotlin 侧选语言→创建/复用工作区并打开编辑器。 */
+const startPending = ref(false)
+const startMsg = ref('')
+
+function startCoding(): void {
+  const current = detail.value
+  if (startPending.value || !current) return
+  startPending.value = true
+  startMsg.value = ''
+  cqBridge().send(TOPIC_CHALLENGE_CREATE, {
+    platform: current.platform,
+    remoteId: current.remoteId,
+    title: current.title,
+    difficulty: current.difficulty,
+    url: current.url,
+  })
+}
+
+/** 开刷结果:失败在按钮旁提示;成功无感(编辑器已打开)。 */
+function handleCreateResult(payload: unknown): void {
+  const result = payload as { ok?: boolean; error?: string }
+  startPending.value = false
+  startMsg.value = result?.ok ? '' : result?.error || 'failed'
 }
 
 /** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
@@ -201,13 +226,17 @@ onMounted(() => {
   void load()
   void loadSolutions()
   detachLoginResult = cqBridge().on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
+  detachCreateResult = cqBridge().on(TOPIC_CHALLENGE_CREATE_RESULT, handleCreateResult)
 })
 
 let detachLoginResult: (() => void) | null = null
+let detachCreateResult: (() => void) | null = null
 
 onUnmounted(() => {
   detachLoginResult?.()
   detachLoginResult = null
+  detachCreateResult?.()
+  detachCreateResult = null
 })
 </script>
 
@@ -242,6 +271,15 @@ onUnmounted(() => {
         <p class="statement-header__meta">
           <span class="diff-badge" :class="difficultyClass(detail.difficulty)">{{ detail.difficulty }}</span>
           <span class="statement-header__source" :data-source="detail.source">{{ detail.source }}</span>
+          <button
+            type="button"
+            class="statement-header__start"
+            :disabled="startPending"
+            @click="startCoding"
+          >
+            {{ startPending ? 'Preparing…' : 'Start coding' }}
+          </button>
+          <span v-if="startMsg" class="statement-header__start-msg" role="alert">{{ startMsg }}</span>
           <a
             v-if="detail.url"
             :href="detail.url"
@@ -436,6 +474,29 @@ onUnmounted(() => {
 .statement-header__source[data-source='cache'] {
   color: var(--cq-success);
   border-color: var(--cq-success);
+}
+
+/* 1.0.x:一键开刷(题面数据自动带入,选语言即建工作区) */
+.statement-header__start {
+  padding: 1px 12px;
+  border: 1px solid var(--cq-success);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-success);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.statement-header__start:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.statement-header__start-msg {
+  font-size: 11px;
+  color: var(--cq-danger);
+  overflow-wrap: anywhere;
 }
 
 .diff-badge {

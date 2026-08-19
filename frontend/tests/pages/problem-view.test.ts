@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ProblemViewApp from '../../src/pages/problem-view/App.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_URL, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
 
 type FetchHandler = (url: string, init?: RequestInit) => { status: number; body: unknown } | undefined
 
@@ -454,5 +454,66 @@ describe('problem-view login entry (1.0.x auth:login)', () => {
 
     expect(solutionsHits).toBe(2)
     expect(wrapper.findAll('.solutions__item')).toHaveLength(2)
+  })
+})
+
+describe('problem-view start coding (1.0.x challenge:create)', () => {
+  it('renders Start coding button on statement header and sends full detail payload', async () => {
+    handler = happyHandler()
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    vi.stubGlobal('cqSend', (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    })
+
+    const wrapper = mount(ProblemViewApp)
+    await flushPromises()
+
+    const button = wrapper.find('.statement-header__start')
+    expect(button.exists()).toBe(true)
+
+    await button.trigger('click')
+    expect(sends).toEqual([
+      {
+        topic: TOPIC_CHALLENGE_CREATE,
+        payload: {
+          platform: 'luogu',
+          remoteId: 'P1001',
+          title: 'A+B Problem',
+          difficulty: '入门',
+          url: 'https://www.luogu.com.cn/problem/P1001',
+        },
+      },
+    ])
+  })
+
+  it('shows failure message when creation result is not ok and clears pending on success', async () => {
+    handler = happyHandler()
+    vi.stubGlobal('cqSend', () => {})
+
+    const wrapper = mount(ProblemViewApp)
+    await flushPromises()
+
+    await wrapper.find('.statement-header__start').trigger('click')
+    expect((wrapper.find('.statement-header__start').element as HTMLButtonElement).disabled).toBe(true)
+
+    window.__cqBridge!.emit({
+      topic: TOPIC_CHALLENGE_CREATE_RESULT,
+      payload: JSON.stringify({ ok: false, error: 'boom' }),
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.statement-header__start-msg').text()).toContain('boom')
+    expect((wrapper.find('.statement-header__start').element as HTMLButtonElement).disabled).toBe(false)
+
+    await wrapper.find('.statement-header__start').trigger('click')
+    window.__cqBridge!.emit({
+      topic: TOPIC_CHALLENGE_CREATE_RESULT,
+      payload: JSON.stringify({ ok: true }),
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.statement-header__start-msg').exists()).toBe(false)
+    expect((wrapper.find('.statement-header__start').element as HTMLButtonElement).disabled).toBe(false)
   })
 })
