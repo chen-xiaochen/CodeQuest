@@ -1,9 +1,0 @@
-$challenge.header
-
-object $velocity.snakeCaseName(${challenge.slug}+[${challenge.id}]) {
-    $challenge.template
-    $challenge.tail
-
-    def main(args: Array[String]) {
-    }
-}

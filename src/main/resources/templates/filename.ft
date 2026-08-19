@@ -1,9 +1,0 @@
-#if($challenge.slug)
-    $!velocity.camelCaseName($challenge.slug)
-#elseif($challenge.name)
-    $!velocity.camelCaseName($challenge.name)
-#elseif($challenge.title)
-    $!velocity.camelCaseName($challenge.title)
-#else
-    "Unknown"
-#end

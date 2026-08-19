@@ -1,5 +1,0 @@
-package leetcodecn;
-
-class $velocity.snakeCaseName($challenge.slug) {
-    $challenge.code
-}

@@ -1,5 +1,0 @@
-namespace LeetCodeCN {
-namespace $velocity.camelCaseName($challenge.slug) {
-$challenge.code
-}
-}

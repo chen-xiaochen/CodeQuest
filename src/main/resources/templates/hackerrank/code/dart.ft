@@ -1,9 +1,0 @@
-$challenge.header
-
-class $velocity.snakeCaseName($challenge.slug) {
-    $challenge.template
-    $challenge.tail
-
-    public static void main(String[] args) {
-    }
-}

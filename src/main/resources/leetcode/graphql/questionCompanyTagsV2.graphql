@@ -1,8 +1,0 @@
-query questionCompanyTagsV2{
-  companyTags {
-      name
-      slug
-      id
-      questionCount
-  }
-}

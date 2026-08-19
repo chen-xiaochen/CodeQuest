@@ -1,8 +1,0 @@
-$challenge.header
-
-namespace HackerRank {
-namespace $velocity.camelCaseName($challenge.slug) {
-$challenge.template
-$challenge.tail
-}
-}
