@@ -8,6 +8,15 @@
     across LeetCode, LeetCode CN, CodeForces, AtCoder, Luogu and HackerRank.
     ]]></description>
 
+    <!-- 1.0.0:全量 Kotlin 重写首发(能力型 OJ SPI/六平台/统一 JCEF 前端);详见 CHANGELOG.md -->
+    <change-notes><![CDATA[
+    1.0.0 — first stable release of the full Kotlin rewrite: capability-based OJ SPI
+    (Auth/Problem/Submit/Contest/Solutions) with six platforms (LeetCode, LeetCode CN,
+    CodeForces, AtCoder, Luogu, HackerRank), a unified JCEF frontend with in-plugin
+    REST data endpoints, challenge workspace, statistics, cross-problem search and an
+    in-app solution reader. See CHANGELOG.md for details.
+    ]]></change-notes>
+
     <depends>com.intellij.modules.platform</depends>
     <!-- 2026.2 起 JCEF 从 IntelliJ Platform 拆为独立模块(发行版 plugins/jcef-plugin,
          <id>com.intellij.modules.jcef</id>,已实测);未声明会导致运行时 NoClassDefFoundError -->
