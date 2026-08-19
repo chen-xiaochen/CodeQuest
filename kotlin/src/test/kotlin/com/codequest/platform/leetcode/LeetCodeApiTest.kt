@@ -220,6 +220,27 @@ class LeetCodeApiTest {
         assertEquals(variablesOf(graphqlRecord("questionData"))["titleSlug"]!!.jsonPrimitive.content, "two-sum")
     }
 
+    @Test
+    fun `cn question list prefers titleCn and falls back to english title`() = runBlocking {
+        // 旧实现事实(UI 层三处消费):titleCn 非空优先,title 兜底——CN 站点列表展示中文,
+        // 重写版曾直取 title 导致 CN 列表全英文。
+        graphqlResponses["problemsetQuestionList"] =
+            """
+            {"data":{"problemsetQuestionList":{"total":2,"hasMore":false,"questions":[
+              {"acRate":50.0,"difficulty":"Easy","freqBar":null,"frontendQuestionId":"1","paidOnly":false,
+               "solutionNum":100,"status":null,"title":"Two Sum","titleCn":"两数之和","titleSlug":"two-sum",
+               "topicTags":[]},
+              {"acRate":40.0,"difficulty":"Medium","freqBar":null,"frontendQuestionId":"2","paidOnly":false,
+               "solutionNum":50,"status":null,"title":"Add Two Numbers","titleCn":null,"titleSlug":"add-two-numbers",
+               "topicTags":[]}
+            ]}}}
+            """.trimIndent()
+
+        val page = cnApi.fetchQuestionPage(ProblemFilter(), skip = 0, limit = 50)
+
+        assertEquals(listOf("两数之和", "Add Two Numbers"), page.questions.map { it.title })
+    }
+
     // -------------------------------------------------------------------
     // 题解列表(CN / COM 双查询)
     // -------------------------------------------------------------------

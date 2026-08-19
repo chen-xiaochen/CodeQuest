@@ -114,6 +114,47 @@ class LeetCodeProblemServiceTest {
     }
 
     @Test
+    fun `detail prefers chinese translatedContent over english content`() = runBlocking {
+        // 旧实现事实(LeetCodeOpenChallengeService:106):translatedContent 非空优先,content 兜底。
+        // CN 站点两字段并存:content=英文原题,translatedContent=中文;重写版曾取反导致 CN 全英文。
+        val transport = transportFor()
+        transport.handler = { request ->
+            if (request.method == "POST_GRAPHQL") {
+                """{"data":{"question":{"questionId":"1","titleSlug":"two-sum","title":"Two Sum",
+                   "content":"<p>Given an array...</p>","translatedContent":"<p>给定一个整数数组...</p>",
+                   "isPaidOnly":false,"difficulty":"Easy","topicTags":[]}}}"""
+            } else {
+                "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE_CN, LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transport))
+
+        val statement = service.fetchProblemDetail("two-sum")
+
+        assertEquals("<p>给定一个整数数组...</p>", statement.content)
+        assertEquals(ContentFormat.HTML, statement.contentFormat)
+    }
+
+    @Test
+    fun `detail keeps english content when translation missing`() = runBlocking {
+        val transport = transportFor()
+        transport.handler = { request ->
+            if (request.method == "POST_GRAPHQL") {
+                """{"data":{"question":{"questionId":"1","titleSlug":"two-sum","title":"Two Sum",
+                   "content":"<p>Given an array...</p>","translatedContent":null,
+                   "isPaidOnly":false,"difficulty":"Easy","topicTags":[]}}}"""
+            } else {
+                "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val statement = service.fetchProblemDetail("two-sum")
+
+        assertEquals("<p>Given an array...</p>", statement.content)
+    }
+
+    @Test
     fun `detail with neither content nor translated throws OJException`() {
         val transport = transportFor()
         transport.handler = { request ->

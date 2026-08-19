@@ -17,7 +17,8 @@ import kotlin.math.min
  * - 列表:内部消化 skip/limit 分页游走(单次上限 [LeetCodeApi.MAX_PAGE_SIZE]),
  *   按 [ProblemFilter.limit]/[offset] 语义输出;关键字/难度/标签映射为站点各自的
  *   过滤变量(CN filters / COM filtersV2,见 [LeetCodeApi]);
- * - 详情:`questionData` → content(HTML;CN 站点 content 缺失时回退 translatedContent)。
+ * - 详情:`questionData` → content(HTML;**translatedContent 非空优先**——CN 站点 content 为
+ *   英文原题、translatedContent 为中文,旧实现事实;COM 站点 translated 为 null 自然回退英文)。
  */
 class LeetCodeProblemService(
     private val variant: LeetCodeVariant,
@@ -40,8 +41,10 @@ class LeetCodeProblemService(
 
     override suspend fun fetchProblemDetail(remoteId: String): ProblemStatement {
         val question = api.fetchQuestionDetail(remoteId)
+        // 旧实现事实(LeetCodeOpenChallengeService):translatedContent 非空优先(CN 中文),
+        // content 兜底(COM 英文);两者皆空(会员题等)报领域异常
         val content =
-            question.content ?: question.translatedContent
+            question.translatedContent?.takeIf { it.isNotEmpty() } ?: question.content
                 ?: throw OJException(
                     "LeetCode 题面不可获取(疑似会员题或站点返回空): ${variant.domain}/problems/$remoteId/",
                 )

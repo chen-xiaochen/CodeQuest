@@ -181,7 +181,10 @@ class LeetCodeApi(
                     val q = element.jsonObject
                     LeetCodeQuestionListItem(
                         frontendQuestionId = q["frontendQuestionId"]?.jsonPrimitive?.content.orEmpty(),
-                        title = q["title"]?.jsonPrimitive?.content.orEmpty(),
+                        // 旧实现事实(UI 三处消费):titleCn 非空优先(CN 中文),title 兜底
+                        title =
+                            q["titleCn"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() }
+                                ?: q["title"]?.jsonPrimitive?.content.orEmpty(),
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
