@@ -40,6 +40,8 @@ class ProblemViewToolWindowFactory :
                 url = navigator.consumePendingUrl() ?: defaultUrl,
                 configure = { browser, bridge ->
                     navigator.attach(browser)
+                    // 1.0.x:浏览链路登录入口(auth:login,HR 题面 401 场景)
+                    AuthLoginBridge.register(project, bridge)
                     // WP26:题解列表外链 → 系统浏览器(nav:openUrl 桥消息)
                     bridge.on(ExternalLinkOpener.TOPIC_NAV_OPEN_URL) { payload ->
                         val request = parseOpenUrlPayload(payload)

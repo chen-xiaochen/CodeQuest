@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ProblemsApp from '../../src/pages/problems/App.vue'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
 
 type FetchHandler = (url: string) => { status: number; body: unknown } | undefined
 
@@ -35,6 +36,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   delete window.cqSend
+  window.__cqBridge = undefined
+  resetGlobalBridgeHook()
 })
 
 function mockListPage(items: Array<Record<string, unknown>>, hasMore = true): void {
@@ -140,6 +143,49 @@ describe('problems page', () => {
     await flushPromises()
 
     expect(wrapper.find('.state--error').text()).toContain('auth-expired')
+  })
+
+  it('shows Login entry on auth-expired and reloads after auth:login succeeds (1.0.x)', async () => {
+    let listHits = 0
+    handler = (url) => {
+      if (url.startsWith('/api/platforms')) {
+        return { status: 200, body: { platforms: [{ id: 'leetcode', displayName: 'LeetCode' }] } }
+      }
+      if (url.startsWith('/api/problems')) {
+        listHits += 1
+        if (listHits === 1) {
+          return { status: 401, body: { error: 'auth-expired', message: 'login required' } }
+        }
+        return { status: 200, body: { platform: 'leetcode', offset: 0, limit: 50, items: ROWS, hasMore: false } }
+      }
+      return undefined
+    }
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    window.cqSend = (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    }
+
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const state = wrapper.find('.state--error')
+    const loginBtn = state.find('.state__login')
+    expect(loginBtn.exists()).toBe(true)
+
+    await loginBtn.trigger('click')
+    expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGIN, payload: { platform: 'leetcode' } }])
+    expect(listHits).toBe(1)
+
+    window.__cqBridge!.emit({
+      topic: TOPIC_AUTH_LOGIN_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'leetcode' }),
+    })
+    await flushPromises()
+
+    expect(listHits).toBe(2)
+    expect(wrapper.findAll('.problems__row').length).toBe(2)
+    expect(wrapper.find('.state--error').exists()).toBe(false)
   })
 
   it('forwards keyword and difficulty filters in the query string', async () => {

@@ -8,9 +8,9 @@
  * 历史栈页内维护(cursor -1 = 列表根视图,同浏览器语义);站外打开仍留作
  * 兜底出口(经 `nav:openUrl` 桥消息)。
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { cqBridge, TOPIC_NAV_OPEN_URL } from '../../bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_URL, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   fetchProblemDetail,
@@ -26,11 +26,36 @@ import { renderStatement } from '../../lib/statement'
 const detail = ref<ProblemDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
+/** 后端错误码(auth-expired 等);为 auth-expired 时错误态附登录入口(1.0.x)。 */
+const errorCode = ref('')
 
 const solutions = ref<SolutionArticle[]>([])
 const solutionsLoading = ref(false)
 /** 题解是附属区块:拉取失败只降级提示(如未登录),不影响题面主体。 */
 const solutionsError = ref('')
+/** 题解区块错误码;auth-expired 时附登录入口(1.0.x,如洛谷题解未登录)。 */
+const solutionsErrorCode = ref('')
+
+/** 登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
+const loginPending = ref(false)
+
+/** 浏览链路登录入口(1.0.x):Kotlin 弹平台登录对话框,结果经 auth:login-result 回推。 */
+function requestLogin(): void {
+  if (loginPending.value || !platform) return
+  loginPending.value = true
+  cqBridge().send(TOPIC_AUTH_LOGIN, { platform })
+}
+
+/** 登录结果:仅本页平台;成功后重拉题面与题解(登录态已注入 cookie)。 */
+function handleLoginResult(payload: unknown): void {
+  const result = payload as { ok?: boolean; platform?: string }
+  if (!result || result.platform !== platform) return
+  loginPending.value = false
+  if (result.ok) {
+    void load()
+    void loadSolutions()
+  }
+}
 
 /** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
 const readerHistory = ref<SolutionArticle[]>([])
@@ -73,10 +98,12 @@ async function load(): Promise<void> {
   if (!platform || !remoteId) return
   loading.value = true
   error.value = ''
+  errorCode.value = ''
   try {
     detail.value = await fetchProblemDetail(platform, remoteId)
   } catch (cause) {
     error.value = describeError(cause)
+    errorCode.value = cause instanceof ApiError ? cause.code : ''
   } finally {
     loading.value = false
   }
@@ -86,12 +113,14 @@ async function loadSolutions(): Promise<void> {
   if (!platform || !remoteId) return
   solutionsLoading.value = true
   solutionsError.value = ''
+  solutionsErrorCode.value = ''
   try {
     // items 缺失(端点契约被破坏/被通用 stub 拦截)时降级为空列表,不影响题面
     solutions.value = (await fetchProblemSolutions(platform, remoteId)).items ?? []
   } catch (cause) {
     solutions.value = []
     solutionsError.value = describeError(cause)
+    solutionsErrorCode.value = cause instanceof ApiError ? cause.code : ''
   } finally {
     solutionsLoading.value = false
   }
@@ -171,6 +200,14 @@ function openSolution(url: string): void {
 onMounted(() => {
   void load()
   void loadSolutions()
+  detachLoginResult = cqBridge().on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
+})
+
+let detachLoginResult: (() => void) | null = null
+
+onUnmounted(() => {
+  detachLoginResult?.()
+  detachLoginResult = null
 })
 </script>
 
@@ -182,6 +219,15 @@ onMounted(() => {
 
     <p v-else-if="error" class="state state--error" role="alert">
       {{ error }}
+      <button
+        v-if="errorCode === 'auth-expired'"
+        type="button"
+        class="state__login"
+        :disabled="loginPending"
+        @click="requestLogin"
+      >
+        {{ loginPending ? 'Logging in…' : 'Login' }}
+      </button>
       <button type="button" class="state__retry" @click="load">Retry</button>
     </p>
 
@@ -253,6 +299,15 @@ onMounted(() => {
           <p v-if="solutionsLoading" class="solutions__state">Loading solutions…</p>
           <p v-else-if="solutionsError" class="solutions__state solutions__state--error" role="alert">
             {{ solutionsError }}
+            <button
+              v-if="solutionsErrorCode === 'auth-expired'"
+              type="button"
+              class="state__login"
+              :disabled="loginPending"
+              @click="requestLogin"
+            >
+              {{ loginPending ? 'Logging in…' : 'Login' }}
+            </button>
           </p>
           <p v-else-if="solutions.length === 0" class="solutions__state">No solutions available.</p>
           <ul v-else class="solutions__list">
@@ -328,6 +383,22 @@ onMounted(() => {
   background: var(--cq-panel-raised);
   color: var(--cq-fg);
   cursor: pointer;
+}
+
+/* 1.0.x:浏览链路登录入口(auth-expired 错误态);视觉与 Retry 同级 */
+.state__login {
+  margin-left: 10px;
+  padding: 2px 10px;
+  border: 1px solid var(--cq-danger);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-danger);
+  cursor: pointer;
+}
+
+.state__login:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .statement-header {

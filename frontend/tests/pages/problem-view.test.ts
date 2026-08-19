@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ProblemViewApp from '../../src/pages/problem-view/App.vue'
-import { TOPIC_NAV_OPEN_URL, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_URL, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
 
 type FetchHandler = (url: string, init?: RequestInit) => { status: number; body: unknown } | undefined
 
@@ -43,6 +43,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  delete window.cqSend
+  window.__cqBridge = undefined
   resetGlobalBridgeHook()
 })
 
@@ -334,5 +336,123 @@ describe('problem-view solution reader (WP31)', () => {
       '_blank',
       'noopener',
     )
+  })
+})
+
+describe('problem-view login entry (1.0.x auth:login)', () => {
+  it('shows Login button on auth-expired statement error, sends auth:login and refetches on success', async () => {
+    let detailHits = 0
+    handler = (url) => {
+      if (url.startsWith('/api/problem/P1001/solutions')) {
+        return { status: 200, body: { platform: 'luogu', remoteId: 'P1001', items: SOLUTIONS } }
+      }
+      if (url.startsWith('/api/problem/P1001')) {
+        detailHits += 1
+        if (detailHits === 1) {
+          return { status: 401, body: { error: 'auth-expired', message: 'auth expired or missing' } }
+        }
+        return { status: 200, body: DETAIL }
+      }
+      return undefined
+    }
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    vi.stubGlobal('cqSend', (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    })
+
+    const wrapper = mount(ProblemViewApp)
+    await flushPromises()
+
+    const state = wrapper.find('.state--error')
+    expect(state.exists()).toBe(true)
+    expect(state.text()).toContain('auth-expired')
+    const loginBtn = state.find('.state__login')
+    expect(loginBtn.exists()).toBe(true)
+
+    await loginBtn.trigger('click')
+    expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGIN, payload: { platform: 'luogu' } }])
+    // 登录尚未完成前不重复发请求
+    expect(detailHits).toBe(1)
+
+    // Kotlin 回推成功结果(本页平台) → 自动重拉
+    window.__cqBridge?.emit({
+      topic: TOPIC_AUTH_LOGIN_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'luogu' }),
+    })
+    await flushPromises()
+
+    expect(detailHits).toBe(2)
+    expect(wrapper.find('.statement').text()).toContain('A+B Problem')
+  })
+
+  it('ignores login result for a different platform', async () => {
+    let detailHits = 0
+    handler = (url) => {
+      if (url.startsWith('/api/problem/P1001')) {
+        // 注意:本分支同时截获题面与题解两个 URL(测试无独立 solutions 分支),
+        // 挂载基线 = load + loadSolutions 各一次
+        detailHits += 1
+        return { status: 401, body: { error: 'auth-expired', message: 'auth expired or missing' } }
+      }
+      return undefined
+    }
+
+    const wrapper = mount(ProblemViewApp)
+    await flushPromises()
+    const baseline = detailHits
+    expect(baseline).toBe(2)
+
+    window.__cqBridge?.emit({
+      topic: TOPIC_AUTH_LOGIN_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'hackerrank' }),
+    })
+    await flushPromises()
+
+    // 他平台结果被忽略:无重拉
+    expect(detailHits).toBe(baseline)
+    expect(wrapper.find('.state--error').exists()).toBe(true)
+  })
+
+  it('shows Login button in solutions block on auth-expired and reloads after login', async () => {
+    let solutionsHits = 0
+    handler = (url) => {
+      if (url.startsWith('/api/problem/P1001/solutions')) {
+        solutionsHits += 1
+        if (solutionsHits === 1) {
+          return { status: 401, body: { error: 'auth-expired', message: '请先登录' } }
+        }
+        return { status: 200, body: { platform: 'luogu', remoteId: 'P1001', items: SOLUTIONS } }
+      }
+      if (url.startsWith('/api/problem/P1001')) {
+        return { status: 200, body: DETAIL }
+      }
+      return undefined
+    }
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    vi.stubGlobal('cqSend', (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    })
+
+    const wrapper = mount(ProblemViewApp)
+    await flushPromises()
+
+    const state = wrapper.find('.solutions__state--error')
+    expect(state.exists()).toBe(true)
+    const loginBtn = state.find('.state__login')
+    expect(loginBtn.exists()).toBe(true)
+
+    await loginBtn.trigger('click')
+    expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGIN, payload: { platform: 'luogu' } }])
+
+    window.__cqBridge?.emit({
+      topic: TOPIC_AUTH_LOGIN_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'luogu' }),
+    })
+    await flushPromises()
+
+    expect(solutionsHits).toBe(2)
+    expect(wrapper.findAll('.solutions__item')).toHaveLength(2)
   })
 })

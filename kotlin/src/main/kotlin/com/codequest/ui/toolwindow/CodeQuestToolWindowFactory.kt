@@ -54,8 +54,17 @@ class CodeQuestToolWindowFactory :
                 "<b>${spec.title}</b><br>${spec.description}<br><br>" +
                     "This page requires JCEF; enable the 'Web Browser (JCEF)' plugin to render it.",
             url = pageUrl(project, spec.route),
-            // WP20:problems 面板注册「点击行 → 打开题面工具窗口」的导航桥 handler
-            configure = if (spec.route == PROBLEMS_ROUTE) { _, bridge -> attachOpenProblemNavigation(project, bridge) } else null,
+            // WP20:problems 面板注册「点击行 → 打开题面工具窗口」的导航桥 handler;
+            // 1.0.x:浏览链路登录入口(auth:login,如 leetcode.com 列表 401 场景)
+            configure =
+                if (spec.route == PROBLEMS_ROUTE) {
+                    { _, bridge ->
+                        attachOpenProblemNavigation(project, bridge)
+                        AuthLoginBridge.register(project, bridge)
+                    }
+                } else {
+                    null
+                },
         )
 
     /** `nav:openProblem {platformId, remoteId}` → [ProblemViewNavigator.openProblem]。 */

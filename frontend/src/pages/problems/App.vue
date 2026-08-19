@@ -3,9 +3,9 @@
  * 题目列表页(WP20 真实数据):平台下拉(/api/platforms)+ 关键字 + 难度筛选 +
  * 分页(加载更多);点击行经桥 nav:openProblem 打开题面工具窗口。
  */
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { TOPIC_NAV_OPEN_PROBLEM, cqBridge } from '../../bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_PROBLEM, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   fetchPlatforms,
@@ -29,6 +29,28 @@ const offset = ref(0)
 const hasMore = ref(false)
 const loading = ref(false)
 const error = ref('')
+/** 后端错误码;auth-expired 时错误态附登录入口(1.0.x,如 leetcode.com 列表 401)。 */
+const errorCode = ref('')
+
+/** 登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
+const loginPending = ref(false)
+
+/** 浏览链路登录入口(1.0.x):Kotlin 弹平台登录对话框,结果经 auth:login-result 回推。 */
+function requestLogin(): void {
+  if (loginPending.value || !platform.value) return
+  loginPending.value = true
+  bridge.send(TOPIC_AUTH_LOGIN, { platform: platform.value })
+}
+
+/** 登录结果:仅当前平台;成功后重载列表(登录态已注入 cookie)。 */
+function handleLoginResult(payload: unknown): void {
+  const result = payload as { ok?: boolean; platform?: string }
+  if (!result || result.platform !== platform.value) return
+  loginPending.value = false
+  if (result.ok) {
+    reload()
+  }
+}
 
 const DIFFICULTY_LABELS: Record<string, string> = {
   '': 'All difficulties',
@@ -48,6 +70,7 @@ async function loadPage(append: boolean): Promise<void> {
   if (!platform.value) return
   loading.value = true
   error.value = ''
+  errorCode.value = ''
   try {
     const result = await fetchProblems({
       platform: platform.value,
@@ -61,6 +84,7 @@ async function loadPage(append: boolean): Promise<void> {
     offset.value += result.items.length
   } catch (cause) {
     error.value = describeError(cause)
+    errorCode.value = cause instanceof ApiError ? cause.code : ''
   } finally {
     loading.value = false
   }
@@ -86,7 +110,10 @@ function openProblem(item: ProblemListItem): void {
   })
 }
 
+let detachLoginResult: (() => void) | null = null
+
 onMounted(async () => {
+  detachLoginResult = bridge.on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
   try {
     platforms.value = await fetchPlatforms()
     platform.value = platforms.value[0]?.id ?? ''
@@ -94,6 +121,11 @@ onMounted(async () => {
   } catch (cause) {
     error.value = describeError(cause)
   }
+})
+
+onUnmounted(() => {
+  detachLoginResult?.()
+  detachLoginResult = null
 })
 </script>
 
@@ -130,7 +162,18 @@ onMounted(async () => {
       </div>
     </form>
 
-    <p v-if="error" class="state state--error" role="alert">{{ error }}</p>
+    <p v-if="error" class="state state--error" role="alert">
+      {{ error }}
+      <button
+        v-if="errorCode === 'auth-expired'"
+        type="button"
+        class="state__login"
+        :disabled="loginPending"
+        @click="requestLogin"
+      >
+        {{ loginPending ? 'Logging in…' : 'Login' }}
+      </button>
+    </p>
     <p v-else-if="loading && items.length === 0" class="state">Loading problems…</p>
     <p v-else-if="!loading && items.length === 0" class="state">No problems matched. Adjust the filters and retry.</p>
 
@@ -198,6 +241,22 @@ onMounted(async () => {
   background: var(--cq-panel-raised);
   color: var(--cq-fg);
   font-size: 13px;
+}
+
+/* 1.0.x:浏览链路登录入口(auth-expired 错误态) */
+.state__login {
+  margin-left: 10px;
+  padding: 2px 10px;
+  border: 1px solid var(--cq-danger);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-danger);
+  cursor: pointer;
+}
+
+.state__login:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .filters__actions {

@@ -43,6 +43,12 @@ export const TOPIC_NAV_OPEN_URL = 'nav:openUrl'
 /** WP21:提交落库后 Kotlin 侧推送;payload {challengeId, submissionId, challengeName, verdict}。 */
 export const TOPIC_SUBMISSION_UPDATED = 'submission:updated'
 
+/** 1.0.x:浏览链路登录入口(页面 → Kotlin);payload {platform}。 */
+export const TOPIC_AUTH_LOGIN = 'auth:login'
+
+/** 1.0.x:登录结果回推(Kotlin → 页面);payload {ok, platform, error?}。 */
+export const TOPIC_AUTH_LOGIN_RESULT = 'auth:login-result'
+
 declare global {
   interface Window {
     /** JBCefJSQuery 注入的 JS→Kotlin 发送函数。 */
