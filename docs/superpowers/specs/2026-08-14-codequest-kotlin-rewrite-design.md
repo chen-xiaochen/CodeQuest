@@ -27,7 +27,7 @@ CodeQuest（原 CodeEpiphany fork）是 JetBrains IDE 的多平台刷题插件�
 | 数据兼容 | **不迁移**旧 SQLite 数据，全新数据库 |
 | UI 架构 | **JCEF 统一前端**（一个 Vite/TS Vue3 应用，多页面路由） |
 | 平台范围 | **6 OJ 全量**：LeetCode / 力扣CN / CodeForces / AtCoder / 洛谷 / HackerRank；**牛客砍掉，不做 stub** |
-| IDE 版本 | **仅 2025.2+ (252)**，无多版本兼容层 |
+| IDE 版本 | **仅 2026.2+ (262)**，无多版本兼容层(2026-08-14 变更:原定 2025.2,因 262 起 JCEF 拆为独立模块,提前对齐避免后续大量修改) |
 | 架构方案 | **方案 A：分层单体 + 能力型 OJ SPI**（否决多 Gradle 模块化与微内核开放生态） |
 
 ## 架构方案选型
@@ -38,7 +38,7 @@ CodeQuest（原 CodeEpiphany fork）是 JetBrains IDE 的多平台刷题插件�
 
 ## §1 总体架构与技术栈
 
-**构建**：Gradle 8 + intellij-platform-gradle-plugin 2.x，Kotlin 2.x（JVM），仅目标 2025.2 (252)。旧 jOOQ codegen、sbt 脚本、GUI Designer `.form` 全部废弃。
+**构建**：Gradle 8 + intellij-platform-gradle-plugin 2.x，Kotlin 2.x（JVM），仅目标 2026.2 (262)，JCEF 为独立模块需在 plugin.xml 显式声明依赖。旧 jOOQ codegen、sbt 脚本、GUI Designer `.form` 全部废弃。
 
 **技术栈映射**（旧 → 新）：
 

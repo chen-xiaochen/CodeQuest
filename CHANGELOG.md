@@ -1,3 +1,13 @@
+## 0.1.0
+### Changed
+- Fork from LeetCode Epiphany 1.12.1 (Apache-2.0). Rebrand plugin id/name to `com.chenxiaochen.codequest` / CodeQuest.
+### Fixed
+- Declare `com.intellij.modules.jcef` dependency so the plugin loads on IntelliJ 2026.2+ (JCEF was split into a standalone plugin since build 262, causing `NoClassDefFoundError: org/cef/handler/CefLoadHandlerAdapter` without this declaration).
+### Added
+- IntelliJ 2026.2 (build 262) build target; `untilBuild` is now bounded per version (252.\*, 262.\*) instead of open-ended `null`.
+- `JBCefApp.isSupported()` guard in `BaseJCefWebView` for a friendlier error when JCEF is unavailable.
+- Local packaging script `scripts/package.sh` and manual release checklist `docs/release-checklist.md`.
+
 ## 1.12.1
 ### Fixed
 - Using local katex for luogu and atcoder description rendering to avoid network issues.

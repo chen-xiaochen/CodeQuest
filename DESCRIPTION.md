@@ -1,4 +1,6 @@
-LeetCode Epiphany
+CodeQuest
+
+> A fork of LeetCode Epiphany (Apache-2.0, © Wenjun Huang) for mastering coding challenges directly in IntelliJ-based IDEs.
 
 ### Current Supported Platforms
 

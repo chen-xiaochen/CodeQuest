@@ -36,3 +36,8 @@ tools/*
 /kotlin/src/main/resources/webview/
 # 前端 lockfile 需要入库保证可复现安装(全局 package-lock.json 忽略规则的例外)
 !frontend/package-lock.json
+
+# 本地 agent/索引目录(WP33):harness 本地设置与代码索引不入库
+/.claude/
+/.codegraph/
+/.kotlin/

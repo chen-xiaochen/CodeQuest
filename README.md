@@ -1,7 +1,9 @@
 🌐 语言:
 [中文](README.md) | [English](README_en.md)
 
-## LeetCode Epiphany 🌟
+> **声明**：本项目 **CodeQuest** 是基于 [LeetCode Epiphany](https://github.com/WenjunHuang/CodeEpiphany)（Apache License 2.0, © Wenjun Huang）的二次开发版本，修改遵循 Apache 2.0 开源。原项目版权归原作者所有，本 fork 的改动同样以 Apache 2.0 发布。
+
+## CodeQuest 🌟
 
 [![CI](https://github.com/WenjunHuang/CodeEpiphany/actions/workflows/ci-main.yml/badge.svg)](https://github.com/WenjunHuang/CodeEpiphany/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/WenjunHuang/CodeEpiphany)](LICENSE)
@@ -72,9 +74,11 @@
 
 ### 🛠️ 安装指南
 
-1. 打开JetBrains IDE，进入 **插件 > 市场**
-2. 搜索 **LeetCode Epiphany** 并点击 **安装**
-3. 重启IDE激活插件
+> 二开版本未上架 JetBrains Marketplace，请手动安装：
+
+1. 从发布页下载对应 IDE 版本的 zip（如 `CodeQuest-0.1.0-252.zip`，构建方式见 [`docs/release-checklist.md`](docs/release-checklist.md)）
+2. 打开 JetBrains IDE，进入 **Settings → Plugins → ⚙️ → Install Plugin from Disk**
+3. 选择下载的 zip，重启 IDE 激活插件
 
 ---
 
