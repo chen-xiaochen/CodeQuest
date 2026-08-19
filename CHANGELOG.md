@@ -1,3 +1,19 @@
+## 1.0.0
+### Changed
+- Full rewrite from Scala/sbt to Kotlin 2.x + Gradle 8 (intellij-platform-gradle-plugin 2.x), package renamed to `com.codequest`; the legacy Scala/sbt codebase and the four old webview apps are removed, CI is converged to a single Gradle track.
+- IDE baseline raised to IntelliJ 2026.2+ (build 262) only, with JCEF declared as an explicit plugin dependency (`com.intellij.modules.jcef`).
+- UI rebuilt as a Swing shell plus one unified JCEF frontend (a single Vite/Vue3/TS app with six per-page entries); page data is served by an in-plugin ResourceHttpServer (REST endpoints such as `/api/problems`, `/api/stats`, `/api/search`) while JCEF messaging is reserved for commands/events, removing large-payload serialization stalls.
+### Added
+- Capability-based OJ SPI (`AuthCapable` / `ProblemQueryCapable` / `SubmissionCapable` / `ContestCapable` / `SolutionViewCapable`) with Extension-Point registration; adding an OJ = one `platform/<oj>/` package + plugin.xml declarations, zero core/ui changes (validated on all six platforms, see `docs/spi-validation.md`).
+- Six platforms on the new SPI: LeetCode, LeetCode CN, CodeForces, AtCoder, Luogu, HackerRank — cookie-paste login persisted via PasswordSafe, and a shared submission polling state machine (exponential backoff) replacing per-platform polling copies.
+- Cloudflare Turnstile anti-bot challenges handled through a shared JCEF dialog (CodeForces/AtCoder submit channels).
+- Challenge workspace: multiple solutions per problem with per-solution language/template and begin/end submit regions; test-case management.
+- Submission history stored with code snapshots (review does not depend on workspace files).
+- CodeForces contest list/detail with subscribable 24h reminders (join via external link; rankings not promised — no public API).
+- Statistics view: summary cards (total/accepted/AC rate/streak), GitHub-style heatmap and 30-day trend (`/api/stats` with platform filter).
+- Cross-problem full-text search over title/statement/solution notes (SQLite FTS5 with LIKE fallback for short CJK keywords) plus tag AND filtering.
+- In-app solution article reader (back/forward/refresh toolbar) for Luogu and LeetCode/CN.
+
 ## 0.1.0
 ### Changed
 - Fork from LeetCode Epiphany 1.12.1 (Apache-2.0). Rebrand plugin id/name to `com.chenxiaochen.codequest` / CodeQuest.

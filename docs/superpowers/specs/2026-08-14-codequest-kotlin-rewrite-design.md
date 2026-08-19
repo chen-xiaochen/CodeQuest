@@ -1,7 +1,7 @@
 ---
 title: CodeQuest 插件 Kotlin 推倒重写设计
 date: 2026-08-14
-status: plan
+status: done
 source: 用户重构需求（brainstorming 会话）
 scope: 插件全量重写（架构 / 数据 / UI / 平台适配）
 ---

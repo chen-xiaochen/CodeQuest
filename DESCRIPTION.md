@@ -1,79 +1,44 @@
 CodeQuest
 
-> A fork of LeetCode Epiphany (Apache-2.0, © Wenjun Huang) for mastering coding challenges directly in IntelliJ-based IDEs.
+> A fork of LeetCode Epiphany (Apache-2.0, © Wenjun Huang), fully rewritten in Kotlin + Gradle: a competitive programming assistant for IntelliJ-based IDEs (2026.2+), covering six OJ platforms with a capability-based plugin SPI.
 
-### Current Supported Platforms
-
-- **[LeetCode](https://www.leetcode.com)**
-- **[LeetCode Chinese](https://www.leetcode.cn)**
-- **[LuoGu](https://www.luogu.com.cn/)**
-- **[AtCoder](https://atcoder.jp)**
-- **[CodeForces](https://codeforces.com/)**
-- **[HackerRank](https://www.hackerrank.com)**
- 
-**Now available on Android!** 📱 Download our mobile app from [Google Play](https://play.google.com/store/apps/details?id=com.wenjunhuang.codeepiphanyapp) to practice coding challenges on the go.
-
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" width="200" alt="Get it on Google Play">](https://play.google.com/store/apps/details?id=com.wenjunhuang.codeepiphanyapp)
-
- 
-### Ultimate Coding Challenge Assistant
-
-- Maximize your IntelliJ muscle (You paid for the license, now milk it dry )
-- One plugin to rule all platforms (For coding marathon warriors)
-- 1-click submission + auto-saved results with side-by-side performance comparison
-- Code templates that slap - never type boilerplate again
-- Mix languages in one project (Golang/Rust pays the bills, right?). Code Python in PyCharm, C++ in CLion... with shared database! (Check settings)
-- Multi-approach showdown (DFS vs BFS cage match!) + Markdown battle notes for post-game analysis
-- Leverage IntelliJ's built-in profiler/debugger to squeeze out every drop of performance
-
-#### Key Features:
-
-- 🔄 **Multi-Platform and Multi-Language Support**: Work on problems from multiple platforms and in multiple programming
-  languages—all within a single project. No need to open multiple IDEs or create
-  separate projects, making it perfect for algorithm enthusiasts and learners.
-- ✍️ **Multiple Solutions per Problem**: Support writing multiple solutions for the same problem. You can code, test,
-  and
-- 🌐 **Platform Integration**: Access problems from various platforms directly within JetBrains IDEs.
-- ⚡ **One-Click Submission**: Submit your solutions and get instant feedback without switching to a browser.
-  document explanations for each solution, enabling thorough exploration of different approaches.
-- 📊 More Features Coming Soon: Stay tuned for even more powerful tools to enhance your competitive programming
-  experience!
-
-### 🔗 Learn More
-- **[📖Documentation](https://github.com/WenjunHuang/CodeEpiphany/wiki)**
-- **[🐛 Report Issues](https://github.com/WenjunHuang/CodeEpiphany/issues)**
-
-### 当前支持的平台
+### Supported Platforms
 
 - **[LeetCode](https://www.leetcode.com)**
-- **[力扣中国](https://www.leetcode.cn)**
-- **[洛谷](https://www.luogu.com.cn/)**
-- **[AtCoder](https://atcoder.jp)**
+- **[LeetCode Chinese](https://www.leetcode.cn)** / **[力扣](https://www.leetcode.cn)**
 - **[CodeForces](https://codeforces.com/)**
+- **[AtCoder](https://atcoder.jp)**
+- **[LuoGu](https://www.luogu.com.cn/)** / **[洛谷](https://www.luogu.com.cn/)**
 - **[HackerRank](https://www.hackerrank.com)**
 
-**现已推出安卓版本！** 📱 从 [Google Play](https://play.google.com/store/apps/details?id=com.wenjunhuang.codeepiphanyapp) 下载我们的移动应用，随时随地刷题练习。
+### What it does
 
-[<img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" width="200" alt="Get it on Google Play">](https://play.google.com/store/apps/details?id=com.wenjunhuang.codeepiphanyapp)
+- Query problem lists with keyword/difficulty filters, browse statements in-app (HTML/Markdown, KaTeX + syntax highlight, offline cache)
+- One-click submit from the editor with a shared polling state machine and balloon notifications; submissions stored with code snapshots
+- Challenge workspace: multiple solutions per problem, each with its own language, template and entry file; test-case management
+- CodeForces contest list/detail with 24h subscribable reminders
+- Statistics: summary cards, GitHub-style heatmap, 30-day trend
+- Cross-problem full-text search (FTS5 over titles/statements/solution notes) with tag filtering
+- In-app solution article reader for LeetCode CN and Luogu
+- Cookie-paste login persisted via PasswordSafe; Cloudflare Turnstile handled through a JCEF dialog (CodeForces/AtCoder)
 
-### 刷题神器
+Capability boundaries are documented honestly (e.g. leetcode.com lists/solutions require login, CF rankings are not available without a public API) — see the README for the full matrix.
 
-- 榨干IntelliJ潜力（毕竟这IDE不是白学/白买的嘛😉）
-- 多刷题平台无缝衔接（卷王必备）
-- 一键提交代码+自动保存运行结果，随时对比不同解法效率
-- 可自定义编程语言的代码模板，告别重复代码搬运工日常
-- 同一项目混用多语言刷题（高薪语言不得多练几套？），无需来回切项目。但是也可以用PyCharm写Python、CLion搞C++、RustRover玩Rust…刷题数据可以共享（详见设置）
-- 多解法同屏Battle（比如DFS/BFS花式秀操作），还能用Markdown写解题思路文档，复盘超方便
-- 直接调用IntelliJ的代码分析+性能测试工具，精准调优代码质量
+### 极客刷题助手
 
-#### 核心功能:
+- 六大 OJ 平台一个插件搞定:LeetCode / 力扣 / CodeForces / AtCoder / 洛谷 / HackerRank
+- IDE 内查题、题面渲染(KaTeX 公式/代码高亮/离线缓存)、编辑器右键一键提交、气球通知判题结果
+- 多解法工作区:同一道题多种语言/多套解法,`begin/end` 区域标记界定提交代码,测试用例面板管理
+- 刷题统计(汇总/热力图/趋势)、跨题全文检索(题面+题解笔记+标题)与标签筛选、题解文章应用内阅读
+- 粘贴 Cookie 登录并持久化,重启免登;Turnstile 人机验证经 JCEF 弹窗引导
+- 刷题数据存本地 SQLite(默认 `~/.codequest/codequest.db`,设置中可改目录),多 IDE 可共享
+- 能力边界如实标注(如 leetcode.com 列表/题解需登录、CF 排名无公开 API 不承诺),完整矩阵见 README
 
-- 🌐 **平台直连**: 在IDE内直接获取各大编程平台的题目
-- ⚡ **一键提交**: 代码秒速提交并获取实时反馈，告别浏览器切换
-- 🔄 **多平台多语言支持**: 单一项目中兼容多个编程平台与多种编程语言。算法爱好者无需多开IDE或创建多个项目，即可轻松切换不同解题环境
-- ✍️ **多解法支持**: 同一题目支持编写多种解法。您可为每种方案编写代码、测试用例与解题说明，全方位探索不同思路
-- 📊 **持续更新**: 更多强大功能即将上线，全面提升您的编程竞赛体验！
+### License / 许可
 
-### 🔗 了解更多
-- **[📖 文档](https://github.com/WenjunHuang/CodeEpiphany/wiki)**
-- **[🐛 提交问题](https://github.com/WenjunHuang/CodeEpiphany/issues)**
+Apache License 2.0. Fork of [LeetCode Epiphany](https://github.com/WenjunHuang/CodeEpiphany) (Apache-2.0, © Wenjun Huang); upstream copyright notices retained.
+
+### Learn More
+
+- **[📖Documentation / 文档](https://github.com/chen-xiaochen/CodeEpiphany/blob/main/README.md)**
+- **[🐛Report Issues / 提交问题](https://github.com/chen-xiaochen/CodeEpiphany/issues)**
