@@ -4,6 +4,8 @@
  * 标签多选(AND)+ 平台过滤(`/api/search`);标签面板数据来自 `/api/tags`。
  * 结果行带命中来源 chips(title/content/note),点击经桥 nav:openProblem
  * 打开题面工具窗口;分页走加载更多(offset 累加)。
+ * WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做)+ 状态下拉——本地过滤
+ * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
  */
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -19,6 +21,12 @@ import {
   type TagSummary,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
+import {
+  filterByStatus,
+  statusIconOf,
+  type ProblemStatusFields,
+  type ProblemStatusFilter,
+} from '../../lib/problemStatus'
 
 const PAGE_SIZE = 50
 
@@ -36,7 +44,9 @@ const platform = ref('')
 const keyword = ref('')
 const selectedTags = ref<string[]>([])
 const availableTags = ref<TagSummary[]>([])
-const items = ref<SearchItem[]>([])
+/** WP37:状态下拉(本地过滤;'' = 全部)。 */
+const statusFilter = ref<ProblemStatusFilter>('')
+const items = ref<(SearchItem & ProblemStatusFields)[]>([])
 const total = ref(0)
 const offset = ref(0)
 const hasMore = ref(false)
@@ -48,6 +58,9 @@ const searched = ref(false)
 const hasFilters = computed(
   () => keyword.value.trim().length > 0 || selectedTags.value.length > 0 || platform.value !== '',
 )
+
+/** WP37:本地过滤后的可见行(仅作用于已加载项;不发请求、不影响分页游标)。 */
+const visibleItems = computed(() => filterByStatus(items.value, statusFilter.value))
 
 function describeError(cause: unknown): string {
   if (cause instanceof ApiError) {
@@ -101,6 +114,7 @@ function resetFilters(): void {
   keyword.value = ''
   selectedTags.value = []
   platform.value = ''
+  statusFilter.value = ''
   reload()
 }
 
@@ -147,11 +161,25 @@ onMounted(async () => {
           placeholder="Search titles, statements and solution notes…"
         />
       </label>
+      <!-- WP37:状态筛选为本地过滤(仅作用于已加载项),不触发请求 -->
+      <label class="filters__field">
+        <span>Status</span>
+        <select v-model="statusFilter">
+          <option value="">All statuses</option>
+          <option value="AC">Solved</option>
+          <option value="TRIED">Tried</option>
+          <option value="UNSOLVED">Unsolved</option>
+        </select>
+      </label>
       <div class="filters__actions">
         <button type="submit" :disabled="loading">Search</button>
         <button type="button" :disabled="loading" @click="resetFilters">Reset</button>
       </div>
     </form>
+
+    <p v-if="statusFilter !== ''" class="filter-note">
+      Status filter applies to loaded items only — load more to expand the scope.
+    </p>
 
     <fieldset v-if="availableTags.length > 0" class="tags" aria-label="tag filters">
       <legend class="tags__legend">Tags (all selected required)</legend>
@@ -170,6 +198,9 @@ onMounted(async () => {
 
     <p v-if="error" class="state state--error" role="alert">{{ error }}</p>
     <p v-else-if="loading && items.length === 0" class="state">Searching…</p>
+    <p v-else-if="searched && !loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
+      No loaded items match the status filter. Load more or clear the filter.
+    </p>
     <p v-else-if="searched && !loading && items.length === 0 && hasFilters" class="state">
       No results matched. Adjust the keyword, tags or platform and retry.
     </p>
@@ -177,9 +208,31 @@ onMounted(async () => {
       No problems indexed yet. Browse problems by platform to cache statements first.
     </p>
 
-    <ul v-if="items.length > 0" class="results" aria-label="search results">
-      <li v-for="item in items" :key="`${item.platform}:${item.remoteId}`">
+    <ul v-if="visibleItems.length > 0" class="results" aria-label="search results">
+      <li v-for="item in visibleItems" :key="`${item.platform}:${item.remoteId}`">
         <button type="button" class="results__row" @click="openProblem(item)">
+          <span
+            class="status-icon"
+            :class="`status-icon--${statusIconOf(item).kind}`"
+            :title="statusIconOf(item).title"
+            :aria-label="statusIconOf(item).title || undefined"
+          >
+            <svg
+              v-if="statusIconOf(item).kind === 'locked'"
+              class="status-icon__lock"
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              aria-hidden="true"
+            >
+              <path
+                d="M4.5 7V5a3.5 3.5 0 1 1 7 0v2h1v7h-9V7h1zm2 0h3V5a1.5 1.5 0 1 0-3 0v2z"
+                fill="currentColor"
+              />
+            </svg>
+            <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
+            <template v-else-if="statusIconOf(item).kind === 'tried'">●</template>
+          </span>
           <span class="results__title">
             <span class="results__remote">
               <span class="platform-badge">{{ item.platform }}</span>
@@ -206,7 +259,9 @@ onMounted(async () => {
     </ul>
 
     <div v-if="items.length > 0" class="pager">
-      <span class="pager__count">{{ items.length }} of {{ total }}</span>
+      <span class="pager__count">
+        {{ statusFilter === '' ? items.length : `${visibleItems.length} of ${items.length}` }} of {{ total }}
+      </span>
       <button
         v-if="hasMore"
         type="button"
@@ -356,6 +411,7 @@ onMounted(async () => {
 .results__row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   width: 100%;
   text-align: left;
@@ -370,6 +426,40 @@ onMounted(async () => {
 .results__row:hover {
   border-color: var(--cq-accent);
   background: var(--cq-panel-raised);
+}
+
+/* WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做;主题变量配色) */
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.status-icon--ac {
+  color: var(--cq-diff-easy);
+}
+
+.status-icon--tried {
+  color: var(--cq-accent);
+  font-size: 10px;
+}
+
+.status-icon--locked,
+.status-icon__lock {
+  color: var(--cq-muted);
+}
+
+/* WP37:本地过滤范围说明(筛选激活时) */
+.filter-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--cq-muted);
 }
 
 .results__title {

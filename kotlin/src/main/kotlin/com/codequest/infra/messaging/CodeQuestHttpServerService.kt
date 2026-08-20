@@ -25,10 +25,12 @@ class CodeQuestHttpServerService(
 
     val httpServer: ResourceHttpServer =
         ResourceHttpServer(
-            // WP20:题目数据端点——平台经 SPI 注册表,存储按请求解析(数据库切换即时生效)
+            // WP20:题目数据端点——平台经 SPI 注册表,存储按请求解析(数据库切换即时生效);
+            // WP37:列表项附刷题状态(本地聚合,store 按请求解析)
             problemApi =
                 ProblemApi(
                     store = { project.getService(DatabaseManager::class.java).problemStore },
+                    statuses = { project.getService(DatabaseManager::class.java).problemStatusStore },
                 ),
             // WP21:提交记录端点——本地库分页查询,同样按请求解析(切库即时生效)
             submissionsApi =
@@ -48,10 +50,12 @@ class CodeQuestHttpServerService(
                 StatisticsApi(
                     submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
                 ),
-            // WP30:检索端点——本地库三源聚合 + 标签/平台过滤(store 按请求解析,切库即时生效)
+            // WP30:检索端点——本地库三源聚合 + 标签/平台过滤(store 按请求解析,切库即时生效);
+            // WP37:列表项附刷题状态(本地聚合,store 按请求解析)
             searchApi =
                 SearchApi(
                     store = { project.getService(DatabaseManager::class.java).searchStore },
+                    statuses = { project.getService(DatabaseManager::class.java).problemStatusStore },
                 ),
         )
 

@@ -53,7 +53,11 @@ class SearchApiHttpTest {
         problems = ExposedProblemRepository(db)
         server =
             ResourceHttpServer(
-                searchApi = SearchApi(store = { ExposedSearchStore(db) }),
+                searchApi =
+                    SearchApi(
+                        store = { ExposedSearchStore(db) },
+                        statuses = { com.codequest.infra.db.ExposedProblemStatusStore(db) },
+                    ),
             )
         server.start()
     }

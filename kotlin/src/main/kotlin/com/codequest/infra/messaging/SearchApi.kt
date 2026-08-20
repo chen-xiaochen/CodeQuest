@@ -1,9 +1,11 @@
 package com.codequest.infra.messaging
 
+import com.codequest.infra.db.ProblemStatusStore
 import com.codequest.infra.db.SearchHit
 import com.codequest.infra.db.SearchRequest
 import com.codequest.infra.db.SearchSource
 import com.codequest.infra.db.SearchStore
+import com.codequest.infra.db.SolveStatus
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -11,6 +13,9 @@ import kotlinx.serialization.json.Json
  * 跨题全文检索端点逻辑(WP30,infra 层,风格照抄 [StatisticsApi]):本地库三源
  * 聚合检索(标题/remoteId、题面 FTS5、题解笔记 FTS5 经 challenge 映射),数据经
  * [SearchStore] 出仓;协议纯 JSON(kotlinx.serialization)。
+ *
+ * WP37 起每项附加刷题状态([ProblemStatusStore] 本地聚合,零平台请求)与
+ * paidOnly 标记(语义见 [SearchItemDto])。
  *
  * 端点契约(由 [ResourceHttpServer] 挂载):
  * - `GET /api/search?keyword=&tags=a,b&platform=&limit=&offset=`:
@@ -31,6 +36,8 @@ import kotlinx.serialization.json.Json
  */
 class SearchApi(
     private val store: () -> SearchStore,
+    /** WP37:题目刷题状态聚合源(按请求解析,切库即时生效)。 */
+    private val statuses: () -> ProblemStatusStore,
     private val json: Json = DEFAULT_JSON,
 ) {
     /** `GET /api/search?keyword=&tags=&platform=&limit=&offset=`。 */
@@ -55,6 +62,8 @@ class SearchApi(
         val platform = query["platform"]?.trim()?.takeIf { it.isNotEmpty() }
 
         val page = store().search(SearchRequest(keyword = keyword, tags = tags, platform = platform, limit = limit, offset = offset))
+        // WP37:本页题目批量聚合刷题状态(未做 → UNSOLVED 兜底)
+        val statusById = statuses().statuses(page.items.map { it.problem.id })
         return ok(
             SearchResponseDto(
                 keyword = keyword,
@@ -63,7 +72,7 @@ class SearchApi(
                 offset = offset,
                 limit = limit,
                 total = page.total,
-                items = page.items.map { it.toDto() },
+                items = page.items.map { it.toDto(statusById[it.problem.id] ?: SolveStatus.UNSOLVED) },
                 hasMore = offset + page.items.size < page.total,
             ),
         )
@@ -80,7 +89,7 @@ class SearchApi(
     // 序列化与错误映射(照抄 StatisticsApi)
     // ------------------------------------------------------------------
 
-    private fun SearchHit.toDto() =
+    private fun SearchHit.toDto(status: SolveStatus) =
         SearchItemDto(
             platform = problem.platformId.value,
             remoteId = problem.remoteId,
@@ -89,6 +98,8 @@ class SearchApi(
             url = problem.url,
             tags = problem.tags.map { it.name },
             matchedSources = matchedSources.map { it.wireName },
+            status = status,
+            paidOnly = PAID_ONLY_UNAVAILABLE,
         )
 
     private val SearchSource.wireName: String
@@ -121,6 +132,9 @@ class SearchApi(
         private const val DEFAULT_LIMIT = 50
 
         private const val MAX_LIMIT = 100
+
+        /** WP37:本地库/SPI 均无会员标记前的 paidOnly 占位值(见 SearchItemDto.paidOnly KDoc)。 */
+        private const val PAID_ONLY_UNAVAILABLE = false
 
         private const val STATUS_OK = 200
 
@@ -158,6 +172,17 @@ private data class SearchItemDto(
     val tags: List<String> = emptyList(),
     /** 命中来源标记:"title"(标题/remoteId)/ "content"(题面)/ "note"(题解笔记);浏览模式为空数组。 */
     val matchedSources: List<String> = emptyList(),
+    /**
+     * WP37 刷题状态(本地聚合,零平台请求):该题全部工作区提交里任一 isSuccessful → AC;
+     * 有提交无 AC → TRIED;无提交 → UNSOLVED。多 challenge 取最高(AC > TRIED)。
+     */
+    val status: SolveStatus,
+    /**
+     * WP37 会员题标记(对齐原版状态列 🔒 语义;不与会员登录态联动——YAGNI):
+     * 本地题目主档无会员列、SPI 亦未透传(见 ProblemApi 的 ProblemItemDto 同名字段),
+     * **当前恒 false**——字段先行,前端按值渲染。
+     */
+    val paidOnly: Boolean,
 )
 
 @Serializable

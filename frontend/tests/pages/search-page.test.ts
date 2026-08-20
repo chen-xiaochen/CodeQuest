@@ -266,4 +266,64 @@ describe('search page', () => {
 
     expect(wrapper.find('.state--error').text()).toContain('bad-request')
   })
+
+  // -----------------------------------------------------------------
+  // WP37:状态列与本地筛选
+  // -----------------------------------------------------------------
+
+  const STATUS_ITEMS = [
+    { ...ITEMS[0], status: 'AC' },
+    { ...ITEMS[1], status: 'TRIED' },
+    { platform: 'leetcode', remoteId: 'fresh-one', title: 'Fresh', difficulty: 'Easy', url: 'u', tags: [], matchedSources: [] },
+    { ...ITEMS[0], remoteId: 'locked-one', title: 'Locked', status: 'TRIED', paidOnly: true },
+  ]
+
+  it('renders the status icon column per result row', async () => {
+    mockSearch(STATUS_ITEMS)
+    const wrapper = mount(SearchApp)
+    await flushPromises()
+
+    const rows = wrapper.findAll('.results__row')
+    expect(rows.length).toBe(4)
+    expect(rows[0].find('.status-icon--ac').exists()).toBe(true)
+    expect(rows[0].find('.status-icon').attributes('title')).toBe('Solved')
+    expect(rows[1].find('.status-icon--tried').exists()).toBe(true)
+    expect(rows[2].find('.status-icon--unsolved').exists()).toBe(true)
+    expect(rows[2].find('.status-icon').attributes('title')).toBe('')
+    expect(rows[3].find('.status-icon--locked').exists()).toBe(true)
+    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('Premium problem (locked)')
+  })
+
+  it('filters loaded results by status locally without refetching', async () => {
+    mockSearch(STATUS_ITEMS)
+    const wrapper = mount(SearchApp)
+    await flushPromises()
+    const callsAfterLoad = searchCalls.length
+
+    // 平台下拉为 select[0],状态下拉为 select[1]
+    const statusSelect = wrapper.findAll('select')[1]
+    await statusSelect.setValue('AC')
+    expect(wrapper.findAll('.results__row').length).toBe(1)
+    expect(wrapper.text()).toContain('1927A')
+
+    await statusSelect.setValue('UNSOLVED')
+    expect(wrapper.findAll('.results__row').length).toBe(1)
+    expect(wrapper.text()).toContain('fresh-one')
+
+    await statusSelect.setValue('')
+    expect(wrapper.findAll('.results__row').length).toBe(4)
+
+    // 本地过滤:筛选全程零新请求
+    expect(searchCalls.length).toBe(callsAfterLoad)
+  })
+
+  it('notes the loaded-items-only scope while the status filter is active', async () => {
+    mockSearch(STATUS_ITEMS)
+    const wrapper = mount(SearchApp)
+    await flushPromises()
+
+    expect(wrapper.find('.filter-note').exists()).toBe(false)
+    await wrapper.findAll('select')[1].setValue('TRIED')
+    expect(wrapper.find('.filter-note').text()).toContain('loaded items')
+  })
 })

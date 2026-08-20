@@ -2,8 +2,10 @@
 /**
  * 题目列表页(WP20 真实数据):平台下拉(/api/platforms)+ 关键字 + 难度筛选 +
  * 分页(加载更多);点击行经桥 nav:openProblem 打开题面工具窗口。
+ * WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做)+ 状态下拉——本地过滤
+ * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
  */
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_PROBLEM, cqBridge } from '../../bridge/cq-bridge'
 import {
@@ -14,6 +16,12 @@ import {
   type ProblemListItem,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
+import {
+  filterByStatus,
+  statusIconOf,
+  type ProblemStatusFields,
+  type ProblemStatusFilter,
+} from '../../lib/problemStatus'
 
 const PAGE_SIZE = 50
 const DIFFICULTY_OPTIONS = ['', 'easy', 'medium', 'hard'] as const
@@ -24,13 +32,18 @@ const platforms = ref<PlatformSummary[]>([])
 const platform = ref('')
 const keyword = ref('')
 const difficulty = ref('')
-const items = ref<ProblemListItem[]>([])
+/** WP37:状态下拉(本地过滤;'' = 全部)。 */
+const statusFilter = ref<ProblemStatusFilter>('')
+const items = ref<(ProblemListItem & ProblemStatusFields)[]>([])
 const offset = ref(0)
 const hasMore = ref(false)
 const loading = ref(false)
 const error = ref('')
 /** 后端错误码;auth-expired 时错误态附登录入口(1.0.x,如 leetcode.com 列表 401)。 */
 const errorCode = ref('')
+
+/** WP37:本地过滤后的可见行(仅作用于已加载项;不发请求、不影响分页游标)。 */
+const visibleItems = computed(() => filterByStatus(items.value, statusFilter.value))
 
 /** 登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
 const loginPending = ref(false)
@@ -100,6 +113,7 @@ function reload(): void {
 function resetFilters(): void {
   keyword.value = ''
   difficulty.value = ''
+  statusFilter.value = ''
   reload()
 }
 
@@ -156,11 +170,25 @@ onUnmounted(() => {
           </option>
         </select>
       </label>
+      <!-- WP37:状态筛选为本地过滤(仅作用于已加载项),不触发请求 -->
+      <label class="filters__field">
+        <span>Status</span>
+        <select v-model="statusFilter">
+          <option value="">All statuses</option>
+          <option value="AC">Solved</option>
+          <option value="TRIED">Tried</option>
+          <option value="UNSOLVED">Unsolved</option>
+        </select>
+      </label>
       <div class="filters__actions">
         <button type="submit" :disabled="loading || !platform">Search</button>
         <button type="button" :disabled="loading" @click="resetFilters">Reset</button>
       </div>
     </form>
+
+    <p v-if="statusFilter !== ''" class="filter-note">
+      Status filter applies to loaded items only — load more to expand the scope.
+    </p>
 
     <p v-if="error" class="state state--error" role="alert">
       {{ error }}
@@ -175,11 +203,36 @@ onUnmounted(() => {
       </button>
     </p>
     <p v-else-if="loading && items.length === 0" class="state">Loading problems…</p>
+    <p v-else-if="!loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
+      No loaded items match the status filter. Load more or clear the filter.
+    </p>
     <p v-else-if="!loading && items.length === 0" class="state">No problems matched. Adjust the filters and retry.</p>
 
-    <ul v-if="items.length > 0" class="problems" aria-label="problem list">
-      <li v-for="item in items" :key="item.remoteId">
+    <ul v-if="visibleItems.length > 0" class="problems" aria-label="problem list">
+      <li v-for="item in visibleItems" :key="item.remoteId">
         <button type="button" class="problems__row" @click="openProblem(item)">
+          <span
+            class="status-icon"
+            :class="`status-icon--${statusIconOf(item).kind}`"
+            :title="statusIconOf(item).title"
+            :aria-label="statusIconOf(item).title || undefined"
+          >
+            <svg
+              v-if="statusIconOf(item).kind === 'locked'"
+              class="status-icon__lock"
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              aria-hidden="true"
+            >
+              <path
+                d="M4.5 7V5a3.5 3.5 0 1 1 7 0v2h1v7h-9V7h1zm2 0h3V5a1.5 1.5 0 1 0-3 0v2z"
+                fill="currentColor"
+              />
+            </svg>
+            <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
+            <template v-else-if="statusIconOf(item).kind === 'tried'">●</template>
+          </span>
           <span class="problems__title">
             <span class="problems__remote">{{ item.remoteId }}</span>
             {{ item.title }}
@@ -193,7 +246,9 @@ onUnmounted(() => {
     </ul>
 
     <div v-if="items.length > 0" class="pager">
-      <span class="pager__count">{{ items.length }} loaded</span>
+      <span class="pager__count">
+        {{ statusFilter === '' ? items.length : `${visibleItems.length} of ${items.length}` }} loaded
+      </span>
       <button
         v-if="hasMore"
         type="button"
@@ -311,6 +366,7 @@ onUnmounted(() => {
 .problems__row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   width: 100%;
   text-align: left;
@@ -325,6 +381,40 @@ onUnmounted(() => {
 .problems__row:hover {
   border-color: var(--cq-accent);
   background: var(--cq-panel-raised);
+}
+
+/* WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做;主题变量配色) */
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.status-icon--ac {
+  color: var(--cq-diff-easy);
+}
+
+.status-icon--tried {
+  color: var(--cq-accent);
+  font-size: 10px;
+}
+
+.status-icon--locked,
+.status-icon__lock {
+  color: var(--cq-muted);
+}
+
+/* WP37:本地过滤范围说明(筛选激活时) */
+.filter-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--cq-muted);
 }
 
 .problems__title {

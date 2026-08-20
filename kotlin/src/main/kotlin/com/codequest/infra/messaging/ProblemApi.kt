@@ -12,7 +12,9 @@ import com.codequest.core.model.ProblemId
 import com.codequest.core.model.RateLimitedException
 import com.codequest.core.model.Tag
 import com.codequest.core.model.TagId
+import com.codequest.infra.db.ProblemStatusStore
 import com.codequest.infra.db.ProblemStore
+import com.codequest.infra.db.SolveStatus
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemFilter
@@ -27,6 +29,9 @@ import java.util.logging.Logger
  * 题目数据 REST 端点逻辑(WP20,infra 层):平台数据经 SPI(OJPlatformRegistry)拉取,
  * 结果经 [ProblemStore] 落本地库缓存;协议纯 JSON(kotlinx.serialization)。
  *
+ * WP37 起列表项附加刷题状态([ProblemStatusStore] 本地聚合,零平台请求)与
+ * paidOnly 标记(语义见 [ProblemItemDto])。
+ *
  * 端点契约(由 [ResourceHttpServer] 挂载,详细文档见 WP20 报告):
  * - `GET /api/platforms`:支持题目查询的平台(id + displayName)
  * - `GET /api/problems?platform=&keyword=&difficulty=&tags=&limit=&offset=`:列表 + 落库
@@ -39,6 +44,8 @@ import java.util.logging.Logger
  */
 class ProblemApi(
     private val store: () -> ProblemStore,
+    /** WP37:题目刷题状态聚合源(按请求解析,切库即时生效)。 */
+    private val statuses: () -> ProblemStatusStore,
     private val platforms: () -> List<OJPlatform> = OJPlatformRegistry::all,
     private val json: Json = DEFAULT_JSON,
     private val now: () -> Instant = Instant::now,
@@ -83,12 +90,14 @@ class ProblemApi(
                 ),
             )
         }
+        // WP37:主档落库后按确定性 problemId 批量聚合刷题状态(未做 → UNSOLVED 兜底)
+        val statusById = statuses().statuses(items.map { problemId(platform.id, it.remoteId) })
         return ok(
             ProblemListResponseDto(
                 platform = platform.id.value,
                 offset = filter.offset,
                 limit = filter.limit,
-                items = items.map { it.toDto() },
+                items = items.map { it.toDto(statusById[problemId(platform.id, it.remoteId)] ?: SolveStatus.UNSOLVED) },
                 hasMore = items.size == filter.limit,
             ),
         )
@@ -291,13 +300,18 @@ internal fun problemId(
 /** 确定性标签 id:同名标签跨平台共享一行(主档 save 为全量替换,幂等)。 */
 private fun tagId(name: String) = Tag(TagId("tag:$name"), name)
 
-private fun com.codequest.spi.ProblemSummary.toDto() =
+/** WP37:SPI 未透传会员标记前的 paidOnly 占位值(见 ProblemItemDto.paidOnly KDoc)。 */
+private const val PAID_ONLY_UNAVAILABLE = false
+
+private fun com.codequest.spi.ProblemSummary.toDto(status: SolveStatus) =
     ProblemItemDto(
         remoteId = remoteId,
         title = title,
         difficulty = difficulty.value,
         url = url,
         tags = tags,
+        status = status,
+        paidOnly = PAID_ONLY_UNAVAILABLE,
     )
 
 private fun Problem.toDetailDto(
@@ -345,6 +359,18 @@ private data class ProblemItemDto(
     val difficulty: String,
     val url: String,
     val tags: List<String> = emptyList(),
+    /**
+     * WP37 刷题状态(本地聚合,零平台请求):该题全部工作区提交里任一 isSuccessful → AC;
+     * 有提交无 AC → TRIED;无提交 → UNSOLVED。多 challenge 取最高(AC > TRIED)。
+     */
+    val status: SolveStatus,
+    /**
+     * WP37 会员题标记(对齐原版状态列 🔒 语义;不与会员登录态联动——YAGNI):
+     * SPI [com.codequest.spi.ProblemSummary] 现契约未透传该标记(WP17 KDoc 预留,
+     * 如 LC 列表 paidOnly / HR premium),故**当前恒 false**——字段先行,后续 SPI
+     * 扩展透传后端到端自然生效,前端按值渲染。
+     */
+    val paidOnly: Boolean,
 )
 
 @Serializable

@@ -1,6 +1,7 @@
 package com.codequest.platform.hackerrank
 
 import com.codequest.infra.db.ExposedProblemRepository
+import com.codequest.infra.db.ExposedProblemStatusStore
 import com.codequest.infra.db.newTempDatabase
 import com.codequest.infra.messaging.ProblemApi
 import com.codequest.infra.messaging.ResourceHttpServer
@@ -121,7 +122,14 @@ class HackerRankPlatformTest {
             )
         }
         val (db, _) = newTempDatabase()
-        val server = ResourceHttpServer(problemApi = ProblemApi(store = { ExposedProblemRepository(db) }))
+        val server =
+            ResourceHttpServer(
+                problemApi =
+                    ProblemApi(
+                        store = { ExposedProblemRepository(db) },
+                        statuses = { ExposedProblemStatusStore(db) },
+                    ),
+            )
         val client = HttpClient.newHttpClient()
         try {
             server.start()

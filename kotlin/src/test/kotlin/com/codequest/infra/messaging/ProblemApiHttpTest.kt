@@ -77,7 +77,11 @@ class ProblemApiHttpTest {
         OJPlatformRegistryTestHelper.inject(leetcode, failing)
         server =
             ResourceHttpServer(
-                problemApi = ProblemApi(store = { repo }),
+                problemApi =
+                    ProblemApi(
+                        store = { repo },
+                        statuses = { com.codequest.infra.db.ExposedProblemStatusStore(db) },
+                    ),
             )
         server.start()
     }

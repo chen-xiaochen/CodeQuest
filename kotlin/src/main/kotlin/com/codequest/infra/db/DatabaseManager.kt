@@ -47,6 +47,10 @@ class ManagedDatabase(
     val searchStore: SearchStore
         get() = handle.search
 
+    /** 题目刷题状态聚合端口(WP37),独立实现实例(不改既有仓库)。 */
+    val problemStatusStore: ProblemStatusStore
+        get() = handle.statuses
+
     /** 具体类型(WP21):除 [SubmissionRepository] 契约外提供 submissions 端点用的分页查询。 */
     val submissionRepository: ExposedSubmissionRepository
         get() = handle.submission
@@ -94,6 +98,7 @@ class ManagedDatabase(
         // 具体类型暴露(WP20):同一实例同时充当 ProblemRepository 与 ProblemStore
         val problem: ExposedProblemRepository by lazy { ExposedProblemRepository(db) }
         val search: ExposedSearchStore by lazy { ExposedSearchStore(db) }
+        val statuses: ExposedProblemStatusStore by lazy { ExposedProblemStatusStore(db) }
         val submission by lazy { ExposedSubmissionRepository(db) }
         val challenge by lazy { ExposedChallengeRepository(db) }
         val solution by lazy { ExposedSolutionRepository(db) }
@@ -135,6 +140,10 @@ class DatabaseManager(
     /** 跨题全文检索端口(WP30):三源聚合 + 标签/平台过滤;随切库指向新句柄。 */
     val searchStore: SearchStore
         get() = managed.searchStore
+
+    /** 题目刷题状态聚合端口(WP37):题目 → AC/TRIED/UNSOLVED;随切库指向新句柄。 */
+    val problemStatusStore: ProblemStatusStore
+        get() = managed.problemStatusStore
 
     val submissionRepository: ExposedSubmissionRepository
         get() = managed.submissionRepository

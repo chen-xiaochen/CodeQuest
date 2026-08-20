@@ -213,4 +213,114 @@ describe('problems page', () => {
     expect(last).toContain('keyword=two')
     expect(last).toContain('difficulty=easy')
   })
+
+  // -----------------------------------------------------------------
+  // WP37:状态列与本地筛选
+  // -----------------------------------------------------------------
+
+  const STATUS_ROWS = [
+    { remoteId: 'ac-one', title: 'AC One', difficulty: 'Easy', url: 'u1', tags: [], status: 'AC' },
+    { remoteId: 'tried-one', title: 'Tried One', difficulty: 'Medium', url: 'u2', tags: [], status: 'TRIED' },
+    { remoteId: 'fresh-one', title: 'Fresh One', difficulty: 'Easy', url: 'u3', tags: [] },
+    { remoteId: 'locked-one', title: 'Locked One', difficulty: 'Hard', url: 'u4', tags: [], status: 'AC', paidOnly: true },
+  ]
+
+  it('renders the status icon column per row (lock > ac > tried > unsolved)', async () => {
+    mockListPage(STATUS_ROWS, false)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const rows = wrapper.findAll('.problems__row')
+    expect(rows.length).toBe(4)
+    expect(rows[0].find('.status-icon--ac').exists()).toBe(true)
+    expect(rows[0].find('.status-icon').attributes('title')).toBe('Solved')
+    expect(rows[1].find('.status-icon--tried').exists()).toBe(true)
+    expect(rows[1].find('.status-icon').attributes('title')).toBe('Tried')
+    // 未做:占位图标存在但无提示文案(原版 Unsolved 渲染空)
+    expect(rows[2].find('.status-icon--unsolved').exists()).toBe(true)
+    expect(rows[2].find('.status-icon').attributes('title')).toBe('')
+    // 会员题:锁优先于刷题状态(即使 status=AC)
+    expect(rows[3].find('.status-icon--locked').exists()).toBe(true)
+    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('Premium problem (locked)')
+    expect(rows[3].find('.status-icon--ac').exists()).toBe(false)
+  })
+
+  it('filters loaded rows by status locally without refetching', async () => {
+    let listCalls = 0
+    handler = (url) => {
+      if (url.startsWith('/api/platforms')) {
+        return { status: 200, body: { platforms: [{ id: 'leetcode', displayName: 'LeetCode' }] } }
+      }
+      if (url.startsWith('/api/problems')) {
+        listCalls += 1
+        return { status: 200, body: { platform: 'leetcode', offset: 0, limit: 50, items: STATUS_ROWS, hasMore: false } }
+      }
+      return undefined
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    expect(wrapper.findAll('.problems__row').length).toBe(4)
+    const callsAfterLoad = listCalls
+
+    const statusSelect = wrapper.findAll('select')[2]
+    await statusSelect.setValue('AC')
+    expect(wrapper.findAll('.problems__row').length).toBe(2)
+    expect(wrapper.text()).toContain('ac-one')
+    expect(wrapper.text()).toContain('locked-one')
+    expect(wrapper.text()).not.toContain('tried-one')
+
+    await statusSelect.setValue('TRIED')
+    expect(wrapper.findAll('.problems__row').length).toBe(1)
+
+    await statusSelect.setValue('UNSOLVED')
+    expect(wrapper.findAll('.problems__row').length).toBe(1)
+    expect(wrapper.text()).toContain('fresh-one')
+
+    await statusSelect.setValue('')
+    expect(wrapper.findAll('.problems__row').length).toBe(4)
+
+    // 本地过滤:筛选全程零新请求
+    expect(listCalls).toBe(callsAfterLoad)
+  })
+
+  it('notes that the status filter only applies to loaded items', async () => {
+    mockListPage(STATUS_ROWS, false)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    expect(wrapper.find('.filter-note').exists()).toBe(false)
+    await wrapper.findAll('select')[2].setValue('AC')
+    expect(wrapper.find('.filter-note').exists()).toBe(true)
+    expect(wrapper.find('.filter-note').text()).toContain('loaded items')
+
+    await wrapper.findAll('select')[2].setValue('')
+    expect(wrapper.find('.filter-note').exists()).toBe(false)
+  })
+
+  it('shows a dedicated empty hint when no loaded item matches the filter', async () => {
+    const onlyAc = [STATUS_ROWS[0]]
+    mockListPage(onlyAc, false)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[2].setValue('TRIED')
+
+    expect(wrapper.findAll('.problems__row').length).toBe(0)
+    expect(wrapper.find('.state').text()).toContain('No loaded items match the status filter')
+  })
+
+  it('reset clears the status filter along with the other filters', async () => {
+    mockListPage(STATUS_ROWS, false)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[2].setValue('TRIED')
+    expect(wrapper.findAll('.problems__row').length).toBe(1)
+
+    await wrapper.findAll('button').find((btn) => btn.text() === 'Reset')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.problems__row').length).toBe(4)
+  })
 })
