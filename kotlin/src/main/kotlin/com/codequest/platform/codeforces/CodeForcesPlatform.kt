@@ -2,6 +2,7 @@ package com.codequest.platform.codeforces
 
 import com.codequest.core.model.PlatformId
 import com.codequest.core.model.SubmissionResult
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.AntiBotChallengeHandler
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.ContestCapable
@@ -60,6 +61,7 @@ class CodeForcesPlatform(
             displayName = "CodeForces",
             iconPath = null,
             supportedLanguages = CodeForcesLanguages.ALL,
+            templateStyle = TemplateStyle.ACM,
         )
 
     // 显式委托(而非 `by` 委托):避免超类列表委托表达式在属性初始化前求值的顺序坑
@@ -67,6 +69,10 @@ class CodeForcesPlatform(
     override suspend fun ensureLoggedIn(): LoginSession = auth.ensureLoggedIn()
 
     override fun isLoggedIn(): Boolean = auth.isLoggedIn()
+
+    override fun currentSession(): LoginSession? = auth.currentSession()
+
+    override suspend fun restoreSession(): LoginSession? = auth.restoreSession()
 
     override suspend fun logout() = auth.logout()
 

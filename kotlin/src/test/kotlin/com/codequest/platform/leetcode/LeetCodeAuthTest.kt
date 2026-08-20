@@ -87,6 +87,75 @@ class LeetCodeAuthTest {
         assertNull(store.map[LeetCodeVariant.LEETCODE.id])
     }
 
+    /** WP44:无已存凭据时 restoreSession 静默返回 null,绝不弹 cookiePrompt。 */
+    @Test
+    fun `restoreSession stays silent returning null without stored credentials`() = runBlocking {
+        var prompted = false
+        val leetCodeAuth =
+            auth(
+                transportWith(signedIn = true),
+                prompt =
+                    LeetCodeAuth.CookiePrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(leetCodeAuth.restoreSession())
+        assertNull(leetCodeAuth.currentSession())
+        assertFalse(prompted) // 静默恢复:不触发交互登录
+    }
+
+    /** WP44:有效已存凭据静默注入校验成功,会话与快照就位。 */
+    @Test
+    fun `restoreSession silently restores valid stored credentials`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[LeetCodeVariant.LEETCODE.id] = "LEETCODE_SESSION=s3cret"
+            }
+        val leetCodeAuth =
+            auth(
+                transportWith(signedIn = true),
+                store,
+                prompt =
+                    LeetCodeAuth.CookiePrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        val session = leetCodeAuth.restoreSession()
+
+        assertEquals("alice", session?.userId)
+        assertEquals("alice", leetCodeAuth.currentSession()?.userId)
+        assertFalse(prompted)
+    }
+
+    /** WP44:已存凭据失效时静默返回 null,不落交互登录。 */
+    @Test
+    fun `restoreSession returns null for invalid stored credentials without prompting`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[LeetCodeVariant.LEETCODE.id] = "LEETCODE_SESSION=stale"
+            }
+        val leetCodeAuth =
+            auth(
+                transportWith(signedIn = false),
+                store,
+                prompt =
+                    LeetCodeAuth.CookiePrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(leetCodeAuth.restoreSession())
+        assertNull(leetCodeAuth.currentSession())
+        assertFalse(prompted)
+    }
+
     @Test
     fun `logout removes secret clears jar and resets snapshot`() = runBlocking {
         val store =

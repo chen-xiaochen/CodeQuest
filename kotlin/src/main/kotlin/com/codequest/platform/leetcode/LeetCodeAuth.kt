@@ -10,10 +10,10 @@ import com.codequest.spi.OJTransport
  * LeetCode cookie 登录(WP19):AuthCapable 实现。
  *
  * 流程(参考旧实现「浏览器登录后粘贴 cookie」形态,UI 对话框在 WP21 接线):
- * 1. **内存会话复用**:已校验通过直接返回;
- * 2. **启动恢复**:从 [OJCredentialStore] 读上次保存的 cookie 串 → 注入 transport
- *    CookieJar → `globalData` 校验登录态;
- * 3. **交互登录**:[cookiePrompt] 弹出粘贴输入(WP20/21 注入真实对话框;默认实现
+ * 1. **内存会话复用 + 启动恢复**(WP44 起归 [restoreSession],静默不弹 prompt):
+ *    已校验直接返回;否则从 [OJCredentialStore] 读上次保存的 cookie 串 → 注入
+ *    transport CookieJar → `globalData` 校验登录态;
+ * 2. **交互登录**:[cookiePrompt] 弹出粘贴输入(WP20/21 注入真实对话框;默认实现
  *    返回 null 即触发 [AuthExpiredException],保持无 UI 依赖),校验通过后
  *    **原文持久化**到 credential store。
  *
@@ -42,13 +42,8 @@ class LeetCodeAuth(
     override fun isLoggedIn(): Boolean = verified
 
     override suspend fun ensureLoggedIn(): LoginSession {
-        session?.takeIf { verified }?.let { return it }
-
-        // 启动恢复:上次保存的 cookie 注入并校验
-        val stored = credentialStore.load(variant.id)
-        if (stored != null && injectAndVerify(stored)) {
-            return requireNotNull(session)
-        }
+        // 内存会话复用 + 启动恢复(静默)归 restoreSession
+        restoreSession()?.let { return it }
 
         // 交互登录:粘贴 cookie → 校验 → 持久化
         val pasted =
@@ -59,6 +54,15 @@ class LeetCodeAuth(
         }
         credentialStore.save(variant.id, pasted)
         return requireNotNull(session)
+    }
+
+    override fun currentSession(): LoginSession? = session?.takeIf { verified }
+
+    /** 静默恢复(WP44):只读已存 cookie 注入校验,绝不弹 [cookiePrompt];失败返回 null。 */
+    override suspend fun restoreSession(): LoginSession? {
+        session?.takeIf { verified }?.let { return it }
+        val stored = credentialStore.load(variant.id) ?: return null
+        return if (injectAndVerify(stored)) session else null
     }
 
     /** 注入 cookie 并经 globalData 校验;任何网络/鉴权异常按「未登录」处理走后续流程。 */

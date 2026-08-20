@@ -1,6 +1,7 @@
 package com.codequest.spi
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import com.intellij.openapi.project.Project
 import kotlinx.coroutines.runBlocking
 import java.lang.reflect.Proxy
@@ -21,7 +22,7 @@ class OJAuthPromptsTest {
     ) : OJPlatform {
         override val id = PlatformId(id)
         override val domain = "$id.example.com"
-        override val info = PlatformInfo(displayName = id.uppercase())
+        override val info = PlatformInfo(displayName = id.uppercase(), templateStyle = TemplateStyle.ACM)
     }
 
     /** 只认领自己 platformIds 的假 provider;prompt 以标签区分来源。 */

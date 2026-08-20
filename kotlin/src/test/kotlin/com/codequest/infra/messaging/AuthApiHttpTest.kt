@@ -1,6 +1,7 @@
 package com.codequest.infra.messaging
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.LoginSession
 import com.codequest.spi.OJPlatform
@@ -34,7 +35,7 @@ class AuthApiHttpTest {
         AuthCapable {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
-        override val info = PlatformInfo(displayName = platformId.value)
+        override val info = PlatformInfo(displayName = platformId.value, templateStyle = TemplateStyle.ACM)
 
         override suspend fun ensureLoggedIn(): LoginSession = LoginSession(platformId, "user")
 
@@ -47,7 +48,7 @@ class AuthApiHttpTest {
     private class BarePlatform(platformId: PlatformId) : OJPlatform {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
-        override val info = PlatformInfo(displayName = platformId.value)
+        override val info = PlatformInfo(displayName = platformId.value, templateStyle = TemplateStyle.ACM)
     }
 
     @BeforeTest

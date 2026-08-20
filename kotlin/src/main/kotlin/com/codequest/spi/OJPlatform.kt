@@ -1,6 +1,7 @@
 package com.codequest.spi
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import kotlinx.serialization.Serializable
 
 /**
@@ -26,7 +27,7 @@ interface OJPlatform {
     val info: PlatformInfo
 }
 
-/** 平台展示信息(WP17,YAGNI 最小集)。 */
+/** 平台展示信息(WP17,YAGNI 最小集;WP44 增补模版风格声明)。 */
 @Serializable
 data class PlatformInfo(
     val displayName: String,
@@ -34,6 +35,8 @@ data class PlatformInfo(
     val iconPath: String? = null,
     /** 该平台接受的提交语言列表(供提交对话框选择)。 */
     val supportedLanguages: List<LanguageInfo> = emptyList(),
+    /** 入口文件默认模版风格(WP44):LEETCODE=函数版、ACM=stdin/stdout 竞赛版。 */
+    val templateStyle: TemplateStyle,
 )
 
 /**

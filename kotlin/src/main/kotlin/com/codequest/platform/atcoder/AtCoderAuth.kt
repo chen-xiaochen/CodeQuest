@@ -23,8 +23,9 @@ import com.codequest.spi.OJTransport
  *   getUserInfo 事实),缺失兜底 "unknown"(旧实现跳过用户主页/头像,富信息不进
  *   SPI 契约)。
  *
- * 流程与 LeetCode/CodeForces 同构:内存会话复用 → 启动恢复(credential store
- * 原文 → 注入 transport → settings 校验)→ 交互登录 → 校验通过后原文持久化。
+ * 流程与 LeetCode/CodeForces 同构:内存会话复用 + 启动恢复(WP44 起归
+ * [restoreSession]:credential store 原文 → 注入 transport → settings 校验,
+ * 静默不弹 prompt)→ 交互登录 → 校验通过后原文持久化。
  */
 class AtCoderAuth(
     private val api: AtCoderApi,
@@ -42,12 +43,8 @@ class AtCoderAuth(
     override fun isLoggedIn(): Boolean = verified
 
     override suspend fun ensureLoggedIn(): LoginSession {
-        session?.takeIf { verified }?.let { return it }
-
-        val stored = credentialStore.load(ATCODER_PLATFORM_ID)
-        if (stored != null && injectAndVerify(stored)) {
-            return requireNotNull(session)
-        }
+        // 内存会话复用 + 启动恢复(静默)归 restoreSession
+        restoreSession()?.let { return it }
 
         val pasted =
             prompt.requestCredentials()
@@ -57,6 +54,15 @@ class AtCoderAuth(
         }
         credentialStore.save(ATCODER_PLATFORM_ID, pasted)
         return requireNotNull(session)
+    }
+
+    override fun currentSession(): LoginSession? = session?.takeIf { verified }
+
+    /** 静默恢复(WP44):只读已存 cookie 注入校验,绝不弹 [prompt];失败返回 null。 */
+    override suspend fun restoreSession(): LoginSession? {
+        session?.takeIf { verified }?.let { return it }
+        val stored = credentialStore.load(ATCODER_PLATFORM_ID) ?: return null
+        return if (injectAndVerify(stored)) session else null
     }
 
     /** 注入 cookie 并经 settings 页校验;网络/解析异常按「未登录」处理走后续流程。 */

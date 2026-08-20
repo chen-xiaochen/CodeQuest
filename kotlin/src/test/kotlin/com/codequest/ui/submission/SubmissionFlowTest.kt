@@ -8,6 +8,7 @@ import com.codequest.core.model.SubmissionId
 import com.codequest.core.model.SubmissionResult
 import com.codequest.core.model.SubmissionTimeoutException
 import com.codequest.core.repository.SubmissionRepository
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.PlatformInfo
 import com.codequest.spi.SubmissionCapable
@@ -39,7 +40,7 @@ class SubmissionFlowTest {
 
         override val id = PlatformId("fake")
         override val domain = "fake.test"
-        override val info = PlatformInfo(displayName = "Fake")
+        override val info = PlatformInfo(displayName = "Fake", templateStyle = TemplateStyle.ACM)
 
         override suspend fun submit(request: SubmitRequest): SubmissionHandle {
             submitCalls++

@@ -10,12 +10,26 @@ import kotlinx.serialization.Serializable
  *   如 cookie 粘贴对话框 / JCEF 账号登录),完成后返回会话;
  * - [isLoggedIn]:同步快照判断,只用于 UI 状态展示,不可作为提交前置判断
  *   (远端校验归 [ensureLoggedIn],失效时抛 AuthExpiredException);
+ * - [currentSession] / [restoreSession]:WP44 会话快照与静默启动恢复,
+ *   默认实现返回 null(零破坏既有 fake),平台适配器应覆盖;
  * - [logout]:清除本地会话凭据;未登录时为无害 no-op。
  *
  * 线程/协程约定见 [OJPlatform];实现只抛 core 领域异常体系。
  */
 interface AuthCapable {
     suspend fun ensureLoggedIn(): LoginSession
+
+    /**
+     * 同步只读会话快照(WP44):返回当前已校验会话;未登录/未实现返回 null。
+     * 仅供 UI 展示用户名,不触发网络;登录实时性归 [ensureLoggedIn]。
+     */
+    fun currentSession(): LoginSession? = null
+
+    /**
+     * 静默启动恢复(WP44):只尝试「凭据存储读已存凭据 → 注入 → 校验」,
+     * **绝不弹交互 prompt**;失败返回 null,交由 [ensureLoggedIn] 走交互流程。
+     */
+    suspend fun restoreSession(): LoginSession? = null
 
     fun isLoggedIn(): Boolean
 

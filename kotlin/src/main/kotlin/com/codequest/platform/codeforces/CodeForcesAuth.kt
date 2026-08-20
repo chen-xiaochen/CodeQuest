@@ -21,9 +21,9 @@ import com.codequest.spi.OJTransport
  * - **登录态校验**:`GET /settings/general`,HTML 出现 `div.userbox` 即已登录
  *   (旧 checkLogin 事实);用户名取侧栏 avatar 第 2 个链接,缺失兜底 "unknown"。
  *
- * 流程与 [com.codequest.platform.leetcode.LeetCodeAuth] 同构:内存会话复用 →
- * 启动恢复(credential store 原文 → 注入 transport → settings 校验)→ 交互登录
- * → 校验通过后原文持久化。
+ * 流程与 [com.codequest.platform.leetcode.LeetCodeAuth] 同构:内存会话复用 +
+ * 启动恢复(WP44 起归 [restoreSession]:credential store 原文 → 注入 transport →
+ * settings 校验,静默不弹 prompt)→ 交互登录 → 校验通过后原文持久化。
  */
 class CodeForcesAuth(
     private val api: CodeForcesApi,
@@ -41,12 +41,8 @@ class CodeForcesAuth(
     override fun isLoggedIn(): Boolean = verified
 
     override suspend fun ensureLoggedIn(): LoginSession {
-        session?.takeIf { verified }?.let { return it }
-
-        val stored = credentialStore.load(CODEFORCES_PLATFORM_ID)
-        if (stored != null && injectAndVerify(stored)) {
-            return requireNotNull(session)
-        }
+        // 内存会话复用 + 启动恢复(静默)归 restoreSession
+        restoreSession()?.let { return it }
 
         val pasted =
             prompt.requestCredentials()
@@ -56,6 +52,15 @@ class CodeForcesAuth(
         }
         credentialStore.save(CODEFORCES_PLATFORM_ID, pasted)
         return requireNotNull(session)
+    }
+
+    override fun currentSession(): LoginSession? = session?.takeIf { verified }
+
+    /** 静默恢复(WP44):只读已存 cookie 注入校验,绝不弹 [prompt];失败返回 null。 */
+    override suspend fun restoreSession(): LoginSession? {
+        session?.takeIf { verified }?.let { return it }
+        val stored = credentialStore.load(CODEFORCES_PLATFORM_ID) ?: return null
+        return if (injectAndVerify(stored)) session else null
     }
 
     /** 注入 cookie 并经 settings 页校验;网络/解析异常按「未登录」处理走后续流程。 */

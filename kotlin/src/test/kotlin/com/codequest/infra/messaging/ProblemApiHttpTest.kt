@@ -5,6 +5,7 @@ import com.codequest.core.model.OJException
 import com.codequest.core.model.PlatformId
 import com.codequest.core.model.ProblemId
 import com.codequest.core.model.RateLimitedException
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.infra.db.ExposedProblemRepository
 import com.codequest.infra.db.newTempDatabase
 import com.codequest.platform.leetcode.FakeOJTransport
@@ -53,7 +54,7 @@ class ProblemApiHttpTest {
     private inner class FailingPlatform : OJPlatform, ProblemQueryCapable {
         override val id = PlatformId("failing")
         override val domain = "failing.example.com"
-        override val info = PlatformInfo(displayName = "Failing")
+        override val info = PlatformInfo(displayName = "Failing", templateStyle = TemplateStyle.ACM)
 
         override fun queryProblems(filter: ProblemFilter): Flow<ProblemSummary> =
             flow {

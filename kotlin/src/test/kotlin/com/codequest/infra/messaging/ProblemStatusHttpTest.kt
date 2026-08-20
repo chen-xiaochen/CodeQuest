@@ -11,6 +11,7 @@ import com.codequest.core.model.SubmissionId
 import com.codequest.core.model.SubmissionResult
 import com.codequest.core.model.Tag
 import com.codequest.core.model.TagId
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.infra.db.CodeQuestDatabase
 import com.codequest.infra.db.ExposedChallengeRepository
 import com.codequest.infra.db.ExposedProblemRepository
@@ -61,7 +62,7 @@ class ProblemStatusHttpTest {
     private object FakePlatform : OJPlatform, ProblemQueryCapable {
         override val id = PlatformId("fakeoj")
         override val domain = "fakeoj.example.com"
-        override val info = PlatformInfo(displayName = "FakeOJ")
+        override val info = PlatformInfo(displayName = "FakeOJ", templateStyle = TemplateStyle.ACM)
 
         val remoteIds = listOf("ac-problem", "tried-problem", "fresh-problem", "multi-problem")
 

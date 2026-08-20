@@ -1,6 +1,7 @@
 package com.codequest.ui.toolwindow
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.LanguageInfo
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.PlatformInfo
@@ -26,7 +27,7 @@ class ChallengeCreateBridgeTest {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
         override val info =
-            PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = languages)
+            PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = languages, templateStyle = TemplateStyle.ACM)
     }
 
     private fun language(id: String) = LanguageInfo(id = "x-$id", displayName = id, workspaceLanguageId = id)

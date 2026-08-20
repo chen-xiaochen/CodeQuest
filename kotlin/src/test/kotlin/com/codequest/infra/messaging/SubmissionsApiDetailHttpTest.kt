@@ -9,6 +9,7 @@ import com.codequest.core.model.Submission
 import com.codequest.core.model.SubmissionId
 import com.codequest.core.model.SubmissionResult
 import com.codequest.core.model.OJException
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.infra.db.CodeQuestDatabase
 import com.codequest.infra.db.ExposedChallengeRepository
 import com.codequest.infra.db.ExposedSubmissionRepository
@@ -59,7 +60,7 @@ class SubmissionsApiDetailHttpTest {
     ) : OJPlatform,
         SubmissionDetailCapable {
         override val domain: String = "${id.value}.example.com"
-        override val info: PlatformInfo = PlatformInfo(displayName = id.value)
+        override val info: PlatformInfo = PlatformInfo(displayName = id.value, templateStyle = TemplateStyle.ACM)
 
         override suspend fun fetchSubmissionDetail(
             remoteSubmissionId: String,
@@ -80,7 +81,7 @@ class SubmissionsApiDetailHttpTest {
         override val id: PlatformId,
     ) : OJPlatform {
         override val domain: String = "${id.value}.example.com"
-        override val info: PlatformInfo = PlatformInfo(displayName = id.value)
+        override val info: PlatformInfo = PlatformInfo(displayName = id.value, templateStyle = TemplateStyle.ACM)
     }
 
     @BeforeTest

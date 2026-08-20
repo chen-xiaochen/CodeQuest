@@ -2,6 +2,7 @@ package com.codequest.ui.toolwindow
 
 import com.codequest.core.model.OJException
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.LoginSession
 import com.codequest.spi.OJPlatform
@@ -29,7 +30,7 @@ class AuthLoginBridgeTest {
         AuthCapable {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
-        override val info = PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = emptyList())
+        override val info = PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = emptyList(), templateStyle = TemplateStyle.ACM)
 
         override suspend fun ensureLoggedIn(): LoginSession = auth.ensureLoggedIn()
 
@@ -42,7 +43,7 @@ class AuthLoginBridgeTest {
     private class BarePlatform(platformId: PlatformId) : OJPlatform {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
-        override val info = PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = emptyList())
+        override val info = PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = emptyList(), templateStyle = TemplateStyle.ACM)
     }
 
     private class FakeAuth(

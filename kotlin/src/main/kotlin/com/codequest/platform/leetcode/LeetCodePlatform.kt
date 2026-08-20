@@ -2,6 +2,7 @@ package com.codequest.platform.leetcode
 
 import com.codequest.core.model.PlatformId
 import com.codequest.core.model.SubmissionResult
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.CompanyProblemPage
 import com.codequest.spi.CompanyProblemQuery
@@ -58,6 +59,7 @@ class LeetCodePlatform(
             displayName = variant.displayName,
             iconPath = null,
             supportedLanguages = LeetCodeLanguages.ALL,
+            templateStyle = TemplateStyle.LEETCODE,
         )
 
     // 显式委托(而非 `by` 委托):避免超类列表委托表达式在属性初始化前求值的顺序坑
@@ -65,6 +67,10 @@ class LeetCodePlatform(
     override suspend fun ensureLoggedIn(): LoginSession = auth.ensureLoggedIn()
 
     override fun isLoggedIn(): Boolean = auth.isLoggedIn()
+
+    override fun currentSession(): LoginSession? = auth.currentSession()
+
+    override suspend fun restoreSession(): LoginSession? = auth.restoreSession()
 
     override suspend fun logout() = auth.logout()
 

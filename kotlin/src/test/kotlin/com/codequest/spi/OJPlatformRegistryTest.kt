@@ -1,6 +1,7 @@
 package com.codequest.spi
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -21,7 +22,7 @@ class OJPlatformRegistryTest {
     ) : OJPlatform {
         override val id = PlatformId(id)
         override val domain = "$id.example.com"
-        override val info = PlatformInfo(displayName = id.uppercase())
+        override val info = PlatformInfo(displayName = id.uppercase(), templateStyle = TemplateStyle.ACM)
     }
 
     private class AuthCapablePlatform(

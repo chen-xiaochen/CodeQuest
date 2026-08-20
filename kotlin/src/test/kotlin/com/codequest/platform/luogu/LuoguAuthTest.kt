@@ -94,6 +94,75 @@ class LuoguAuthTest {
         assertNull(store.map[LUOGU_PLATFORM_ID])
     }
 
+    /** WP44:无已存凭据时 restoreSession 静默返回 null,绝不弹 prompt。 */
+    @Test
+    fun `restoreSession stays silent returning null without stored credentials`() = runBlocking {
+        var prompted = false
+        val luoguAuth =
+            auth(
+                transportWith(loggedIn = true),
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(luoguAuth.restoreSession())
+        assertNull(luoguAuth.currentSession())
+        assertFalse(prompted) // 静默恢复:不触发交互登录
+    }
+
+    /** WP44:有效已存凭据静默注入校验成功,会话与快照就位。 */
+    @Test
+    fun `restoreSession silently restores valid stored credentials`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[LUOGU_PLATFORM_ID] = "_uid=42"
+            }
+        val luoguAuth =
+            auth(
+                transportWith(loggedIn = true),
+                store,
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        val session = luoguAuth.restoreSession()
+
+        assertEquals("42", session?.userId)
+        assertEquals("42", luoguAuth.currentSession()?.userId)
+        assertFalse(prompted)
+    }
+
+    /** WP44:已存凭据失效时静默返回 null,不落交互登录。 */
+    @Test
+    fun `restoreSession returns null for invalid stored credentials without prompting`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[LUOGU_PLATFORM_ID] = "_uid=stale"
+            }
+        val luoguAuth =
+            auth(
+                transportWith(loggedIn = false),
+                store,
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(luoguAuth.restoreSession())
+        assertNull(luoguAuth.currentSession())
+        assertFalse(prompted)
+    }
+
     @Test
     fun `transport auth error during check maps to logged out`() = runBlocking {
         val transport = FakeOJTransport()

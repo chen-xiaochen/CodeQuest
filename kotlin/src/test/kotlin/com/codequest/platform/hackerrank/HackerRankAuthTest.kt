@@ -90,6 +90,75 @@ class HackerRankAuthTest {
         assertNull(store.map[HACKERRANK_PLATFORM_ID])
     }
 
+    /** WP44:无已存凭据时 restoreSession 静默返回 null,绝不弹 prompt。 */
+    @Test
+    fun `restoreSession stays silent returning null without stored credentials`() = runBlocking {
+        var prompted = false
+        val hackerRankAuth =
+            auth(
+                transportWith(loggedIn = true),
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(hackerRankAuth.restoreSession())
+        assertNull(hackerRankAuth.currentSession())
+        assertFalse(prompted) // 静默恢复:不触发交互登录
+    }
+
+    /** WP44:有效已存凭据静默注入校验成功,会话与快照就位。 */
+    @Test
+    fun `restoreSession silently restores valid stored credentials`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[HACKERRANK_PLATFORM_ID] = "_hr=1"
+            }
+        val hackerRankAuth =
+            auth(
+                transportWith(loggedIn = true),
+                store,
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        val session = hackerRankAuth.restoreSession()
+
+        assertEquals("kaguya", session?.userId)
+        assertEquals("kaguya", hackerRankAuth.currentSession()?.userId)
+        assertFalse(prompted)
+    }
+
+    /** WP44:已存凭据失效时静默返回 null,不落交互登录。 */
+    @Test
+    fun `restoreSession returns null for invalid stored credentials without prompting`() = runBlocking {
+        var prompted = false
+        val store =
+            InMemoryCredentialStore().apply {
+                map[HACKERRANK_PLATFORM_ID] = "_hr=stale"
+            }
+        val hackerRankAuth =
+            auth(
+                transportWith(loggedIn = false),
+                store,
+                prompt =
+                    OJAuthPrompt {
+                        prompted = true
+                        null
+                    },
+            )
+
+        assertNull(hackerRankAuth.restoreSession())
+        assertNull(hackerRankAuth.currentSession())
+        assertFalse(prompted)
+    }
+
     @Test
     fun `user payload missing falls back to unknown username`() = runBlocking {
         val transport = transportWith(loggedIn = true)

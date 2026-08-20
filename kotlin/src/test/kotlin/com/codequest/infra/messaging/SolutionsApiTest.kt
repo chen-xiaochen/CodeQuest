@@ -3,6 +3,7 @@ package com.codequest.infra.messaging
 import com.codequest.core.model.AuthExpiredException
 import com.codequest.core.model.ContentFormat
 import com.codequest.core.model.PlatformId
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.PlatformInfo
 import com.codequest.spi.SolutionArticleContent
@@ -32,7 +33,7 @@ class SolutionsApiTest {
     private inner class FakeLuoguPlatform : OJPlatform, SolutionViewCapable {
         override val id = PlatformId("luogu")
         override val domain = "www.luogu.com.cn"
-        override val info = PlatformInfo(displayName = "洛谷 Luogu")
+        override val info = PlatformInfo(displayName = "洛谷 Luogu", templateStyle = TemplateStyle.ACM)
 
         override suspend fun fetchSolutions(
             remoteId: String,
@@ -62,7 +63,7 @@ class SolutionsApiTest {
     private class ListOnlyPlatform : OJPlatform, SolutionViewCapable {
         override val id = PlatformId("listonly")
         override val domain = "listonly.example.com"
-        override val info = PlatformInfo(displayName = "List Only")
+        override val info = PlatformInfo(displayName = "List Only", templateStyle = TemplateStyle.ACM)
 
         override suspend fun fetchSolutions(
             remoteId: String,
@@ -74,7 +75,7 @@ class SolutionsApiTest {
     private class RecordingOrderPlatform : OJPlatform, SolutionViewCapable {
         override val id = PlatformId("orderly")
         override val domain = "orderly.example.com"
-        override val info = PlatformInfo(displayName = "Orderly")
+        override val info = PlatformInfo(displayName = "Orderly", templateStyle = TemplateStyle.ACM)
 
         val orderByCalls = mutableListOf<String?>()
 

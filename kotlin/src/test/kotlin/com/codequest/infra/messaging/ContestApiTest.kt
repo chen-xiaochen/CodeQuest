@@ -7,6 +7,7 @@ import com.codequest.core.model.ContestReminder
 import com.codequest.core.model.PlatformId
 import com.codequest.core.model.RateLimitedException
 import com.codequest.core.repository.ContestReminderRepository
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.spi.ContestCapable
 import com.codequest.spi.ContestDetail
 import com.codequest.spi.ContestProblemRef
@@ -44,7 +45,7 @@ class ContestApiTest {
     ) : OJPlatform, ContestCapable {
         override val id = pid
         override val domain = "${pid.value}.example.com"
-        override val info = PlatformInfo(displayName = pid.value.uppercase())
+        override val info = PlatformInfo(displayName = pid.value.uppercase(), templateStyle = TemplateStyle.ACM)
 
         override fun contests(): Flow<ContestSummary> =
             listError?.let { error -> flow<ContestSummary> { throw error } } ?: flowOf(*summaries.toTypedArray())
@@ -108,7 +109,7 @@ class ContestApiTest {
         object : OJPlatform {
             override val id = PlatformId("leetcode")
             override val domain = "leetcode.com"
-            override val info = PlatformInfo(displayName = "LeetCode")
+            override val info = PlatformInfo(displayName = "LeetCode", templateStyle = TemplateStyle.LEETCODE)
         }
 
     private lateinit var reminders: FakeReminderRepository

@@ -22,9 +22,10 @@ import com.codequest.spi.OJTransport
  *   HTTP 错误(未登录 401)按未登录;200 时 `<title>` 为「用户设置 - 洛谷」/
  *   「Welcome - Luogu Spilopelia」即已登录,否则看 `<h1>` 是否含 401。
  *
- * 流程与 LeetCode/AtCoder 同构:内存会话复用 → 启动恢复(credential store 原文 →
- * 注入 transport → 校验)→ 交互登录 → 校验通过后原文持久化。用户标识取
- * lentille `user.uid`(不可得兜底 "unknown",旧实现富信息不进 SPI 契约)。
+ * 流程与 LeetCode/AtCoder 同构:内存会话复用 + 启动恢复(WP44 起归
+ * [restoreSession]:credential store 原文 → 注入 transport → 校验,静默不弹
+ * prompt)→ 交互登录 → 校验通过后原文持久化。用户标识取 lentille `user.uid`
+ * (不可得兜底 "unknown",旧实现富信息不进 SPI 契约)。
  */
 class LuoguAuth(
     private val api: LuoguApi,
@@ -42,12 +43,8 @@ class LuoguAuth(
     override fun isLoggedIn(): Boolean = verified
 
     override suspend fun ensureLoggedIn(): LoginSession {
-        session?.takeIf { verified }?.let { return it }
-
-        val stored = credentialStore.load(LUOGU_PLATFORM_ID)
-        if (stored != null && injectAndVerify(stored)) {
-            return requireNotNull(session)
-        }
+        // 内存会话复用 + 启动恢复(静默)归 restoreSession
+        restoreSession()?.let { return it }
 
         val pasted =
             prompt.requestCredentials()
@@ -57,6 +54,15 @@ class LuoguAuth(
         }
         credentialStore.save(LUOGU_PLATFORM_ID, pasted)
         return requireNotNull(session)
+    }
+
+    override fun currentSession(): LoginSession? = session?.takeIf { verified }
+
+    /** 静默恢复(WP44):只读已存 cookie 注入校验,绝不弹 [prompt];失败返回 null。 */
+    override suspend fun restoreSession(): LoginSession? {
+        session?.takeIf { verified }?.let { return it }
+        val stored = credentialStore.load(LUOGU_PLATFORM_ID) ?: return null
+        return if (injectAndVerify(stored)) session else null
     }
 
     /** 注入 cookie 并经 user/setting 页校验;网络/解析异常按「未登录」处理走后续流程。 */
