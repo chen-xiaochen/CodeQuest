@@ -47,8 +47,7 @@ data class ProblemFilter(
 /**
  * 平台侧题目摘要(列表项,WP17)。
  *
- * 仅含列表展示与落库建立主档所需字段;`isPaidOnly` 等平台特有标记待真实接入
- * (WP19)确有需要时再扩展。
+ * 仅含列表展示与落库建立主档所需字段。
  */
 @Serializable
 data class ProblemSummary(
@@ -59,6 +58,11 @@ data class ProblemSummary(
     val url: String,
     /** 平台侧标签名原文;与本地 tag 表的关联由用例层建立。 */
     val tags: List<String> = emptyList(),
+    /**
+     * 会员/付费题标记(WP42 起透传,列表状态列 🔒 图标数据源;WP37 KDoc 预留的
+     * 跨平台语义——LC paidOnly / HR premium)。平台无此概念时恒 false(缺省)。
+     */
+    val paidOnly: Boolean = false,
 )
 
 /**

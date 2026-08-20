@@ -31,7 +31,10 @@ import kotlinx.serialization.json.put
  *   COM `ugcArticleSolutionArticles` → `data.ugcArticleSolutionArticles`;
  * - 题解正文(WP31):CN `discussTopic` → `data.solutionArticle`、COM
  *   `ugcArticleSolutionArticle` → `data.ugcArticleSolutionArticle`
- *   (content 为 Markdown 原文,COM 站点为二次转义形态)。
+ *   (content 为 Markdown 原文,COM 站点为二次转义形态);
+ * - 公司题单(WP42):公司列表 `questionCompanyTagsV2`(CN 走 companyTagsV2.
+ *   companyTagInfoNodes / COM 走 companyTags)、公司题单 `favoriteQuestionList`
+ *   (favoriteSlug = 公司 slug[-期间后缀],filtersV2 完整骨架同 problemsetQuestionListV2)。
  *
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
@@ -295,6 +298,175 @@ class LeetCodeApi(
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
                         topicTags = emptyList(), // V2 查询不含 topicTags(旧实现同款字段集)
+                    )
+                },
+        )
+    }
+
+    // -------------------------------------------------------------------
+    // 公司题单(WP42)
+    // -------------------------------------------------------------------
+
+    /** 公司标签(旧 LeetCodeQuestionCompanyTag:name/slug/questionCount;id 无消费方不透出)。 */
+    data class LeetCodeCompanyTag(
+        val name: String,
+        val slug: String,
+        val questionCount: Int,
+    )
+
+    /**
+     * 公司列表(`questionCompanyTagsV2`,变量为空对象——旧 getQuestionCompanyTags 事实):
+     * CN 响应 `data.companyTagsV2.companyTagInfoNodes`(questionCount 为 companyQuestionNum
+     * 别名)、COM 响应 `data.companyTags`,查询文本与响应路径均按站点分支。
+     */
+    suspend fun fetchCompanyTags(): List<LeetCodeCompanyTag> {
+        val data =
+            graphql(
+                "questionCompanyTagsV2",
+                if (variant.isCn) LeetCodeGraphQL.QUESTION_COMPANY_TAGS_V2_CN else LeetCodeGraphQL.QUESTION_COMPANY_TAGS_V2,
+                buildJsonObject { },
+            )
+        val nodes =
+            if (variant.isCn) {
+                data.child("companyTagsV2")["companyTagInfoNodes"]?.jsonArray
+            } else {
+                data["companyTags"]?.jsonArray
+            }
+        return nodes.orEmpty().map { element ->
+            val node = element.jsonObject
+            LeetCodeCompanyTag(
+                name = node["name"]?.jsonPrimitive?.content.orEmpty(),
+                slug = node["slug"]?.jsonPrimitive?.content.orEmpty(),
+                questionCount = node["questionCount"]?.jsonPrimitive?.intOrNull ?: 0,
+            )
+        }
+    }
+
+    /**
+     * 公司题单分页查询(`favoriteQuestionList`,旧 searchCompanyChallenges 逐字事实):
+     *
+     * - `favoriteSlug` = [companySlugs] 首项 +(`-$interviewPeriodSlug` 后缀,非 null 时);
+     * - 其余公司进 `filtersV2.companyFilter.companySlugs`;
+     * - [filter] 的 difficulty → difficultyFilter、tags → topicFilter;keyword 无对应
+     *   输入(旧实现恒发空串 `searchKeyword: ""`,公司查询面板无关键字入口);
+     * - `sortBy` 恒 `{CUSTOM, ASCENDING}`(旧实现无排序输入时的兜底值);
+     * - `filtersV2` 为完整骨架(空子过滤结构为服务端要求的旧实现逐字事实)。
+     *
+     * [companySlugs] 为空时直接返回空页、不发请求(旧 Presenter 同款守卫)。
+     * 响应项 `translatedTitle` 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义)。
+     */
+    suspend fun fetchCompanyQuestionPage(
+        companySlugs: List<String>,
+        interviewPeriodSlug: String?,
+        filter: ProblemFilter,
+        skip: Int,
+        limit: Int,
+    ): LeetCodeQuestionPage {
+        if (companySlugs.isEmpty()) return LeetCodeQuestionPage(total = 0, questions = emptyList())
+        val favorite = companySlugs.first()
+        val favoriteSlug = interviewPeriodSlug?.let { "$favorite-$it" } ?: favorite
+        val variables =
+            buildJsonObject {
+                put("skip", skip)
+                put("limit", limit)
+                put("favoriteSlug", favoriteSlug)
+                put(
+                    "filtersV2",
+                    buildJsonObject {
+                        put(
+                            "companyFilter",
+                            buildJsonObject {
+                                put("companySlugs", stringArray(companySlugs.drop(1)))
+                                put("operator", "IS")
+                            },
+                        )
+                        put(
+                            "positionFilter",
+                            buildJsonObject {
+                                put("positionSlugs", stringArray(emptyList()))
+                                put("operator", "IS")
+                            },
+                        )
+                        put("acceptanceFilter", buildJsonObject { })
+                        put("frequencyFilter", buildJsonObject { })
+                        put(
+                            "languageFilter",
+                            buildJsonObject {
+                                put("languageSlugs", stringArray(emptyList()))
+                                put("operator", "IS")
+                            },
+                        )
+                        put(
+                            "difficultyFilter",
+                            buildJsonObject {
+                                put(
+                                    "difficulties",
+                                    stringArray(listOfNotNull(filter.difficulty?.let { difficultyFilterValue(it.value) })),
+                                )
+                                put("operator", "IS")
+                            },
+                        )
+                        put(
+                            "premiumFilter",
+                            buildJsonObject {
+                                put("premiumStatus", stringArray(emptyList()))
+                                put("operator", "IS")
+                            },
+                        )
+                        put(
+                            "statusFilter",
+                            buildJsonObject {
+                                put("questionStatuses", stringArray(emptyList()))
+                                put("operator", "IS")
+                            },
+                        )
+                        put(
+                            "topicFilter",
+                            buildJsonObject {
+                                put("topicSlugs", stringArray(filter.tags))
+                                put("operator", "IS")
+                            },
+                        )
+                        put("filterCombineType", "ALL")
+                    },
+                )
+                put(
+                    "sortBy",
+                    buildJsonObject {
+                        put("sortField", "CUSTOM")
+                        put("sortOrder", "ASCENDING")
+                    },
+                )
+                put("searchKeyword", "")
+            }
+        val data =
+            graphql(
+                "favoriteQuestionList",
+                if (variant.isCn) LeetCodeGraphQL.FAVORITE_QUESTION_LIST_CN else LeetCodeGraphQL.FAVORITE_QUESTION_LIST,
+                variables,
+            )
+        val list = data.child("favoriteQuestionList")
+        return LeetCodeQuestionPage(
+            total = list["total"]?.jsonPrimitive?.intOrNull ?: 0,
+            questions =
+                list["questions"]?.jsonArray.orEmpty().map { element ->
+                    val q = element.jsonObject
+                    LeetCodeQuestionListItem(
+                        // 字段名与普通列表不同:questionFrontendId / translatedTitle(旧模型
+                        // 即以 frontendQuestionId/titleCn 别名承载)
+                        frontendQuestionId = q["questionFrontendId"]?.jsonPrimitive?.content.orEmpty(),
+                        title =
+                            q["translatedTitle"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() }
+                                ?: q["title"]?.jsonPrimitive?.content.orEmpty(),
+                        titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
+                        difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
+                        paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
+                        topicTags =
+                            q["topicTags"]
+                                ?.jsonArray
+                                .orEmpty()
+                                .map { it.jsonObject["name"]?.jsonPrimitive?.content }
+                                .filterNotNull(),
                     )
                 },
         )

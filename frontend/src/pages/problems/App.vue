@@ -6,6 +6,9 @@
  * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
  * WP38:头部账号条(原版 AccountActionGroup 对齐)——每平台徽标(/api/auth/status
  * 快照):已登录高亮,点击登出;未登录灰,点击触发 auth:login 登录对话框。
+ * WP42:公司下拉(仅 /api/companies 有数据的 LC 系平台渲染)+ 期间下拉——选中后
+ * 列表改走公司题单查询(company/period 参数);keyword 在公司模式下被后端忽略
+ * (旧实现事实,激活时 UI 注明)。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -20,9 +23,11 @@ import {
 import {
   ApiError,
   fetchAuthStatus,
+  fetchCompanies,
   fetchPlatforms,
   fetchProblems,
   type AuthStatusItem,
+  type CompanySummary,
   type PlatformSummary,
   type ProblemListItem,
 } from '../../lib/api'
@@ -36,6 +41,15 @@ import {
 
 const PAGE_SIZE = 50
 const DIFFICULTY_OPTIONS = ['', 'easy', 'medium', 'hard'] as const
+/** WP42:面试期间(旧 InterviewParameterAction 的 slug 逐字事实;默认 30 天同旧 UI)。 */
+const DEFAULT_PERIOD = 'thirty-days'
+const PERIOD_OPTIONS = [
+  { value: 'thirty-days', label: 'Last 30 days' },
+  { value: 'three-months', label: 'Last 3 months' },
+  { value: 'six-months', label: 'Last 6 months' },
+  { value: 'more-than-six-months', label: 'More than 6 months' },
+  { value: 'all', label: 'All time' },
+] as const
 
 const bridge = cqBridge()
 
@@ -45,6 +59,11 @@ const keyword = ref('')
 const difficulty = ref('')
 /** WP37:状态下拉(本地过滤;'' = 全部)。 */
 const statusFilter = ref<ProblemStatusFilter>('')
+/** WP42:公司下拉('' = 全部题库);仅 CompanyQueryCapable 平台有选项。 */
+const companies = ref<CompanySummary[]>([])
+const company = ref('')
+/** WP42:面试期间(仅公司模式生效)。 */
+const period = ref<string>(DEFAULT_PERIOD)
 const items = ref<(ProblemListItem & ProblemStatusFields)[]>([])
 const offset = ref(0)
 const hasMore = ref(false)
@@ -150,6 +169,8 @@ async function loadPage(append: boolean): Promise<void> {
       platform: platform.value,
       keyword: keyword.value,
       difficulty: difficulty.value || undefined,
+      company: company.value || undefined,
+      period: company.value !== '' ? period.value : undefined,
       limit: PAGE_SIZE,
       offset: offset.value,
     })
@@ -164,6 +185,30 @@ async function loadPage(append: boolean): Promise<void> {
   }
 }
 
+/**
+ * WP42:按平台拉公司标签(能力探测式渲染)——/api/companies 404(平台无该能力)
+ * 或失败时清空并隐藏下拉,不报错(公司下拉是附属能力,非关键路径)。
+ */
+async function refreshCompanies(): Promise<void> {
+  if (!platform.value) {
+    companies.value = []
+    return
+  }
+  try {
+    companies.value = await fetchCompanies(platform.value)
+  } catch {
+    companies.value = []
+  }
+}
+
+/** 平台切换:公司选择与期间归位(公司集合随平台变),再刷新清单与列表。 */
+async function handlePlatformChange(): Promise<void> {
+  company.value = ''
+  period.value = DEFAULT_PERIOD
+  await refreshCompanies()
+  reload()
+}
+
 function reload(): void {
   items.value = []
   offset.value = 0
@@ -175,6 +220,7 @@ function resetFilters(): void {
   keyword.value = ''
   difficulty.value = ''
   statusFilter.value = ''
+  company.value = ''
   reload()
 }
 
@@ -195,6 +241,7 @@ onMounted(async () => {
   try {
     platforms.value = await fetchPlatforms()
     platform.value = platforms.value[0]?.id ?? ''
+    await refreshCompanies()
     reload()
   } catch (cause) {
     error.value = describeError(cause)
@@ -232,7 +279,7 @@ onUnmounted(() => {
     <form class="filters" @submit.prevent="reload">
       <label class="filters__field">
         <span>Platform</span>
-        <select v-model="platform" @change="reload">
+        <select v-model="platform" @change="handlePlatformChange">
           <option v-for="entry in platforms" :key="entry.id" :value="entry.id">
             {{ entry.displayName }}
           </option>
@@ -264,6 +311,25 @@ onUnmounted(() => {
           <option value="UNSOLVED">Unsolved</option>
         </select>
       </label>
+      <!-- WP42:公司下拉(仅 CompanyQueryCapable 平台渲染;选中后走公司题单查询) -->
+      <label v-if="companies.length > 0" class="filters__field">
+        <span>Company</span>
+        <select v-model="company" @change="reload">
+          <option value="">All companies</option>
+          <option v-for="entry in companies" :key="entry.slug" :value="entry.slug">
+            {{ entry.name }} ({{ entry.questionCount }})
+          </option>
+        </select>
+      </label>
+      <!-- WP42:面试期间(仅公司模式出现;默认 30 天,旧 UI 默认值) -->
+      <label v-if="companies.length > 0 && company !== ''" class="filters__field">
+        <span>Period</span>
+        <select v-model="period" @change="reload">
+          <option v-for="option in PERIOD_OPTIONS" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </label>
       <div class="filters__actions">
         <button type="submit" :disabled="loading || !platform">Search</button>
         <button type="button" :disabled="loading" @click="resetFilters">Reset</button>
@@ -272,6 +338,10 @@ onUnmounted(() => {
 
     <p v-if="statusFilter !== ''" class="filter-note">
       Status filter applies to loaded items only — load more to expand the scope.
+    </p>
+
+    <p v-if="company !== '' && keyword.trim() !== ''" class="filter-note">
+      Keyword is ignored in company list mode (platform limitation).
     </p>
 
     <p v-if="error" class="state state--error" role="alert">

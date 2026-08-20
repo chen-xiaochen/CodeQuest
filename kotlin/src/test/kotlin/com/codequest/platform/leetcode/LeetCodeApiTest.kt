@@ -373,6 +373,137 @@ class LeetCodeApiTest {
     }
 
     // -------------------------------------------------------------------
+    // 公司题单(WP42):公司列表 + favoriteQuestionList
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `company tags parse companyTagsV2 companyTagInfoNodes on cn`() = runBlocking {
+        // 旧 getQuestionCompanyTags 事实:CN 响应 data.companyTagsV2.companyTagInfoNodes,
+        // questionCount 为 companyQuestionNum 的别名(由查询文本指定)
+        graphqlResponses["questionCompanyTagsV2"] =
+            """
+            {"data":{"companyTagsV2":{"companyTagInfoNodes":[
+              {"name":"亚马逊","slug":"amazon","id":"1","questionCount":40},
+              {"name":"Google","slug":"google","id":"2","questionCount":35}
+            ]}}}
+            """.trimIndent()
+
+        val tags = cnApi.fetchCompanyTags()
+
+        assertEquals(
+            listOf(
+                LeetCodeApi.LeetCodeCompanyTag("亚马逊", "amazon", 40),
+                LeetCodeApi.LeetCodeCompanyTag("Google", "google", 35),
+            ),
+            tags,
+        )
+        val record = graphqlRecord("questionCompanyTagsV2")
+        assertEquals(LeetCodeGraphQL.QUESTION_COMPANY_TAGS_V2_CN, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        // 变量为空对象(旧实现事实)
+        assertEquals(0, variablesOf(record).size)
+    }
+
+    @Test
+    fun `company tags parse companyTags on com`() = runBlocking {
+        graphqlResponses["questionCompanyTagsV2"] =
+            """{"data":{"companyTags":[{"name":"Amazon","slug":"amazon","id":"1","questionCount":38}]}}"""
+
+        val tags = api.fetchCompanyTags()
+
+        assertEquals(listOf(LeetCodeApi.LeetCodeCompanyTag("Amazon", "amazon", 38)), tags)
+        assertEquals(
+            LeetCodeGraphQL.QUESTION_COMPANY_TAGS_V2,
+            envelopeOf(graphqlRecord("questionCompanyTagsV2"))["query"]!!.jsonPrimitive.content,
+        )
+    }
+
+    @Test
+    fun `company question list builds favoriteQuestionList variables and parses items`() = runBlocking {
+        graphqlResponses["favoriteQuestionList"] =
+            """
+            {"data":{"favoriteQuestionList":{"total":2,"questions":[
+              {"difficulty":"Medium","id":"1","paidOnly":true,"questionFrontendId":"1","status":null,
+               "title":"Two Sum","titleSlug":"two-sum","translatedTitle":"两数之和","isInMyFavorites":false,
+               "frequency":0.5,"acRate":50.0,"topicTags":[{"name":"Array","nameTranslated":"数组","slug":"array"}]},
+              {"difficulty":"Easy","id":"2","paidOnly":false,"questionFrontendId":"2","status":"AC",
+               "title":"Reverse Integer","titleSlug":"reverse-integer","translatedTitle":null,
+               "isInMyFavorites":false,"frequency":null,"acRate":40.0,"topicTags":[]}
+            ]}}}
+            """.trimIndent()
+
+        val page =
+            cnApi.fetchCompanyQuestionPage(
+                companySlugs = listOf("amazon", "google"),
+                interviewPeriodSlug = "thirty-days",
+                filter = ProblemFilter(difficulty = com.codequest.core.model.Difficulty("medium"), tags = listOf("array")),
+                skip = 10,
+                limit = 20,
+            )
+
+        assertEquals(2, page.total)
+        // translatedTitle 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义),空回退 title
+        assertEquals(listOf("两数之和", "Reverse Integer"), page.questions.map { it.title })
+        assertEquals(listOf("two-sum", "reverse-integer"), page.questions.map { it.titleSlug })
+        assertEquals("1", page.questions[0].frontendQuestionId)
+        assertTrue(page.questions[0].paidOnly)
+        assertEquals(listOf("Array"), page.questions[0].topicTags)
+
+        val record = graphqlRecord("favoriteQuestionList")
+        assertEquals(LeetCodeGraphQL.FAVORITE_QUESTION_LIST_CN, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        val variables = variablesOf(record)
+        assertEquals(10, variables["skip"]!!.jsonPrimitive.content.toInt())
+        assertEquals(20, variables["limit"]!!.jsonPrimitive.content.toInt())
+        // favoriteSlug = 首公司 + 期间后缀;其余公司进 companyFilter(旧 searchCompanyChallenges 事实)
+        assertEquals("amazon-thirty-days", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        val filters = variables["filtersV2"]!!.jsonObject
+        assertEquals(
+            listOf("google"),
+            filters["companyFilter"]!!.jsonObject["companySlugs"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("MEDIUM"),
+            filters["difficultyFilter"]!!.jsonObject["difficulties"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals(
+            listOf("array"),
+            filters["topicFilter"]!!.jsonObject["topicSlugs"]!!.jsonArray.map { it.jsonPrimitive.content },
+        )
+        assertEquals("ALL", filters["filterCombineType"]!!.jsonPrimitive.content)
+        // 排序兜底与空关键字为旧实现逐字事实
+        assertEquals("CUSTOM", variables["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content)
+        assertEquals("ASCENDING", variables["sortBy"]!!.jsonObject["sortOrder"]!!.jsonPrimitive.content)
+        assertEquals("", variables["searchKeyword"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `company question list without period sends bare favorite slug on com`() = runBlocking {
+        graphqlResponses["favoriteQuestionList"] =
+            """{"data":{"favoriteQuestionList":{"total":0,"questions":[]}}}"""
+
+        api.fetchCompanyQuestionPage(listOf("amazon"), null, ProblemFilter(), skip = 0, limit = 50)
+
+        val record = graphqlRecord("favoriteQuestionList")
+        assertEquals(LeetCodeGraphQL.FAVORITE_QUESTION_LIST, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("amazon", variablesOf(record)["favoriteSlug"]!!.jsonPrimitive.content)
+        // 单公司:companyFilter 为空列表
+        assertEquals(
+            emptyList<String>(),
+            variablesOf(record)["filtersV2"]!!.jsonObject["companyFilter"]!!.jsonObject["companySlugs"]!!.jsonArray
+                .map { it.jsonPrimitive.content },
+        )
+    }
+
+    @Test
+    fun `company question list with empty slugs makes no request`() = runBlocking {
+        // 旧 Presenter 守卫:未选公司不发查询
+        val page = api.fetchCompanyQuestionPage(emptyList(), "thirty-days", ProblemFilter(), skip = 0, limit = 50)
+
+        assertEquals(0, page.total)
+        assertTrue(page.questions.isEmpty())
+        assertTrue(recorded.none { it.path == "/graphql/" })
+    }
+
+    // -------------------------------------------------------------------
     // 提交(REST)与轮询(REST)
     // -------------------------------------------------------------------
 

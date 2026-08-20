@@ -113,6 +113,13 @@ export interface ProblemListQuery {
   keyword?: string
   difficulty?: string
   tags?: string[]
+  /**
+   * WP42:公司 slug(非空时走公司题单查询);协议支持逗号分隔多公司,
+   * UI 单选。keyword 在公司模式下被后端忽略(旧实现事实)。
+   */
+  company?: string
+  /** WP42:面试期间 slug(thirty-days/three-months/six-months/more-than-six-months/all)。 */
+  period?: string
   limit?: number
   offset?: number
 }
@@ -129,6 +136,12 @@ export function fetchProblems(query: ProblemListQuery): Promise<ProblemListResul
   if (query.tags && query.tags.length > 0) {
     params.set('tags', query.tags.join(','))
   }
+  if (query.company && query.company.trim().length > 0) {
+    params.set('company', query.company.trim())
+  }
+  if (query.period) {
+    params.set('period', query.period)
+  }
   if (query.limit !== undefined) {
     params.set('limit', String(query.limit))
   }
@@ -136,6 +149,21 @@ export function fetchProblems(query: ProblemListQuery): Promise<ProblemListResul
     params.set('offset', String(query.offset))
   }
   return getJson<ProblemListResult>(`/api/problems?${params.toString()}`)
+}
+
+/** WP42:公司标签(/api/companies;仅 CompanyQueryCapable 平台有数据,其余 404)。 */
+export interface CompanySummary {
+  slug: string
+  name: string
+  questionCount: number
+}
+
+/** WP42:公司标签清单;平台不具备该能力时抛 ApiError(404 unknown-platform)。 */
+export function fetchCompanies(platform: string): Promise<CompanySummary[]> {
+  const params = new URLSearchParams({ platform })
+  return getJson<{ platform: string; items: CompanySummary[] }>(
+    `/api/companies?${params.toString()}`,
+  ).then((body) => body.items)
 }
 
 export function fetchProblemDetail(

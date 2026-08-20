@@ -14,6 +14,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 /**
  * [unit] WP19:LeetCodeProblemService——分页 Flow 游走(limit 语义)、题面详情
@@ -53,6 +54,20 @@ class LeetCodeProblemServiceTest {
                     "questionData" ->
                         """{"data":{"question":{"questionId":"7","titleSlug":"two-sum","title":"Two Sum","content":null,
                            "translatedContent":"<p>中文题面</p>","isPaidOnly":false,"difficulty":"Easy","topicTags":[]}}}"""
+                    // WP42:公司列表(COM 走 data.companyTags)
+                    "questionCompanyTagsV2" ->
+                        """{"data":{"companyTags":[
+                           {"name":"Amazon","slug":"amazon","id":"1","questionCount":38},
+                           {"name":"Google","slug":"google","id":"2","questionCount":30}]}}"""
+                    // WP42:公司题单(total 为 totalLength 别名;首题会员 + translatedTitle 空)
+                    "favoriteQuestionList" ->
+                        """{"data":{"favoriteQuestionList":{"total":2,"questions":[
+                           {"difficulty":"Medium","id":"1","paidOnly":true,"questionFrontendId":"1","status":null,
+                            "title":"Two Sum","titleSlug":"two-sum","translatedTitle":null,"isInMyFavorites":false,
+                            "frequency":0.5,"acRate":50.0,"topicTags":[{"name":"Array","slug":"array"}]},
+                           {"difficulty":"Easy","id":"2","paidOnly":false,"questionFrontendId":"2","status":"AC",
+                            "title":"Other","titleSlug":"other","translatedTitle":null,"isInMyFavorites":false,
+                            "frequency":null,"acRate":40.0,"topicTags":[]}]}}}"""
                     else -> error("unexpected operation")
                 }
             } else {
@@ -169,5 +184,73 @@ class LeetCodeProblemServiceTest {
         assertFailsWith<OJException> {
             runBlocking { service.fetchProblemDetail("premium") }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 公司题单(WP42)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `company tags map to spi company list`() = runBlocking {
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transportFor()))
+
+        val companies = service.fetchCompanies()
+
+        assertEquals(
+            listOf(
+                com.codequest.spi.CompanyTag(slug = "amazon", name = "Amazon", questionCount = 38),
+                com.codequest.spi.CompanyTag(slug = "google", name = "Google", questionCount = 30),
+            ),
+            companies,
+        )
+    }
+
+    @Test
+    fun `company query passes slugs period and filters, maps page to summaries`() = runBlocking {
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val page =
+            service.queryCompanyProblems(
+                com.codequest.spi.CompanyProblemQuery(
+                    companySlugs = listOf("amazon"),
+                    interviewPeriodSlug = "thirty-days",
+                    difficulty = Difficulty("medium"),
+                    offset = 0,
+                    limit = 20,
+                ),
+            )
+
+        assertEquals(2, page.total)
+        val first = page.questions.first()
+        assertEquals("two-sum", first.remoteId)
+        assertEquals("Two Sum", first.title)
+        assertEquals(Difficulty("Medium"), first.difficulty)
+        assertEquals("https://leetcode.com/problems/two-sum/", first.url)
+        assertEquals(listOf("Array"), first.tags)
+        assertEquals(true, first.paidOnly)
+
+        val variables =
+            Json
+                .parseToJsonElement(transport.recorded.single { it.method == "POST_GRAPHQL" }.body!!)
+                .jsonObject["variables"]!!
+                .jsonObject
+        assertEquals("amazon-thirty-days", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals(
+            "[\"MEDIUM\"]",
+            variables["filtersV2"]!!.jsonObject["difficultyFilter"]!!.jsonObject["difficulties"].toString(),
+        )
+    }
+
+    @Test
+    fun `company query with no companies returns empty page without platform request`() = runBlocking {
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val page = service.queryCompanyProblems(com.codequest.spi.CompanyProblemQuery(companySlugs = emptyList()))
+
+        assertEquals(0, page.total)
+        assertTrue(page.questions.isEmpty())
+        assertTrue(transport.recorded.isEmpty())
     }
 }

@@ -185,4 +185,112 @@ internal object LeetCodeGraphQL {
           }
         }
         """.trimIndent()
+
+    // ------------------------------------------------------------------
+    // 公司题单(WP42):公司列表 + 公司题单查询,逐字沿用旧资源文件
+    // ------------------------------------------------------------------
+
+    /** 公司列表(questionCompanyTagsV2.graphql,COM 站点;变量为空对象)。 */
+    val QUESTION_COMPANY_TAGS_V2: String =
+        """
+        query questionCompanyTagsV2{
+          companyTags {
+              name
+              slug
+              id
+              questionCount
+          }
+        }
+        """.trimIndent()
+
+    /** 公司列表(questionCompanyTagsV2_cn.graphql,CN 站点;响应走 companyTagsV2.companyTagInfoNodes)。 */
+    val QUESTION_COMPANY_TAGS_V2_CN: String =
+        """
+        query questionCompanyTagsV2 {
+          companyTagsV2 {
+            companyTagInfoNodes {
+              name
+              slug
+              id
+              questionCount: companyQuestionNum
+            }
+          }
+        }
+        """.trimIndent()
+
+    /** 公司题单(favoriteQuestionList.graphql,COM 站点;total 为 totalLength 别名)。 */
+    val FAVORITE_QUESTION_LIST: String =
+        """
+        query favoriteQuestionList(${'$'}favoriteSlug: String!, ${'$'}filter: FavoriteQuestionFilterInput, ${'$'}searchKeyword: String, ${'$'}filtersV2: QuestionFilterInput, ${'$'}sortBy: QuestionSortByInput, ${'$'}limit: Int, ${'$'}skip: Int, ${'$'}version: String = "v2") {
+          favoriteQuestionList(
+            favoriteSlug: ${'$'}favoriteSlug
+            filter: ${'$'}filter
+            filtersV2: ${'$'}filtersV2
+            searchKeyword: ${'$'}searchKeyword
+            sortBy: ${'$'}sortBy
+            limit: ${'$'}limit
+            skip: ${'$'}skip
+            version: ${'$'}version
+          ) {
+            questions {
+              difficulty
+              id
+              paidOnly
+              # can't be used as frontendQuestionId
+              questionFrontendId
+              status
+              title
+              titleSlug
+              translatedTitle
+              isInMyFavorites
+              frequency
+              acRate
+              topicTags {
+                name
+                slug
+              }
+            }
+            total: totalLength
+          }
+        }
+        """.trimIndent()
+
+    /** 公司题单(favoriteQuestionList_cn.graphql,CN 站点;topicTags 多 nameTranslated、多 hasMore)。 */
+    val FAVORITE_QUESTION_LIST_CN: String =
+        """
+        query favoriteQuestionList(${'$'}favoriteSlug: String!, ${'$'}filter: FavoriteQuestionFilterInput, ${'$'}searchKeyword: String, ${'$'}filtersV2: QuestionFilterInput, ${'$'}sortBy: QuestionSortByInput, ${'$'}limit: Int, ${'$'}skip: Int, ${'$'}version: String = "v2") {
+          favoriteQuestionList(
+            favoriteSlug: ${'$'}favoriteSlug
+            filter: ${'$'}filter
+            filtersV2: ${'$'}filtersV2
+            searchKeyword: ${'$'}searchKeyword
+            sortBy: ${'$'}sortBy
+            limit: ${'$'}limit
+            skip: ${'$'}skip
+            version: ${'$'}version
+          ) {
+            questions {
+              difficulty
+              id
+              paidOnly
+              # can't be used as frontendQuestionId
+              questionFrontendId
+              status
+              title
+              titleSlug
+              translatedTitle
+              isInMyFavorites
+              frequency
+              acRate
+              topicTags {
+                name
+                nameTranslated
+                slug
+              }
+            }
+            total: totalLength
+            hasMore
+          }
+        }
+        """.trimIndent()
 }

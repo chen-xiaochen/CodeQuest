@@ -160,6 +160,78 @@ class ProblemApiHttpTest {
     }
 
     // ------------------------------------------------------------------
+    // /api/companies 与公司题单(WP42)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `companies endpoint returns company tags for company-capable platform`() {
+        val body = getJson("/api/companies?platform=leetcode")
+
+        assertEquals("leetcode", body["platform"]!!.jsonPrimitive.content)
+        val items = body.getAsJsonArray("items")
+        assertEquals(2, items.size)
+        val amazon = items[0].jsonObject
+        assertEquals("amazon", amazon["slug"]!!.jsonPrimitive.content)
+        assertEquals("Amazon", amazon["name"]!!.jsonPrimitive.content)
+        assertEquals("38", amazon["questionCount"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `companies endpoint maps non-company platform to 404`() {
+        val (status, body) = get("/api/companies?platform=failing")
+
+        assertEquals(404, status)
+        assertEquals("unknown-platform", body.jsonObject["error"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `problems endpoint with company param queries company list and persists items`() {
+        val body = getJson("/api/problems?platform=leetcode&company=amazon&period=thirty-days&difficulty=medium&limit=2")
+
+        assertEquals("leetcode", body["platform"]!!.jsonPrimitive.content)
+        val items = body.getAsJsonArray("items")
+        assertEquals(2, items.size)
+        assertEquals("company-0", items[0].jsonObject["remoteId"]!!.jsonPrimitive.content)
+        // WP42:SPI 透传 paidOnly(首题会员题,状态列 🔒 数据源)
+        assertEquals(true, items[0].jsonObject["paidOnly"]!!.jsonPrimitive.content.toBoolean())
+        assertEquals(false, items[1].jsonObject["paidOnly"]!!.jsonPrimitive.content.toBoolean())
+
+        // favoriteQuestionList 变量:favoriteSlug = 公司 + 期间后缀,难度透传
+        val request =
+            transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("amazon-thirty-days", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals(
+            "[\"MEDIUM\"]",
+            variables["filtersV2"]!!.jsonObject["difficultyFilter"]!!.jsonObject["difficulties"].toString(),
+        )
+
+        // 公司题单同路径落库(状态列/状态筛选兼容)
+        val saved = runBlocking { repo.findByRemoteId(PlatformId("leetcode"), "company-0") }
+        assertNotNull(saved)
+        assertEquals("leetcode:company-0", saved.id.value)
+    }
+
+    @Test
+    fun `problems endpoint ignores keyword in company mode`() {
+        getJson("/api/problems?platform=leetcode&company=amazon&keyword=two&limit=1")
+
+        val request =
+            transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        // 旧实现事实:公司查询恒发空 searchKeyword(公司面板无关键字入口)
+        assertEquals("\"\"", variables["searchKeyword"].toString())
+    }
+
+    @Test
+    fun `problems endpoint maps non-company platform with company param to 404`() {
+        val (status, body) = get("/api/problems?platform=failing&company=amazon")
+
+        assertEquals(404, status)
+        assertEquals("unknown-platform", body.jsonObject["error"]!!.jsonPrimitive.content)
+    }
+
+    // ------------------------------------------------------------------
     // /api/problem/{remoteId}
     // ------------------------------------------------------------------
 
@@ -270,6 +342,25 @@ class ProblemApiHttpTest {
                         """{"data":{"question":{"questionId":"1","titleSlug":"two-sum","title":"Two Sum",
                            "content":"<p>Given an array...</p>","translatedContent":null,"isPaidOnly":false,
                            "difficulty":"Easy","topicTags":[]}}}"""
+                    // WP42:公司列表(COM 走 data.companyTags)
+                    "questionCompanyTagsV2" ->
+                        """{"data":{"companyTags":[
+                           {"name":"Amazon","slug":"amazon","id":"1","questionCount":38},
+                           {"name":"Google","slug":"google","id":"2","questionCount":30}]}}"""
+                    // WP42:公司题单(favoriteSlug 分页游走;首题会员题)
+                    "favoriteQuestionList" -> {
+                        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+                        val skip = variables["skip"]!!.jsonPrimitive.content.toInt()
+                        val limit = variables["limit"]!!.jsonPrimitive.content.toInt()
+                        val total = 40
+                        val items =
+                            (skip until minOf(skip + limit, total)).joinToString(",") { i ->
+                                """{"difficulty":"Medium","id":"$i","paidOnly":${i == 0},"questionFrontendId":"$i","status":null,
+                                   "title":"Company $i","titleSlug":"company-$i","translatedTitle":null,"isInMyFavorites":false,
+                                   "frequency":null,"acRate":50.0,"topicTags":[]}"""
+                            }
+                        """{"data":{"favoriteQuestionList":{"total":$total,"questions":[$items]}}}"""
+                    }
                     else -> "{}"
                 }
             } else {

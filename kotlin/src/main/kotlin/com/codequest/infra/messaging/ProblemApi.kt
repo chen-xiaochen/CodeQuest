@@ -15,6 +15,7 @@ import com.codequest.core.model.TagId
 import com.codequest.infra.db.ProblemStatusStore
 import com.codequest.infra.db.ProblemStore
 import com.codequest.infra.db.SolveStatus
+import com.codequest.spi.CompanyQueryCapable
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemFilter
@@ -35,6 +36,10 @@ import java.util.logging.Logger
  * 端点契约(由 [ResourceHttpServer] 挂载,详细文档见 WP20 报告):
  * - `GET /api/platforms`:支持题目查询的平台(id + displayName)
  * - `GET /api/problems?platform=&keyword=&difficulty=&tags=&limit=&offset=`:列表 + 落库
+ * - `GET /api/companies?platform=`:公司标签清单(WP42,CompanyQueryCapable 平台)
+ * - `GET /api/problems?platform=&company=&period=&difficulty=&tags=&limit=&offset=`:
+ *   公司题单(WP42)——company 非空时走公司查询路径;**keyword 在公司模式下被忽略**
+ *   (旧实现事实:公司查询恒发空 searchKeyword,公司面板无关键字入口)
  * - `GET /api/problem/{remoteId}?platform=`:题面,本地缓存优先,miss 时平台拉取并落库
  * - 领域异常 → HTTP 状态 + JSON 错误体(AuthExpired 401 / RateLimited 429 / AntiBot 403 /
  *   其余 OJException 502 / 参数问题 400 / 未知平台 404)
@@ -64,8 +69,10 @@ class ProblemApi(
     /**
      * `/api/problems`:SPI queryProblems 流式收集 → 逐条落库(主档 + 标签)→ 返回本页数据。
      * [hasMore] = 返回条数等于请求 limit(平台侧总数不经 SPI 暴露,由「满页」语义推断)。
+     * `company` 参数非空时改走公司题单路径([listCompanyProblems],WP42)。
      */
     suspend fun listProblems(query: Map<String, String>): ProblemApiResponse {
+        if (!query["company"].isNullOrBlank()) return listCompanyProblems(query)
         val (platform, capable) = resolvePlatform(query) ?: return unknownPlatform(query)
         val filter =
             parseFilter(query)
@@ -76,6 +83,72 @@ class ProblemApi(
             } catch (error: Throwable) {
                 return error.toErrorResponse()
             }
+        return persistAndRespond(platform, filter.offset, filter.limit, items)
+    }
+
+    /**
+     * `/api/problems?company=`:公司题单(WP42)——SPI queryCompanyProblems 单页查询,
+     * 落库与状态聚合与普通列表同路径(状态列/状态筛选语义一致)。
+     * company 为逗号分隔 slug 列表(协议支持多公司,UI 单选);`period` 透传期间 slug
+     * (thirty-days 等,缺省不拼后缀);**keyword 被忽略**(见类 KDoc)。
+     */
+    private suspend fun listCompanyProblems(query: Map<String, String>): ProblemApiResponse {
+        val (platform, capable) = resolveCompanyPlatform(query) ?: return unknownCompanyPlatform(query)
+        val filter =
+            parseFilter(query)
+                ?: return badRequest("limit/offset must be integers; limit in 1..$MAX_LIMIT; offset >= 0")
+        val companies =
+            query["company"]
+                .orEmpty()
+                .split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        val period = query["period"]?.trim()?.takeIf { it.isNotEmpty() }
+        val page =
+            try {
+                capable.queryCompanyProblems(
+                    com.codequest.spi.CompanyProblemQuery(
+                        companySlugs = companies,
+                        interviewPeriodSlug = period,
+                        difficulty = filter.difficulty,
+                        tags = filter.tags,
+                        offset = filter.offset,
+                        limit = filter.limit,
+                    ),
+                )
+            } catch (error: Throwable) {
+                return error.toErrorResponse()
+            }
+        return persistAndRespond(platform, filter.offset, filter.limit, page.questions)
+    }
+
+    /** `/api/companies`:公司标签清单(公司下拉数据源;无该能力的平台按 404 如实回)。 */
+    suspend fun listCompanies(query: Map<String, String>): ProblemApiResponse {
+        val id = query["platform"]?.trim().orEmpty()
+        if (id.isEmpty()) return badRequest("missing required query param: platform")
+        val platform = companyCapablePlatform(id) ?: return unknownCompanyPlatform(query)
+        val capable = platform as CompanyQueryCapable
+        val companies =
+            try {
+                capable.fetchCompanies()
+            } catch (error: Throwable) {
+                return error.toErrorResponse()
+            }
+        return ok(
+            CompaniesResponseDto(
+                platform = platform.id.value,
+                items = companies.map { CompanyItemDto(slug = it.slug, name = it.name, questionCount = it.questionCount) },
+            ),
+        )
+    }
+
+    /** 列表项落库(主档 + 标签)→ 状态聚合 → 本页应答(普通/公司题单共用收尾,WP42 提取)。 */
+    private suspend fun persistAndRespond(
+        platform: OJPlatform,
+        offset: Int,
+        limit: Int,
+        items: List<com.codequest.spi.ProblemSummary>,
+    ): ProblemApiResponse {
         items.forEach { summary ->
             store().save(
                 Problem(
@@ -95,10 +168,10 @@ class ProblemApi(
         return ok(
             ProblemListResponseDto(
                 platform = platform.id.value,
-                offset = filter.offset,
-                limit = filter.limit,
+                offset = offset,
+                limit = limit,
                 items = items.map { it.toDto(statusById[problemId(platform.id, it.remoteId)] ?: SolveStatus.UNSOLVED) },
-                hasMore = items.size == filter.limit,
+                hasMore = items.size == limit,
             ),
         )
     }
@@ -156,6 +229,18 @@ class ProblemApi(
         return queryPlatforms().firstOrNull { it.first.id.value == id }
     }
 
+    /** 公司题单平台解析(WP42):平台需实现 CompanyQueryCapable(如 LC 双站点)。 */
+    private fun resolveCompanyPlatform(query: Map<String, String>): Pair<OJPlatform, CompanyQueryCapable>? {
+        val id = query["platform"]?.trim().orEmpty()
+        if (id.isEmpty()) return null
+        val platform = companyCapablePlatform(id) ?: return null
+        return platform to (platform as CompanyQueryCapable)
+    }
+
+    /** 按 id 找已注册且具备公司题单能力的平台(列表/公司题单端点共用)。 */
+    private fun companyCapablePlatform(id: String): OJPlatform? =
+        platforms().firstOrNull { candidate -> candidate.id.value == id && candidate is CompanyQueryCapable }
+
     private fun unknownPlatform(query: Map<String, String>): ProblemApiResponse =
         if (query["platform"].isNullOrBlank()) {
             badRequest("missing required query param: platform")
@@ -163,6 +248,20 @@ class ProblemApi(
             errorResponse(
                 STATUS_NOT_FOUND,
                 ErrorResponseDto(error = CODE_UNKNOWN_PLATFORM, message = "no platform registered for id '${query["platform"]}'"),
+            )
+        }
+
+    /** 公司端点专用 404(WP42):未注册或平台无 CompanyQueryCapable 均如实回,形态同 SolutionsApi。 */
+    private fun unknownCompanyPlatform(query: Map<String, String>): ProblemApiResponse =
+        if (query["platform"].isNullOrBlank()) {
+            badRequest("missing required query param: platform")
+        } else {
+            errorResponse(
+                STATUS_NOT_FOUND,
+                ErrorResponseDto(
+                    error = CODE_UNKNOWN_PLATFORM,
+                    message = "no company-capable platform registered for id '${query["platform"]}'",
+                ),
             )
         }
 
@@ -236,6 +335,7 @@ class ProblemApi(
             is PlatformsResponseDto -> encodeToString(PlatformsResponseDto.serializer(), dto)
             is ProblemListResponseDto -> encodeToString(ProblemListResponseDto.serializer(), dto)
             is ProblemDetailResponseDto -> encodeToString(ProblemDetailResponseDto.serializer(), dto)
+            is CompaniesResponseDto -> encodeToString(CompaniesResponseDto.serializer(), dto)
             is ErrorResponseDto -> encodeToString(ErrorResponseDto.serializer(), dto)
             else -> throw IllegalArgumentException("unsupported dto: $dto")
         }
@@ -300,9 +400,6 @@ internal fun problemId(
 /** 确定性标签 id:同名标签跨平台共享一行(主档 save 为全量替换,幂等)。 */
 private fun tagId(name: String) = Tag(TagId("tag:$name"), name)
 
-/** WP37:SPI 未透传会员标记前的 paidOnly 占位值(见 ProblemItemDto.paidOnly KDoc)。 */
-private const val PAID_ONLY_UNAVAILABLE = false
-
 private fun com.codequest.spi.ProblemSummary.toDto(status: SolveStatus) =
     ProblemItemDto(
         remoteId = remoteId,
@@ -311,7 +408,7 @@ private fun com.codequest.spi.ProblemSummary.toDto(status: SolveStatus) =
         url = url,
         tags = tags,
         status = status,
-        paidOnly = PAID_ONLY_UNAVAILABLE,
+        paidOnly = paidOnly,
     )
 
 private fun Problem.toDetailDto(
@@ -366,11 +463,25 @@ private data class ProblemItemDto(
     val status: SolveStatus,
     /**
      * WP37 会员题标记(对齐原版状态列 🔒 语义;不与会员登录态联动——YAGNI):
-     * SPI [com.codequest.spi.ProblemSummary] 现契约未透传该标记(WP17 KDoc 预留,
-     * 如 LC 列表 paidOnly / HR premium),故**当前恒 false**——字段先行,后续 SPI
-     * 扩展透传后端到端自然生效,前端按值渲染。
+     * WP42 起 SPI [com.codequest.spi.ProblemSummary] 透传该标记(LC paidOnly;
+     * 无此概念的平台缺省 false),端点原样转发。
      */
     val paidOnly: Boolean,
+)
+
+/** 公司标签清单响应(WP42,`/api/companies`)。 */
+@Serializable
+private data class CompaniesResponseDto(
+    val platform: String,
+    val items: List<CompanyItemDto>,
+)
+
+@Serializable
+private data class CompanyItemDto(
+    val slug: String,
+    val name: String,
+    /** 公司题量(下拉展示;period 维度的精确数以题单 total 为准)。 */
+    val questionCount: Int,
 )
 
 @Serializable

@@ -443,6 +443,147 @@ describe('problems page', () => {
 
     expect(statusHits.value).toBe(2)
   })
+
+  // -----------------------------------------------------------------
+  // WP42:公司下拉与公司题单(能力探测式渲染)
+  // -----------------------------------------------------------------
+
+  const COMPANIES = [
+    { slug: 'amazon', name: 'Amazon', questionCount: 40 },
+    { slug: 'google', name: 'Google', questionCount: 30 },
+  ]
+
+  /** 平台为 leetcode 时回公司清单,其余平台 404(能力探测)。 */
+  function companyAwareHandler(listCalls?: string[]): FetchHandler {
+    return (url) => {
+      if (url.startsWith('/api/platforms')) {
+        return {
+          status: 200,
+          body: {
+            platforms: [
+              { id: 'leetcode', displayName: 'LeetCode' },
+              { id: 'codeforces', displayName: 'Codeforces' },
+            ],
+          },
+        }
+      }
+      if (url.startsWith('/api/companies')) {
+        const platform = new URLSearchParams(url.split('?')[1] ?? '').get('platform')
+        if (platform === 'leetcode') {
+          return { status: 200, body: { platform, items: COMPANIES } }
+        }
+        return { status: 404, body: { error: 'unknown-platform' } }
+      }
+      if (url.startsWith('/api/problems')) {
+        listCalls?.push(url)
+        return { status: 200, body: { platform: 'leetcode', offset: 0, limit: 50, items: ROWS, hasMore: false } }
+      }
+      return undefined
+    }
+  }
+
+  it('renders the company dropdown only for company-capable platforms', async () => {
+    handler = companyAwareHandler()
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    // 平台(0)/难度(1)/状态(2)/公司(3):leetcode 有公司能力 → 4 个下拉
+    const selects = wrapper.findAll('select')
+    expect(selects.length).toBe(4)
+    expect(selects[3].text()).toContain('All companies')
+    expect(selects[3].text()).toContain('Amazon (40)')
+    expect(selects[3].text()).toContain('Google (30)')
+    // 未选公司:期间下拉不出现
+    expect(selects[3].text()).not.toContain('Last 30 days')
+
+    // 切到无公司能力的平台:公司下拉隐藏,剩余 3 个下拉
+    await selects[0].setValue('codeforces')
+    await flushPromises()
+    expect(wrapper.findAll('select').length).toBe(3)
+  })
+
+  it('refetches with company and default period when a company is selected', async () => {
+    const listCalls: string[] = []
+    handler = companyAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[3].setValue('amazon')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).toContain('company=amazon')
+    expect(last).toContain('period=thirty-days')
+  })
+
+  it('exposes the period select in company mode and updates the period param', async () => {
+    const listCalls: string[] = []
+    handler = companyAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[3].setValue('amazon')
+    await flushPromises()
+    // 公司模式:平台(0)/难度(1)/状态(2)/公司(3)/期间(4)
+    const periodSelect = wrapper.findAll('select')[4]
+    expect(periodSelect.text()).toContain('Last 30 days')
+    expect(periodSelect.text()).toContain('All time')
+
+    await periodSelect.setValue('all')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).toContain('company=amazon')
+    expect(last).toContain('period=all')
+  })
+
+  it('clears the company selection when switching to a non-company platform', async () => {
+    const listCalls: string[] = []
+    handler = companyAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[3].setValue('amazon')
+    await flushPromises()
+    expect(listCalls[listCalls.length - 1]).toContain('company=amazon')
+
+    await wrapper.findAll('select')[0].setValue('codeforces')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).not.toContain('company=')
+    expect(last).not.toContain('period=')
+  })
+
+  it('notes that keyword is ignored in company list mode', async () => {
+    handler = companyAwareHandler()
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    expect(wrapper.findAll('.filter-note').length).toBe(0)
+    await wrapper.findAll('select')[3].setValue('amazon')
+    await wrapper.find('input[type="search"]').setValue('two')
+    await flushPromises()
+
+    const notes = wrapper.findAll('.filter-note').map((note) => note.text())
+    expect(notes.some((text) => text.includes('Keyword is ignored'))).toBe(true)
+  })
+
+  it('clears the company filter on reset', async () => {
+    const listCalls: string[] = []
+    handler = companyAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('select')[3].setValue('amazon')
+    await flushPromises()
+    expect(listCalls[listCalls.length - 1]).toContain('company=amazon')
+
+    await wrapper.findAll('button').find((btn) => btn.text() === 'Reset')!.trigger('click')
+    await flushPromises()
+
+    expect(listCalls[listCalls.length - 1]).not.toContain('company=')
+  })
 })
 
 /** 在既有 handler 外层叠加 /api/auth/status mock(WP38)。 */

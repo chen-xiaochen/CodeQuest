@@ -58,12 +58,18 @@ class FakeOJTransport : OJTransport {
     ): String =
         perform(
             "POST_GRAPHQL", url,
-            buildString {
-                append("{\"operationName\":\"").append(operationName).append('"')
-                append(",\"query\":\"").append(query).append('"')
-                append(",\"variables\":").append(variables ?: "{}")
-                append('}')
-            },
+            // 合法 JSON 信封(kotlinx.serialization 转义):WP42 起查询文本含引号
+            // (favoriteQuestionList 的 `$version: String = "v2"` 默认值),手拼字符串
+            // 会产生非法 JSON,按 key 消费 body 的 handler 将解析失败。
+            kotlinx.serialization.json.buildJsonObject {
+                put("operationName", kotlinx.serialization.json.JsonPrimitive(operationName))
+                put("query", kotlinx.serialization.json.JsonPrimitive(query))
+                put(
+                    "variables",
+                    variables?.let { kotlinx.serialization.json.Json.parseToJsonElement(it) }
+                        ?: kotlinx.serialization.json.JsonObject(emptyMap()),
+                )
+            }.toString(),
             headers,
         )
 

@@ -3,6 +3,10 @@ package com.codequest.platform.leetcode
 import com.codequest.core.model.PlatformId
 import com.codequest.core.model.SubmissionResult
 import com.codequest.spi.AuthCapable
+import com.codequest.spi.CompanyProblemPage
+import com.codequest.spi.CompanyProblemQuery
+import com.codequest.spi.CompanyQueryCapable
+import com.codequest.spi.CompanyTag
 import com.codequest.spi.LoginSession
 import com.codequest.spi.OJCredentialStore
 import com.codequest.spi.OJPlatform
@@ -26,8 +30,8 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现五个能力接口并按服务拆分委托:
- * auth / problem / submission / solutions / submission detail(WP36)。
+ * (身份差异见 [LeetCodeVariant]),组合实现六个能力接口并按服务拆分委托:
+ * auth / problem / company(WP42)/ submission / solutions / submission detail(WP36)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -37,6 +41,7 @@ class LeetCodePlatform(
 ) : OJPlatform,
     AuthCapable,
     ProblemQueryCapable,
+    CompanyQueryCapable,
     SubmissionCapable,
     SolutionViewCapable,
     SubmissionDetailCapable {
@@ -66,6 +71,10 @@ class LeetCodePlatform(
     override fun queryProblems(filter: ProblemFilter): Flow<ProblemSummary> = problemService.queryProblems(filter)
 
     override suspend fun fetchProblemDetail(remoteId: String): ProblemStatement = problemService.fetchProblemDetail(remoteId)
+
+    override suspend fun fetchCompanies(): List<CompanyTag> = problemService.fetchCompanies()
+
+    override suspend fun queryCompanyProblems(query: CompanyProblemQuery): CompanyProblemPage = problemService.queryCompanyProblems(query)
 
     override suspend fun submit(request: SubmitRequest): SubmissionHandle = submissionService.submit(request)
 

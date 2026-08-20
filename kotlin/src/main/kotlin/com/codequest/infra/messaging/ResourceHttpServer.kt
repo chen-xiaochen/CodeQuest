@@ -21,7 +21,8 @@ import java.util.logging.Logger
  *
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
- *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`;
+ *   注入后启用):`GET /api/platforms`、`GET /api/problems`(WP42 起支持 `company=`
+ *   公司题单参数)、`GET /api/companies`、`GET /api/problem/{remoteId}`;
  *   账号状态端点(WP38,经 [authApi] 注入后启用):`GET /api/auth/status`;
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
  *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
@@ -144,6 +145,11 @@ class ResourceHttpServer(
 
             path == "/api/problems" && exchange.isGet() -> {
                 runProblemApi(exchange) { api -> api.listProblems(query) }
+            }
+
+            // WP42:公司标签清单(公司下拉数据源;company 参数的公司题单走 /api/problems)
+            path == "/api/companies" && exchange.isGet() -> {
+                runProblemApi(exchange) { api -> api.listCompanies(query) }
             }
 
             // WP39:题面自定义 CSS(text/css 透传;未设置回 200 空体——样式是附属能力,
