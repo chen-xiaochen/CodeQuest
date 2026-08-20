@@ -171,12 +171,20 @@ export interface SolutionArticleContent {
   contentFormat: 'HTML' | 'MARKDOWN'
 }
 
-/** WP26:题解引用列表(SolutionViewCapable 平台,如洛谷;可能要求登录态)。 */
+/**
+ * WP26:题解引用列表(SolutionViewCapable 平台,如洛谷;可能要求登录态)。
+ * WP41:[orderBy] 可选排序键(camelCase,如 hot/newest/oldest/mostUpvote;
+ * 不透明透传,无排序能力的平台如实忽略)。
+ */
 export function fetchProblemSolutions(
   platform: string,
   remoteId: string,
+  orderBy?: string,
 ): Promise<SolutionListResult> {
   const params = new URLSearchParams({ platform })
+  if (orderBy) {
+    params.set('orderBy', orderBy)
+  }
   return getJson<SolutionListResult>(
     `/api/problem/${encodeURIComponent(remoteId)}/solutions?${params.toString()}`,
   )

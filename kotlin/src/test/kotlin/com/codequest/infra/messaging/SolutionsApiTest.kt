@@ -34,7 +34,10 @@ class SolutionsApiTest {
         override val domain = "www.luogu.com.cn"
         override val info = PlatformInfo(displayName = "洛谷 Luogu")
 
-        override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> {
+        override suspend fun fetchSolutions(
+            remoteId: String,
+            orderBy: String?,
+        ): List<SolutionArticleRef> {
             failure()
             return listOf(
                 SolutionArticleRef(id = "77", title = "一份题解", url = "https://www.luogu.com.cn/problem/solution/$remoteId#solution-77"),
@@ -55,21 +58,43 @@ class SolutionsApiTest {
         }
     }
 
-    /** 只实现列表(吃 SPI 默认正文实现):默认抛 OJException → 端点 502。 */
+    /** 只实现列表(吃 SPI 默认正文实现):默认抛 OJException → 端点 502;orderBy 如实忽略。 */
     private class ListOnlyPlatform : OJPlatform, SolutionViewCapable {
         override val id = PlatformId("listonly")
         override val domain = "listonly.example.com"
         override val info = PlatformInfo(displayName = "List Only")
 
-        override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> = emptyList()
+        override suspend fun fetchSolutions(
+            remoteId: String,
+            orderBy: String?,
+        ): List<SolutionArticleRef> = emptyList()
     }
+
+    /** WP41:双参签名假平台(记录 orderBy 透传值)。 */
+    private class RecordingOrderPlatform : OJPlatform, SolutionViewCapable {
+        override val id = PlatformId("orderly")
+        override val domain = "orderly.example.com"
+        override val info = PlatformInfo(displayName = "Orderly")
+
+        val orderByCalls = mutableListOf<String?>()
+
+        override suspend fun fetchSolutions(
+            remoteId: String,
+            orderBy: String?,
+        ): List<SolutionArticleRef> {
+            orderByCalls += orderBy
+            return listOf(SolutionArticleRef(id = "1", title = "t", url = "https://orderly.example.com/1"))
+        }
+    }
+
+    private val orderRecorder = RecordingOrderPlatform()
 
     private lateinit var server: ResourceHttpServer
     private val client = HttpClient.newHttpClient()
 
     @BeforeTest
     fun setUp() {
-        server = ResourceHttpServer(solutionsApi = SolutionsApi(platforms = { listOf(FakeLuoguPlatform()) }))
+        server = ResourceHttpServer(solutionsApi = SolutionsApi(platforms = { listOf(FakeLuoguPlatform(), orderRecorder) }))
         server.start()
     }
 
@@ -218,5 +243,59 @@ class SolutionsApiTest {
         assertEquals(200, response.status)
         assertTrue(response.json.contains("\"contentFormat\":\"MARKDOWN\""), response.json)
         assertTrue(response.json.contains("\"id\":\"77\""), response.json)
+    }
+
+    // -------------------------------------------------------------------
+    // WP41:orderBy 参数透传
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `orderBy query param is passed through to platform`() {
+        val response = get("/api/problem/P1001/solutions?platform=orderly&orderBy=newest")
+
+        assertEquals(200, response.statusCode())
+        assertEquals(listOf<String?>("newest"), orderRecorder.orderByCalls)
+    }
+
+    @Test
+    fun `absent or blank orderBy maps to null`() {
+        assertEquals(200, get("/api/problem/P1001/solutions?platform=orderly").statusCode())
+        assertEquals(200, get("/api/problem/P1001/solutions?platform=orderly&orderBy=").statusCode())
+        assertEquals(200, get("/api/problem/P1001/solutions?platform=orderly&orderBy=%20%20").statusCode())
+
+        assertEquals(listOf<String?>(null, null, null), orderRecorder.orderByCalls)
+    }
+
+    @Test
+    fun `unknown orderBy value is passed through unchanged`() {
+        // orderBy 为不透明排序键:端点不校验(消费方为自家前端下拉),
+        // 平台按已知值映射、未知值回退各自默认——透传原样到达平台层
+        assertEquals(200, get("/api/problem/P1001/solutions?platform=orderly&orderBy=bogus").statusCode())
+
+        assertEquals(listOf<String?>("bogus"), orderRecorder.orderByCalls)
+    }
+
+    @Test
+    fun `platform without ordering capability ignores orderBy and still serves`() {
+        server.stop()
+        server = ResourceHttpServer(solutionsApi = SolutionsApi(platforms = { listOf(ListOnlyPlatform()) }))
+        server.start()
+
+        val response = get("/api/problem/P1/solutions?platform=listonly&orderBy=hot")
+
+        // 无排序能力平台如实忽略参数(实现侧丢弃,不报错不改变结果)
+        assertEquals(200, response.statusCode())
+        assertTrue(response.body().contains("\"items\":[]"), response.body())
+    }
+
+    @Test
+    fun `listSolutions passes orderBy without http`() = runBlocking {
+        val recorder = RecordingOrderPlatform()
+        val api = SolutionsApi(platforms = { listOf(recorder) })
+
+        assertEquals(200, api.listSolutions("P1001", mapOf("platform" to "orderly", "orderBy" to "oldest")).status)
+        assertEquals(200, api.listSolutions("P1001", mapOf("platform" to "orderly")).status)
+
+        assertEquals(listOf<String?>("oldest", null), recorder.orderByCalls)
     }
 }

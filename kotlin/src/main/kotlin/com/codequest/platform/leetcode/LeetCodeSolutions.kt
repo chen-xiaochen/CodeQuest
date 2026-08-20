@@ -17,8 +17,15 @@ class LeetCodeSolutions(
     private val variant: LeetCodeVariant,
     private val api: LeetCodeApi,
 ) : SolutionViewCapable {
-    override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> =
-        api.fetchSolutionArticles(remoteId).map { article ->
+    /**
+     * [orderBy] 为可选排序键(WP41,camelCase 线协议值;站点 GraphQL 变量
+     * 映射见 [LeetCodeApi.solutionOrderByGraphQLValue],默认 HOT 同旧实现)。
+     */
+    override suspend fun fetchSolutions(
+        remoteId: String,
+        orderBy: String?,
+    ): List<SolutionArticleRef> =
+        api.fetchSolutionArticles(remoteId, orderBy).map { article ->
             SolutionArticleRef(
                 id = article.slug,
                 title = article.title,

@@ -4,7 +4,9 @@ import com.codequest.core.model.OJException
 import com.codequest.spi.OJTransport
 import com.codequest.spi.ProblemFilter
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
@@ -352,9 +354,14 @@ class LeetCodeApi(
         val slug: String,
     )
 
-    /** 官方题解列表(CN questionTopicsList / COM ugcArticleSolutionArticles;orderBy=HOT 同旧实现默认)。 */
+    /**
+     * 官方题解列表(CN questionTopicsList / COM ugcArticleSolutionArticles)。
+     * [orderBy] 为排序键(WP41,默认 HOT 同旧实现;映射见
+     * [solutionOrderByGraphQLValue]);解析大小写不敏感,未知值回退 HOT。
+     */
     suspend fun fetchSolutionArticles(
         questionSlug: String,
+        orderBy: String? = null,
         limit: Int = DEFAULT_SOLUTION_LIMIT,
     ): List<LeetCodeSolutionArticle> {
         val operationName: String
@@ -374,7 +381,11 @@ class LeetCodeApi(
                 put("skip", 0)
                 put("first", limit)
                 put("questionSlug", questionSlug)
-                put("orderBy", "HOT")
+                // WP41:排序键映射;COM+oldest 无对应值,按旧实现发 JsonNull
+                put(
+                    "orderBy",
+                    solutionOrderByGraphQLValue(variant, orderBy)?.let(::JsonPrimitive) ?: JsonNull,
+                )
                 put("userInput", "")
                 put("tagSlugs", stringArray(emptyList()))
             }
@@ -386,6 +397,34 @@ class LeetCodeApi(
                 title = node["title"]?.jsonPrimitive?.content.orEmpty(),
                 slug = node["slug"]?.jsonPrimitive?.content.orEmpty(),
             )
+        }
+    }
+
+    /**
+     * 题解排序键(REST/桥 camelCase)→ 站点 GraphQL orderBy 变量(WP41;
+     * 旧 LeetCodeQuestionSolutionArticlesOrderBy 逐字事实):
+     *
+     * | 键          | CN               | COM           |
+     * |-------------|------------------|---------------|
+     * | mostUpvote  | MOST_UPVOTE      | MOST_UPVOTE   |
+     * | hot         | HOT              | HOT           |
+     * | newest      | NEWEST_TO_OLDEST | MOST_RECENT   |
+     * | oldest      | OLDEST_TO_NEWEST | (无,发 null) |
+     *
+     * null/空/未知键回退 HOT(旧实现默认;端点侧不校验,消费方为自家前端下拉)。
+     * 解析大小写不敏感、忽略首尾空白。
+     */
+    internal fun solutionOrderByGraphQLValue(
+        variant: LeetCodeVariant,
+        orderBy: String?,
+    ): String? {
+        val key = orderBy?.trim()?.lowercase()
+        return when (key) {
+            "mostupvote" -> "MOST_UPVOTE"
+            null, "", "hot" -> "HOT"
+            "newest" -> if (variant.isCn) "NEWEST_TO_OLDEST" else "MOST_RECENT"
+            "oldest" -> if (variant.isCn) "OLDEST_TO_NEWEST" else null
+            else -> "HOT"
         }
     }
 

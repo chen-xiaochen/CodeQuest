@@ -19,6 +19,8 @@ import javax.swing.JComponent
  * 每个工具窗口创建一个 [JBCefBrowser] 容器 + [CQBridge] 桥实例:
  * - [createContent] 的 [url] 指向本地 ResourceHttpServer 的 webview 页面
  *   (`http://127.0.0.1:<port>/<page>/`,端口由 CodeQuestHttpServerService 分配);
+ * - 注册 `webview:zoom` 缩放 handler(WP41,所有工具窗口通用;前端页面
+ *   自行决定是否暴露缩放按钮);
  * - 注册 `bridge:echo` → `bridge:echo:reply` 回声 handler,并在页面加载完成后注入
  *   **echo 自检探针**(JS→Kotlin→JS 完整往返),往返成功写入 IDE 日志,作为
  *   WP16 验收证据(`CQBridge echo round-trip verified`);
@@ -58,6 +60,8 @@ object JcefToolWindowSupport {
         val browser = createCqBrowser()
         Disposer.register(disposable, browser)
         val bridge = CQBridge(browser, disposable)
+        // WP41:整页缩放(每浏览器实例独立级别状态,无持久化)
+        WebviewZoom.attach(bridge, browser)
         attachEchoVerification(bridge, browser, disposable, disposableName)
         configure?.invoke(browser, bridge)
         browser.loadURL(url ?: "about:blank")

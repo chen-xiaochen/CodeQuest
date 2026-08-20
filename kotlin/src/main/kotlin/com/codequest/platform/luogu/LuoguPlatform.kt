@@ -83,7 +83,11 @@ class LuoguPlatform(
         problemRemoteId: String,
     ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
 
-    override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId)
+    /** 洛谷无题解排序能力:orderBy 由委托链如实忽略(WP41)。 */
+    override suspend fun fetchSolutions(
+        remoteId: String,
+        orderBy: String?,
+    ): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId, orderBy)
 
     override suspend fun fetchSolutionContent(
         remoteId: String,

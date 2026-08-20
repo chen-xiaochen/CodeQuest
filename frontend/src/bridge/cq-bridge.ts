@@ -58,6 +58,9 @@ export const TOPIC_AUTH_LOGOUT_RESULT = 'auth:logout-result'
 /** 1.0.x:一键开刷(页面 → Kotlin);payload {platform, remoteId, title, difficulty, url}。 */
 export const TOPIC_CHALLENGE_CREATE = 'challenge:create'
 
+/** WP41:webview 缩放(页面 → Kotlin);payload {delta:±1} 步进或 {level:0} 直设(level 优先,0=100%)。 */
+export const TOPIC_WEBVIEW_ZOOM = 'webview:zoom'
+
 /** 1.0.x:开刷结果回推(Kotlin → 页面);payload {ok, error?}。 */
 export const TOPIC_CHALLENGE_CREATE_RESULT = 'challenge:create-result'
 

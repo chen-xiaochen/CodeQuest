@@ -17,8 +17,10 @@ import java.util.logging.Logger
  * 照 [ProblemApi] 模式(平台来源以 lambda 注入,按请求解析,纯 Kotlin 可测)。
  *
  * 端点契约(由 [ResourceHttpServer] 挂载):
- * - `GET /api/problem/{remoteId}/solutions?platform=`:题解引用列表
- *   `{platform, remoteId, items:[{id,title,url}]}`;
+ * - `GET /api/problem/{remoteId}/solutions?platform=&orderBy=`:题解引用列表
+ *   `{platform, remoteId, items:[{id,title,url}]}`;`orderBy` 为可选排序键
+ *   (WP41,不透明透传:支持排序的平台按已知值映射,其余平台如实忽略;
+ *   空白视为缺省);
  * - `GET /api/problem/{remoteId}/solutions/{sid}?platform=`(WP31):单篇题解正文
  *   `{platform, remoteId, id, title, content, contentFormat}`。**不落库的取舍**:
  *   正文体积(数十 KB/篇)远超引用,生命周期跟随平台侧编辑(缓存易陈旧),
@@ -32,7 +34,7 @@ class SolutionsApi(
     private val platforms: () -> List<OJPlatform> = OJPlatformRegistry::all,
     private val json: Json = DEFAULT_JSON,
 ) {
-    /** `/api/problem/{remoteId}/solutions`:经 SPI fetchSolutions 拉取引用列表。 */
+    /** `/api/problem/{remoteId}/solutions`:经 SPI fetchSolutions 拉取引用列表(orderBy 不透明透传)。 */
     suspend fun listSolutions(
         remoteId: String,
         query: Map<String, String>,
@@ -41,9 +43,10 @@ class SolutionsApi(
         if (id.isEmpty()) return badRequest("missing required query param: platform")
         val platform = solutionCapablePlatform(id) ?: return unknownPlatform(id)
         val capable = platform as SolutionViewCapable
+        val orderBy = query["orderBy"]?.trim().orEmpty().takeIf { it.isNotEmpty() }
         val refs =
             try {
-                capable.fetchSolutions(remoteId)
+                capable.fetchSolutions(remoteId, orderBy)
             } catch (error: Throwable) {
                 return error.toErrorResponse()
             }

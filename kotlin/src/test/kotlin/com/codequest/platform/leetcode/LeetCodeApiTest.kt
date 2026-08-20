@@ -11,6 +11,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -265,6 +266,71 @@ class LeetCodeApiTest {
                 .url.startsWith("https://leetcode.cn/"),
         )
     }
+
+    @Test
+    fun `solution articles orderBy defaults to HOT on both sites`() = runBlocking {
+        // 旧实现默认 orderBy=HOT(WP19 沿用);WP41 起可由调用方覆盖
+        graphqlResponses["questionTopicsList"] = emptyEdges("questionSolutionArticles")
+        graphqlResponses["ugcArticleSolutionArticles"] = emptyEdges("ugcArticleSolutionArticles")
+
+        cnApi.fetchSolutionArticles("two-sum")
+        api.fetchSolutionArticles("two-sum")
+
+        assertEquals("HOT", variablesOf(graphqlRecord("questionTopicsList"))["orderBy"]!!.jsonPrimitive.content)
+        assertEquals("HOT", variablesOf(graphqlRecord("ugcArticleSolutionArticles"))["orderBy"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `solution articles newest maps to NEWEST_TO_OLDEST on CN and MOST_RECENT on COM`() = runBlocking {
+        // 旧 LeetCodeQuestionSolutionArticlesOrderBy.Newest 事实:CN/COM 变量名不同
+        graphqlResponses["questionTopicsList"] = emptyEdges("questionSolutionArticles")
+        graphqlResponses["ugcArticleSolutionArticles"] = emptyEdges("ugcArticleSolutionArticles")
+
+        cnApi.fetchSolutionArticles("two-sum", "newest")
+        api.fetchSolutionArticles("two-sum", "newest")
+
+        assertEquals("NEWEST_TO_OLDEST", variablesOf(graphqlRecord("questionTopicsList"))["orderBy"]!!.jsonPrimitive.content)
+        assertEquals("MOST_RECENT", variablesOf(graphqlRecord("ugcArticleSolutionArticles"))["orderBy"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `solution articles mostUpvote maps identically on both sites`() = runBlocking {
+        graphqlResponses["questionTopicsList"] = emptyEdges("questionSolutionArticles")
+        graphqlResponses["ugcArticleSolutionArticles"] = emptyEdges("ugcArticleSolutionArticles")
+
+        cnApi.fetchSolutionArticles("two-sum", "mostUpvote")
+        api.fetchSolutionArticles("two-sum", "mostUpvote")
+
+        assertEquals("MOST_UPVOTE", variablesOf(graphqlRecord("questionTopicsList"))["orderBy"]!!.jsonPrimitive.content)
+        assertEquals("MOST_UPVOTE", variablesOf(graphqlRecord("ugcArticleSolutionArticles"))["orderBy"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `solution articles oldest maps on CN and sends json null on COM`() = runBlocking {
+        // 旧事实:Oldest 仅 CN 有对应值(OLDEST_TO_NEWEST);COM 发 Json.Null
+        graphqlResponses["questionTopicsList"] = emptyEdges("questionSolutionArticles")
+        graphqlResponses["ugcArticleSolutionArticles"] = emptyEdges("ugcArticleSolutionArticles")
+
+        cnApi.fetchSolutionArticles("two-sum", "oldest")
+        api.fetchSolutionArticles("two-sum", "oldest")
+
+        assertEquals("OLDEST_TO_NEWEST", variablesOf(graphqlRecord("questionTopicsList"))["orderBy"]!!.jsonPrimitive.content)
+        assertTrue(variablesOf(graphqlRecord("ugcArticleSolutionArticles"))["orderBy"] is JsonNull)
+    }
+
+    @Test
+    fun `solution articles unknown or blank orderBy falls back to HOT`() = runBlocking {
+        graphqlResponses["questionTopicsList"] = emptyEdges("questionSolutionArticles")
+        graphqlResponses["ugcArticleSolutionArticles"] = emptyEdges("ugcArticleSolutionArticles")
+
+        cnApi.fetchSolutionArticles("two-sum", "bogus")
+        api.fetchSolutionArticles("two-sum", " ")
+
+        assertEquals("HOT", variablesOf(graphqlRecord("questionTopicsList"))["orderBy"]!!.jsonPrimitive.content)
+        assertEquals("HOT", variablesOf(graphqlRecord("ugcArticleSolutionArticles"))["orderBy"]!!.jsonPrimitive.content)
+    }
+
+    private fun emptyEdges(dataField: String): String = """{"data":{"$dataField":{"totalNum":0,"edges":[]}}}"""
 
     @Test
     fun `solution article detail uses site-specific operation and parses markdown content`() = runBlocking {

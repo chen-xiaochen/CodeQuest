@@ -17,7 +17,11 @@ import com.codequest.spi.SolutionViewCapable
 class LuoguSolutions(
     private val api: LuoguApi,
 ) : SolutionViewCapable {
-    override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> =
+    /** 洛谷无题解排序能力:[orderBy] 如实忽略(WP41 SPI 参数补充)。 */
+    override suspend fun fetchSolutions(
+        remoteId: String,
+        orderBy: String?,
+    ): List<SolutionArticleRef> =
         api.fetchSolutionList(remoteId).map { item ->
             SolutionArticleRef(
                 id = item.id,

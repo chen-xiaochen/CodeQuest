@@ -10,10 +10,13 @@
  * WP39:题面自定义 CSS——加载后 fetch `/api/custom.css`(text/css,按请求现读
  * 设置),非空则注入 `<style data-cq-custom-css>`;settings apply 后下次页面
  * 加载生效;卸载时移除注入节点。
+ * WP41:题解排序下拉(仅 LeetCode 系平台;值/文案=旧 ArticleOrderByAction
+ * 事实,变更即重拉)与 webview 缩放工具栏(−/100%/+,经 `webview:zoom`
+ * 桥消息;题面与阅读器同属一个浏览器实例,天然共用;不持久化)。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, cqBridge } from '../../bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, TOPIC_WEBVIEW_ZOOM, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   fetchCustomCss,
@@ -99,6 +102,36 @@ const params = new URLSearchParams(window.location.search)
 const platform = params.get('platform') ?? ''
 const remoteId = params.get('remoteId') ?? ''
 
+/**
+ * WP41:题解排序——仅 LeetCode 系平台有排序能力(原版排序器即 LC 题解视图
+ * 专属;洛谷等如实忽略参数)。选项值/文案 = 后端 SPI/旧 Show 实现事实;
+ * 默认 hot 与后端缺省一致。
+ */
+const LEETCODE_PLATFORM_IDS = new Set(['leetcode', 'leetcodecn'])
+const supportsSolutionOrder = LEETCODE_PLATFORM_IDS.has(platform)
+const SOLUTION_ORDER_OPTIONS = [
+  { value: 'mostUpvote', label: 'Most Upvoted' },
+  { value: 'hot', label: 'Hot' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+]
+const solutionOrder = ref('hot')
+
+/** 排序变更即重拉列表(阅读器态无列表,重拉只更新底层数据,返回列表即见)。 */
+function onOrderChange(event: Event): void {
+  solutionOrder.value = (event.target as HTMLSelectElement).value
+  void loadSolutions()
+}
+
+/** WP41:webview 缩放(delta 步进 / level 直设;Kotlin 侧钳制与生效)。 */
+function zoomBy(delta: number): void {
+  cqBridge().send(TOPIC_WEBVIEW_ZOOM, { delta })
+}
+
+function zoomReset(): void {
+  cqBridge().send(TOPIC_WEBVIEW_ZOOM, { level: 0 })
+}
+
 const renderedHtml = computed(() => {
   if (!detail.value) return ''
   return renderStatement(detail.value.content, detail.value.contentFormat)
@@ -144,8 +177,10 @@ async function loadSolutions(): Promise<void> {
   solutionsError.value = ''
   solutionsErrorCode.value = ''
   try {
+    // 排序键仅对支持排序的平台随请求发出(后端对其余平台忽略参数)
+    const order = supportsSolutionOrder ? solutionOrder.value : undefined
     // items 缺失(端点契约被破坏/被通用 stub 拦截)时降级为空列表,不影响题面
-    solutions.value = (await fetchProblemSolutions(platform, remoteId)).items ?? []
+    solutions.value = (await fetchProblemSolutions(platform, remoteId, order)).items ?? []
   } catch (cause) {
     solutions.value = []
     solutionsError.value = describeError(cause)
@@ -267,6 +302,37 @@ onUnmounted(() => {
 
 <template>
   <AppShell title="Problem View" subtitle="Problem statement with sanitized HTML / markdown rendering.">
+    <!-- WP41:整页缩放工具栏(题面与阅读器共用;不持久化,加载即 100%) -->
+    <div v-if="platform && remoteId" class="zoombar" role="toolbar" aria-label="Page zoom">
+      <button
+        type="button"
+        class="zoombar__btn"
+        title="Zoom out"
+        aria-label="Zoom out"
+        @click="zoomBy(-1)"
+      >
+        −
+      </button>
+      <button
+        type="button"
+        class="zoombar__btn zoombar__btn--reset"
+        title="Actual zoom (100%)"
+        aria-label="Reset zoom to 100%"
+        @click="zoomReset"
+      >
+        100%
+      </button>
+      <button
+        type="button"
+        class="zoombar__btn"
+        title="Zoom in"
+        aria-label="Zoom in"
+        @click="zoomBy(1)"
+      >
+        +
+      </button>
+    </div>
+
     <p v-if="!platform || !remoteId" class="state">
       No problem selected. Open one from the Problems list.
     </p>
@@ -323,37 +389,57 @@ onUnmounted(() => {
       <section class="solutions" aria-label="Solutions">
         <div class="solutions__bar">
           <h3 class="solutions__title">Solutions</h3>
-          <div class="solutions__nav" role="toolbar" aria-label="Solution reader navigation">
-            <button
-              type="button"
-              class="solutions__nav-btn"
-              :disabled="!canBack"
-              title="Back to list / previous article"
-              aria-label="Back"
-              @click="goBack"
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              class="solutions__nav-btn"
-              :disabled="!canForward"
-              title="Forward to next article"
-              aria-label="Forward"
-              @click="goForward"
-            >
-              →
-            </button>
-            <button
-              type="button"
-              class="solutions__nav-btn"
-              :disabled="contentLoading || solutionsLoading"
-              title="Refresh current view"
-              aria-label="Refresh"
-              @click="refresh"
-            >
-              ⟳
-            </button>
+          <div class="solutions__tools">
+            <!-- WP41:题解排序(仅 LeetCode 系平台;变更即重拉) -->
+            <label v-if="supportsSolutionOrder" class="solutions__order">
+              <span class="solutions__order-label">Sort</span>
+              <select
+                class="solutions__order-select"
+                aria-label="Sort solutions"
+                @change="onOrderChange"
+              >
+                <option
+                  v-for="option in SOLUTION_ORDER_OPTIONS"
+                  :key="option.value"
+                  :value="option.value"
+                  :selected="option.value === solutionOrder"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </label>
+            <div class="solutions__nav" role="toolbar" aria-label="Solution reader navigation">
+              <button
+                type="button"
+                class="solutions__nav-btn"
+                :disabled="!canBack"
+                title="Back to list / previous article"
+                aria-label="Back"
+                @click="goBack"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                class="solutions__nav-btn"
+                :disabled="!canForward"
+                title="Forward to next article"
+                aria-label="Forward"
+                @click="goForward"
+              >
+                →
+              </button>
+              <button
+                type="button"
+                class="solutions__nav-btn"
+                :disabled="contentLoading || solutionsLoading"
+                title="Refresh current view"
+                aria-label="Refresh"
+                @click="refresh"
+              >
+                ⟳
+              </button>
+            </div>
           </div>
         </div>
 
@@ -464,6 +550,30 @@ onUnmounted(() => {
   cursor: default;
 }
 
+/* WP41:整页缩放工具栏(−/100%/+;题面与阅读器共用一个浏览器级缩放) */
+.zoombar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.zoombar__btn {
+  min-width: 26px;
+  padding: 1px 6px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.zoombar__btn--reset {
+  min-width: 44px;
+}
+
 .statement-header {
   margin-bottom: 12px;
 }
@@ -569,6 +679,31 @@ onUnmounted(() => {
   color: var(--cq-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/* WP41:排序下拉与阅读器导航并列(下拉仅 LeetCode 系平台渲染) */
+.solutions__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.solutions__order {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--cq-muted);
+}
+
+.solutions__order-select {
+  padding: 1px 4px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .solutions__nav {

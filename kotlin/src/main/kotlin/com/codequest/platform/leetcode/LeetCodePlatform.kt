@@ -71,7 +71,10 @@ class LeetCodePlatform(
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = submissionService.watchSubmission(handle)
 
-    override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId)
+    override suspend fun fetchSolutions(
+        remoteId: String,
+        orderBy: String?,
+    ): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId, orderBy)
 
     override suspend fun fetchSolutionContent(
         remoteId: String,

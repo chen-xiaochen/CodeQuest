@@ -22,8 +22,23 @@ import kotlinx.serialization.Serializable
  * 线程/协程约定见 [OJPlatform];实现只抛 core 领域异常体系。
  */
 interface SolutionViewCapable {
-    /** 拉取指定题目的题解引用列表(remoteId 与 [ProblemSummary.remoteId] 同源)。 */
-    suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef>
+    /**
+     * 拉取指定题目的题解引用列表(remoteId 与 [ProblemSummary.remoteId] 同源)。
+     *
+     * [orderBy] 为可选排序键(WP41;不透明字符串,语义由平台自定义——如
+     * LeetCode 的 hot/newest/oldest/mostUpvote),**无排序能力的平台如实
+     * 忽略**。取舍:不在 SPI 定义平台专属排序枚举(避免把单一平台的站点
+     * 协议值泄漏进通用契约),端点层也不校验取值(纯透传);平台按已知值
+     * 映射,未知值回退各自默认(见 LeetCodeApi.solutionOrderByGraphQLValue)。
+     *
+     * 默认参数保住**调用方**零改动(单参调用继续成立);实现方须补第二参
+     * 并忽略之(Kotlin override 须声明完整签名,不能省略带默认值的尾参)
+     * ——这是本参数的最小破坏面,新实现仅两处(LeetCode/洛谷)。
+     */
+    suspend fun fetchSolutions(
+        remoteId: String,
+        orderBy: String? = null,
+    ): List<SolutionArticleRef>
 
     /**
      * 拉取单篇题解正文([solutionId] 即 [SolutionArticleRef.id])。
