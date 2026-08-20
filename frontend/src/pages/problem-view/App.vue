@@ -7,12 +7,16 @@
  * 复用题面 MD/HTML 渲染管线,浏览器风格导航工具栏(后退/前进/刷新),
  * 历史栈页内维护(cursor -1 = 列表根视图,同浏览器语义);站外打开仍留作
  * 兜底出口(经 `nav:openUrl` 桥消息)。
+ * WP39:题面自定义 CSS——加载后 fetch `/api/custom.css`(text/css,按请求现读
+ * 设置),非空则注入 `<style data-cq-custom-css>`;settings apply 后下次页面
+ * 加载生效;卸载时移除注入节点。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
+  fetchCustomCss,
   fetchProblemDetail,
   fetchProblemSolutions,
   fetchSolutionArticleContent,
@@ -222,9 +226,28 @@ function openSolution(url: string): void {
   }
 }
 
+/** WP39:注入的自定义 CSS 节点(卸载时移除,避免跨页面残留)。 */
+let customStyleEl: HTMLStyleElement | null = null
+
+/** WP39:题面自定义 CSS——非空才注入;失败静默(附属能力,不影响题面)。 */
+async function injectCustomCss(): Promise<void> {
+  try {
+    const css = await fetchCustomCss()
+    if (!css.trim()) return
+    const el = document.createElement('style')
+    el.setAttribute('data-cq-custom-css', '')
+    el.textContent = css
+    document.head.appendChild(el)
+    customStyleEl = el
+  } catch {
+    // 端点未配置/网络抖动:跳过注入,题面照常渲染
+  }
+}
+
 onMounted(() => {
   void load()
   void loadSolutions()
+  void injectCustomCss()
   detachLoginResult = cqBridge().on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
   detachCreateResult = cqBridge().on(TOPIC_CHALLENGE_CREATE_RESULT, handleCreateResult)
 })
@@ -237,6 +260,8 @@ onUnmounted(() => {
   detachLoginResult = null
   detachCreateResult?.()
   detachCreateResult = null
+  customStyleEl?.remove()
+  customStyleEl = null
 })
 </script>
 

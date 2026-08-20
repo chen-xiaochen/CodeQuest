@@ -32,6 +32,8 @@ import java.util.logging.Logger
  *   `GET /api/problem/{remoteId}/solutions/{sid}?platform=`;
  *   统计端点(WP29,经 [statsApi] 注入后启用):`GET /api/stats?platform=&days=`;
  *   检索端点(WP30,经 [searchApi] 注入后启用):`GET /api/search`、`GET /api/tags`;
+ *   自定义 CSS 端点(WP39,经 [customCss] provider 注入):`GET /api/custom.css`
+ *   返回 text/css(未设置空体);
  *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
@@ -45,6 +47,8 @@ class ResourceHttpServer(
     private val statsApi: StatisticsApi? = null,
     private val searchApi: SearchApi? = null,
     private val authApi: AuthApi? = null,
+    /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
+    private val customCss: () -> String = { "" },
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -140,6 +144,13 @@ class ResourceHttpServer(
 
             path == "/api/problems" && exchange.isGet() -> {
                 runProblemApi(exchange) { api -> api.listProblems(query) }
+            }
+
+            // WP39:题面自定义 CSS(text/css 透传;未设置回 200 空体——样式是附属能力,
+            // 非数据 API,不回 503;每次请求现读设置,settings apply 后无需重启)
+            path == "/api/custom.css" && exchange.isGet() -> {
+                val css = customCss().toByteArray(StandardCharsets.UTF_8)
+                respond(exchange, STATUS_OK, CSS_CONTENT_TYPE, css)
             }
 
             else -> {
@@ -560,6 +571,9 @@ class ResourceHttpServer(
         private const val STATUS_METHOD_NOT_ALLOWED = 405
         private const val STATUS_SERVICE_UNAVAILABLE = 503
         private const val EMPTY_BODY = -1L
+
+        /** WP39:自定义 CSS 端点的 Content-Type(与静态 .css 资源一致)。 */
+        private const val CSS_CONTENT_TYPE = "text/css; charset=UTF-8"
         private const val HEALTH_RESPONSE = """{"status":"ok","version":"0.1.0"}"""
         private const val NOT_FOUND_RESPONSE = """{"error":"not found"}"""
         private const val BAD_REQUEST_RESPONSE = """{"error":"bad-request","message":"missing remoteId path segment"}"""

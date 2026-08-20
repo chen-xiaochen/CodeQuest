@@ -447,3 +447,17 @@ export function fetchTags(platform?: string): Promise<TagSummary[]> {
     (body) => body.tags,
   )
 }
+
+// ---------------------------------------------------------------------------
+// WP39:题面自定义 CSS(/api/custom.css,text/css 透传,未设置空体)
+// ---------------------------------------------------------------------------
+
+/**
+ * WP39:拉取题面自定义 CSS。非 JSON 端点,失败/非 2xx 一律回空串
+ * (自定义 CSS 是附属能力,页面侧静默跳过注入,不抛 ApiError)。
+ */
+export async function fetchCustomCss(): Promise<string> {
+  const response = await fetch('/api/custom.css')
+  if (!response.ok) return ''
+  return response.text()
+}

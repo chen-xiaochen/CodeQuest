@@ -48,9 +48,34 @@ class CodeQuestSettings : PersistentStateComponent<CodeQuestSettings.State> {
         return DatabaseFolders.databaseFile(folder)
     }
 
+    /**
+     * WP39:语言入口模板覆盖(languageId → 模板);**空白或缺失 = 用内置模板**
+     * ([com.codequest.core.workspace.ChallengeTemplates])。
+     *
+     * @return 生效的自定义模板;无覆盖时 null(创建链路以此传 `template = null`)
+     */
+    fun entryTemplateOverride(languageId: String): String? = state.templates[languageId]?.takeIf { it.isNotBlank() }
+
+    /**
+     * WP39:写入设置面板提交的模板覆盖表与题面自定义 CSS。
+     *
+     * 无变更 topic:模板在**下次创建** challenge 时读取,CSS 在题面页**下次加载**时
+     * 经 `/api/custom.css` 现读(端点按请求取值,改设置即刻对新请求生效),无需广播。
+     */
+    fun updateTemplatesAndCustomCss(
+        templates: Map<String, String>,
+        customCss: String,
+    ) {
+        state = state.copy(templates = LinkedHashMap(templates), customCss = customCss)
+    }
+
     data class State(
         /** 数据库文件夹绝对路径;空 = 使用默认目录 `~/.codequest/`。 */
         var databaseFolder: String = "",
+        /** WP39:每语言入口文件模板覆盖(languageId → 模板;空值条目 = 用内置)。 */
+        var templates: MutableMap<String, String> = LinkedHashMap(),
+        /** WP39:题面页注入的自定义 CSS(空 = 不注入)。 */
+        var customCss: String = "",
     )
 
     /**

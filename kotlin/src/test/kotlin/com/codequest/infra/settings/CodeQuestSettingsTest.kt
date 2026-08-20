@@ -3,6 +3,7 @@ package com.codequest.infra.settings
 import com.codequest.infra.db.DatabaseFolders
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 /**
  * [unit] 设置状态持久化 roundtrip 与默认值语义(WP15)。
@@ -49,5 +50,55 @@ class CodeQuestSettingsTest {
         val effective = settings.updateDatabaseFolder("E:/data/codequest")
         assertEquals("E:/data/codequest", settings.state.databaseFolder)
         assertEquals(DatabaseFolders.databaseFile("E:/data/codequest"), effective)
+    }
+
+    // ------------------------------------------------------------------
+    // WP39:语言模板覆盖 + 题面自定义 CSS
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `state defaults to empty templates and custom css`() {
+        val settings = CodeQuestSettings()
+        assertEquals(emptyMap<String, String>(), settings.state.templates)
+        assertEquals("", settings.state.customCss)
+    }
+
+    @Test
+    fun `templates map and custom css roundtrip via loadState`() {
+        val settings = CodeQuestSettings()
+        val templates = linkedMapOf("kotlin" to "// my template", "java" to "// java template")
+        settings.loadState(CodeQuestSettings.State(templates = templates, customCss = "body{color:red}"))
+        assertEquals(templates, settings.state.templates)
+        assertEquals("body{color:red}", settings.state.customCss)
+    }
+
+    @Test
+    fun `entryTemplateOverride returns null for missing or blank entry`() {
+        val settings = CodeQuestSettings()
+        settings.loadState(CodeQuestSettings.State(templates = linkedMapOf("kotlin" to "", "java" to "   ")))
+        assertNull(settings.entryTemplateOverride("kotlin"))
+        assertNull(settings.entryTemplateOverride("java"))
+        assertNull(settings.entryTemplateOverride("python3"))
+    }
+
+    @Test
+    fun `entryTemplateOverride returns stored template when set`() {
+        val settings = CodeQuestSettings()
+        settings.loadState(CodeQuestSettings.State(templates = linkedMapOf("kotlin" to "// my template")))
+        assertEquals("// my template", settings.entryTemplateOverride("kotlin"))
+    }
+
+    @Test
+    fun `updateTemplatesAndCustomCss persists both into state`() {
+        val settings = CodeQuestSettings()
+        settings.loadState(CodeQuestSettings.State(databaseFolder = "E:/data"))
+        settings.updateTemplatesAndCustomCss(
+            templates = mapOf("kotlin" to "// my template"),
+            customCss = "p { margin: 0 }",
+        )
+        assertEquals(mapOf("kotlin" to "// my template"), settings.state.templates)
+        assertEquals("p { margin: 0 }", settings.state.customCss)
+        // 既有字段不受影响
+        assertEquals("E:/data", settings.state.databaseFolder)
     }
 }

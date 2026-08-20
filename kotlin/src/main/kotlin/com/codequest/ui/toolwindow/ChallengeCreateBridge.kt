@@ -7,10 +7,12 @@ import com.codequest.core.model.ProblemId
 import com.codequest.core.workspace.ChallengeWorkspaceService
 import com.codequest.core.workspace.WorkspaceLanguage
 import com.codequest.infra.db.DatabaseManager
+import com.codequest.infra.settings.CodeQuestSettings
 import com.codequest.spi.LanguageInfo
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
+import com.codequest.ui.challenge.createEntryFileWithTemplate
 import com.codequest.ui.jcef.CQBridge
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -216,7 +218,15 @@ private suspend fun createOrOpenInProject(
     return createOrOpen(
         languageId = languageId,
         findExisting = { lang -> findExistingEntryFile(project, manager, problem.id, lang) },
-        doCreate = { lang -> workspaceService(project, manager).createChallenge(problem, lang).entryFile },
+        // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null=内置)
+        doCreate = { lang ->
+            createEntryFileWithTemplate(
+                service = workspaceService(project, manager),
+                problem = problem,
+                languageId = lang,
+                settings = CodeQuestSettings.getInstance(project),
+            )
+        },
     )
 }
 

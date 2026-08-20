@@ -8,6 +8,7 @@ import com.codequest.core.workspace.ChallengeTemplates
 import com.codequest.core.workspace.ChallengeWorkspaceService
 import com.codequest.core.workspace.WorkspaceLanguage
 import com.codequest.infra.db.DatabaseManager
+import com.codequest.infra.settings.CodeQuestSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
@@ -118,7 +119,14 @@ class NewChallengeDialog(
                         )
                     runBlocking {
                         manager.problemRepository.save(problem)
-                        service.createChallenge(problem, language.id, codeArea.text)
+                        // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null)
+                        createChallengeWithTemplate(
+                            service = service,
+                            problem = problem,
+                            languageId = language.id,
+                            settings = CodeQuestSettings.getInstance(project),
+                            code = codeArea.text,
+                        )
                     }
                 }
             SwingUtilities.invokeLater {

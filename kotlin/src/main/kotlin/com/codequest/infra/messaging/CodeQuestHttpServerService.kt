@@ -1,6 +1,7 @@
 package com.codequest.infra.messaging
 
 import com.codequest.infra.db.DatabaseManager
+import com.codequest.infra.settings.CodeQuestSettings
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -63,6 +64,9 @@ class CodeQuestHttpServerService(
                     store = { project.getService(DatabaseManager::class.java).searchStore },
                     statuses = { project.getService(DatabaseManager::class.java).problemStatusStore },
                 ),
+            // WP39:题面自定义 CSS——按请求现读项目设置(settings 在 infra,同层引用),
+            // 改设置后无需重启,题面页下次加载拉到新值
+            customCss = { CodeQuestSettings.getInstance(project).state.customCss },
         )
 
     /** 服务基地址;未启动时为 null。 */
