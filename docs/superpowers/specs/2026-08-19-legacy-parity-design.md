@@ -1,7 +1,7 @@
 ---
 title: CodeQuest 原版设计对齐(九项)设计
 date: 2026-08-19
-status: plan
+status: done
 source: 用户「全面参考原版的设计」需求(brainstorming 差距矩阵圈定九项,E 笔记已有等价物不做)
 scope: 原版体验全面对齐(提交详情/状态列/账号/模板/代码回看/CSS/排序/缩放/公司题)
 ---
