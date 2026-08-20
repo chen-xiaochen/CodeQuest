@@ -1,3 +1,16 @@
+## 1.1.0
+### Added
+- Submission result details panel (`/api/submission/:id/detail`): LeetCode / LeetCode CN include the error-testcase triple (input / expected / actual output), HackerRank shows testcase counts; CodeForces / AtCoder / Luogu link to the site as before (no public API). Submissions rows expand into Details / Code tabs — code review renders the stored snapshot with syntax highlighting and copy, no network needed.
+- Problem status column on the problems and search pages: 🔒 paid / ✓ AC / ● tried icons aggregated from local submission history (AC is sticky; multiple challenges take the highest), with a local status filter. `paidOnly` now flows through from platform data so the lock icon is real.
+- Account menu in the problems page header: per-platform login state badge with login / logout (`/api/auth/status`, `auth:logout` bridge).
+- Settings: per-language code template editors (default = built-in, with reset) wired into every challenge-creation path, plus custom CSS injected into the problem view.
+- Solution ordering dropdown on LeetCode / LeetCode CN (hot / newest / oldest / most upvoted, matching the legacy orderBy semantics).
+- Webview zoom toolbar on the problem view (− / 100% / +), 1.2× per step, applied to the whole page.
+- LeetCode company question lists: company and interview-period dropdowns on the problems page (`questionCompanyTagsV2` + `favoriteQuestionList`).
+- Login entry from browse flows (e.g. HackerRank statement without credentials now offers login instead of a bare 401) and one-click "Start coding" from the problem view.
+### Fixed
+- LeetCode CN problem list showed English titles; `titleCn` now takes precedence when present (as the legacy implementation did).
+
 ## 1.0.0
 ### Changed
 - Full rewrite from Scala/sbt to Kotlin 2.x + Gradle 8 (intellij-platform-gradle-plugin 2.x), package renamed to `com.codequest`; the legacy Scala/sbt codebase and the four old webview apps are removed, CI is converged to a single Gradle track.

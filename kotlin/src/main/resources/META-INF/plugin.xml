@@ -8,13 +8,14 @@
     across LeetCode, LeetCode CN, CodeForces, AtCoder, Luogu and HackerRank.
     ]]></description>
 
-    <!-- 1.0.0:全量 Kotlin 重写首发(能力型 OJ SPI/六平台/统一 JCEF 前端);详见 CHANGELOG.md -->
+    <!-- 1.1.0:原版设计对齐九项(详情/状态列/账号/模板/CSS/回看/排序/缩放/公司题);详见 CHANGELOG.md -->
     <change-notes><![CDATA[
-    1.0.0 — first stable release of the full Kotlin rewrite: capability-based OJ SPI
-    (Auth/Problem/Submit/Contest/Solutions) with six platforms (LeetCode, LeetCode CN,
-    CodeForces, AtCoder, Luogu, HackerRank), a unified JCEF frontend with in-plugin
-    REST data endpoints, challenge workspace, statistics, cross-problem search and an
-    in-app solution reader. See CHANGELOG.md for details.
+    1.1.0 — legacy-parity release: submission result details (LeetCode/CN error test
+    cases) with code review tabs, problem status column (AC/tried/paid) with local
+    filtering, account menu with logout, per-language code templates and custom CSS,
+    solution ordering dropdown, webview zoom toolbar, and LeetCode company question
+    lists. Browse flows also gained a login entry and LeetCode CN shows Chinese
+    titles again. See CHANGELOG.md for details.
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
