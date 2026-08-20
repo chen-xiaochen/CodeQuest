@@ -220,23 +220,69 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - 调度序(依赖+优先级): WP33→WP34→WP35
 - ⚠️ 用户已批准:旧工程连同工作区未提交改动一并清理
 
-## WP33: 删除旧 Scala/sbt 工程 [pending]
+## WP33: 删除旧 Scala/sbt 工程 [x] (done @ iter 1, commits a8f69a0+1ce74b0+529252c+8873df1;721 files,-57534 行,白名单甄别+快照留证;偏差:保留路径 M 改动含合规声明与 262 决策,提交保留而非丢弃)
 - [ ] 删除旧源码与构建(src/{main,test} 的 Scala 部分、build.sbt、project/、jooq-codegen.xml、gen/、testResources/、兼容层残留、垃圾文件;逐项甄别白名单制)
 - [ ] 删除旧前端 webview/(node_modules 直接 rm)
 - [ ] 保留白名单:kotlin/、frontend/、docs/、database/、.github/、CLAUDE.md、LICENSE、gradle 全套、scripts/(甄别)
 - [ ] 验证:gradlew clean check test buildPlugin --rerun-tasks 全绿;产物完整
 - [ ] [acceptance] git status 除 M6 提交外干净;全仓 grep 无 com.wenjunhuang 残留
 
-## WP34: CI 收敛与文档更新 [pending] [blocked by WP33]
+## WP34: CI 收敛与文档更新 [x] (done @ iter 2, commits 939d5bd+936a18b;关键修复:CI gradle job 补前端 npm build 否则首跑必红)
 - [ ] ci-main.yml 移除 sbt job 仅留 gradle;其他 workflow 旧引用统一收敛
 - [ ] README.md/README_en.md/DESCRIPTION.md 重写(Kotlin 版:功能矩阵/架构/SPI 指南/安装/开发;Apache 2.0 与原项目声明保留)
 - [ ] CHANGELOG.md 1.0.0 条目(Keep a Changelog 格式)
 - [ ] docs/release-checklist.md 更新新构建流程;spec frontmatter status plan→done
 - [ ] 验证:YAML 校验/文档链接自查/门禁绿
 
-## WP35: 定版发布与最终验收 [pending] [blocked by WP34]
+## WP35: 定版发布与最终验收 [x] (done @ iter 3, commits 1595db2+de334bd;codequest-1.0.0.zip 26.1MB;冒烟 2 新发现记入待办:/api/health 版本硬编码、HEAD 请求 SEVERE)
 - [ ] 版本定版 1.0.0(去 -SNAPSHOT;plugin.xml change-notes)
 - [ ] 构建 codequest-1.0.0.zip 并验证内容
 - [ ] 最终验收:沙箱 runIde 冒烟(0 ERROR/6 平台/页面可开)+ 全量门禁终态绿
 - [ ] docs/rewrite-final-report.md:M1-M6 总览/spec 成功标准 4 条终版对照/遗留边界汇总/新旧工程对比
 - [ ] git log 抽查(Conventional Commits/无 Co-Authored-By);提交不 push
+
+---
+
+# CodeQuest M7 — WP 清单(loop-20260819-codequest-rewrite-m7)
+
+- 来源计划: `docs/plan/codequest-rewrite-m7.md`(spec: 2026-08-19-legacy-parity)
+- 调度序: WP36→WP37→WP38→WP39→WP40→WP41→WP42→WP43
+
+## WP36: 实现提交结果详情(A) [x] (done @ iter 1, commit 6ecbd62;SPI 取舍:SubmissionDetailCapable 签名带 problemRemoteId,无详情返 null 不抛)
+- [ ] 平台包提交详情拉取(LC/CN 错误用例三件套必含;各平台按旧 Form 事实;SPI 取舍按 spec 原则写明)
+- [ ] GET /api/submission/:id/detail 端点(不落库)
+- [ ] submissions 页详情面板(verdict/耗时/内存/错误用例对比)
+- [ ] [unit] mock 夹具+端点单测;[integration] LC 三件套渲染冒烟
+
+## WP37: 实现列表状态列与筛选(B) [x] (done @ iter 2, commit 3d08710;ProblemStatusStore 端口先例,AC 粘性/多 challenge 取最高;paidOnly 恒 false 偏差候选)
+- [ ] /api/problems 与 /api/search 加 status+paidOnly(本地聚合)
+- [ ] problems/search 页状态图标列+筛选(本地过滤)
+- [ ] [unit] 聚合单测+前端测试
+
+## WP38: 实现账号菜单(C) [x] (done @ iter 3, commit c5d8619;authPlatformSourceProvider EP 反转注入;userId 恒 null 偏差候选)
+- [ ] GET /api/auth/status(同步快照)
+- [ ] problems 页头部账号徽标;auth:logout 新桥
+- [ ] [unit] logout 桥单测+前端测试
+
+## WP39: 实现模板设置与自定义 CSS(D+G) [x] (done @ iter 4, commit 29bf359;TemplateDraftsState 草稿核;/api/custom.css 下次加载生效)
+- [ ] Settings Templates 区(每语言编辑器+恢复默认);创建链路接线
+- [ ] 自定义 CSS 文本域+题面注入
+- [ ] [unit] 设置读写/链路读取/CSS 透传测试
+
+## WP40: 实现提交代码回看(F) [x] (done @ iter 5, commit 7134061;纯前端零 Kotlin)
+- [ ] submissions 页 View code(本地快照+hljs);与详情面板同区切换
+- [ ] [unit] 前端测试
+
+## WP41: 实现题解排序与 webview 缩放(H+I) [x] (done @ iter 6, commit 8a12ca0;SPI orderBy 默认参数最小增量;zoom 对数刻度 ±1 级 ×1.2 钳制 [−7,+8];中断恢复一次)
+- [ ] /solutions orderBy 参数+前端排序下拉
+- [ ] webview:zoom 桥+工具栏三键
+- [ ] [unit] 透传/缩放值测试
+
+## WP42: 实现 LeetCode 公司题单(J) [x] (done @ iter 7, commit a175e06;SPI=CompanyQueryCapable 独立能力接口;公司题单 favoriteQuestionList/公司列表 questionCompanyTagsV2;paidOnly 改真值透传(WP37 偏差候选清偿);不兼容如实记录:公司模式 keyword 忽略(UI 提示)/UI 单选(端点支持多公司)/position·tag 筛选未接入)
+- [ ] LC/CN 公司列表与公司题单查询(旧实现事实)
+- [ ] problems 页 LC 系公司下拉;不兼容处如实记录
+- [ ] [unit] mock 夹具
+
+## WP43: M7 集成验收 [pending] [blocked by WP36-WP42]
+- [ ] 全量门禁+产物;沙箱实测(B/C/A/D/G/I)
+- [ ] docs/m7-manual-checklist.md;九项偏差记录+E 理由复核
