@@ -1,10 +1,15 @@
 # Agentic Loop 进度
 
-- **当前**: 无活跃 loop(最近完成 loop-20260819-codequest-rewrite-m7,achieved @ 2026-08-21,8/8 WP)
+- **当前**: loop-20260821-ui-revamp(活跃,iter 0)——WP44-52 九单元,面板精简/平台门控/模版风格化/中文化;计划 docs/plan/ui-revamp.md,规格 docs/superpowers/specs/2026-08-21-ui-revamp-design.md
+- **上限**: max_iterations=12 / max_round_time_ms=600000 / max_wall_time_ms=7200000 / divergence_threshold=3 / proximity_goal=0.9
 - **lastUpdatedAt**: 2026-08-21
 
-## History
+## History (loop-20260821-ui-revamp)
 <!-- 每轮追加 -->
+| iter | wp | verdict | proximity | failed | 备注 |
+|---|---|---|---|---|---|
+
+## History (loop-20260819-codequest-rewrite-m7,已归档)
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
 | 1 | WP36 | wp-achieved→continue | 0.125 (1/8) | 0 | 提交详情 4/4:SubmissionDetailCapable(SPI,签名带 problemRemoteId;无详情返 null 不抛——旧 Form 既成事实)、LC/CN WA 三件套必含、CF/AtCoder/洛谷如实仅外链、HR testcases 计数;详情响应含 code/language 为 WP40 铺路;27 Kotlin+5 前端新测(共 560/106);429 中断一次恢复 |
