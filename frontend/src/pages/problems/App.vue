@@ -4,14 +4,25 @@
  * 分页(加载更多);点击行经桥 nav:openProblem 打开题面工具窗口。
  * WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做)+ 状态下拉——本地过滤
  * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
+ * WP38:头部账号条(原版 AccountActionGroup 对齐)——每平台徽标(/api/auth/status
+ * 快照):已登录高亮,点击登出;未登录灰,点击触发 auth:login 登录对话框。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_NAV_OPEN_PROBLEM, cqBridge } from '../../bridge/cq-bridge'
+import {
+  TOPIC_AUTH_LOGIN,
+  TOPIC_AUTH_LOGIN_RESULT,
+  TOPIC_AUTH_LOGOUT,
+  TOPIC_AUTH_LOGOUT_RESULT,
+  TOPIC_NAV_OPEN_PROBLEM,
+  cqBridge,
+} from '../../bridge/cq-bridge'
 import {
   ApiError,
+  fetchAuthStatus,
   fetchPlatforms,
   fetchProblems,
+  type AuthStatusItem,
   type PlatformSummary,
   type ProblemListItem,
 } from '../../lib/api'
@@ -48,6 +59,51 @@ const visibleItems = computed(() => filterByStatus(items.value, statusFilter.val
 /** 登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
 const loginPending = ref(false)
 
+// ---------------------------------------------------------------------
+// WP38:账号条(每平台登录快照 + 登录/登出入口)
+// ---------------------------------------------------------------------
+
+const authItems = ref<AuthStatusItem[]>([])
+
+/** 账号条进行中的平台 id(登录或登出;期间全部徽标置灰防重复触发)。 */
+const authPending = ref('')
+
+function refreshAuthStatus(): void {
+  fetchAuthStatus()
+    .then((items) => {
+      authItems.value = items
+    })
+    .catch(() => {
+      // 状态条非关键路径:拉取失败保持现状(如端点未装配/启动竞态)
+    })
+}
+
+function displayNameOf(platformId: string): string {
+  return platforms.value.find((entry) => entry.id === platformId)?.displayName ?? platformId
+}
+
+function badgeTitle(item: AuthStatusItem): string {
+  if (item.loggedIn) {
+    const who = item.userId ? ` as ${item.userId}` : ''
+    return `${displayNameOf(item.platform)} — logged in${who}, click to log out`
+  }
+  return `${displayNameOf(item.platform)} — not logged in, click to log in`
+}
+
+function handleBadgeClick(item: AuthStatusItem): void {
+  if (authPending.value) return
+  authPending.value = item.platform
+  bridge.send(item.loggedIn ? TOPIC_AUTH_LOGOUT : TOPIC_AUTH_LOGIN, { platform: item.platform })
+}
+
+/** 登出结果:回执平台清进行中标记并刷新快照。 */
+function handleLogoutResult(payload: unknown): void {
+  const result = payload as { platform?: string }
+  if (!result || result.platform !== authPending.value) return
+  authPending.value = ''
+  refreshAuthStatus()
+}
+
 /** 浏览链路登录入口(1.0.x):Kotlin 弹平台登录对话框,结果经 auth:login-result 回推。 */
 function requestLogin(): void {
   if (loginPending.value || !platform.value) return
@@ -55,10 +111,15 @@ function requestLogin(): void {
   bridge.send(TOPIC_AUTH_LOGIN, { platform: platform.value })
 }
 
-/** 登录结果:仅当前平台;成功后重载列表(登录态已注入 cookie)。 */
+/** 登录结果:徽标反馈(任意平台)+ 当前平台重载列表(登录态已注入 cookie)。 */
 function handleLoginResult(payload: unknown): void {
   const result = payload as { ok?: boolean; platform?: string }
-  if (!result || result.platform !== platform.value) return
+  if (!result) return
+  if (result.platform === authPending.value) {
+    authPending.value = ''
+  }
+  refreshAuthStatus()
+  if (result.platform !== platform.value) return
   loginPending.value = false
   if (result.ok) {
     reload()
@@ -125,9 +186,12 @@ function openProblem(item: ProblemListItem): void {
 }
 
 let detachLoginResult: (() => void) | null = null
+let detachLogoutResult: (() => void) | null = null
 
 onMounted(async () => {
   detachLoginResult = bridge.on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
+  detachLogoutResult = bridge.on(TOPIC_AUTH_LOGOUT_RESULT, handleLogoutResult)
+  refreshAuthStatus()
   try {
     platforms.value = await fetchPlatforms()
     platform.value = platforms.value[0]?.id ?? ''
@@ -139,12 +203,32 @@ onMounted(async () => {
 
 onUnmounted(() => {
   detachLoginResult?.()
+  detachLogoutResult?.()
   detachLoginResult = null
+  detachLogoutResult = null
 })
 </script>
 
 <template>
   <AppShell title="Problems" subtitle="Browse and open problems by platform, keyword and difficulty.">
+    <!-- WP38:账号条(原版 AccountActionGroup 对齐)——已登录高亮点击登出,未登录灰点击登录 -->
+    <div v-if="authItems.length > 0" class="accounts" aria-label="account status">
+      <button
+        v-for="item in authItems"
+        :key="item.platform"
+        type="button"
+        class="accounts__badge"
+        :class="{ 'accounts__badge--on': item.loggedIn }"
+        :disabled="authPending !== ''"
+        :title="badgeTitle(item)"
+        @click="handleBadgeClick(item)"
+      >
+        <span class="accounts__platform">{{ displayNameOf(item.platform) }}</span>
+        <span v-if="item.userId" class="accounts__user">{{ item.userId }}</span>
+        <span v-if="authPending === item.platform" class="accounts__pending">…</span>
+      </button>
+    </div>
+
     <form class="filters" @submit.prevent="reload">
       <label class="filters__field">
         <span>Platform</span>
@@ -264,6 +348,50 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* WP38:账号条(主题变量配色;已登录=平台名高亮,未登录=灰) */
+.accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.accounts__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel);
+  color: var(--cq-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accounts__badge--on {
+  border-color: var(--cq-accent);
+  background: var(--cq-panel-raised);
+  color: var(--cq-accent);
+}
+
+.accounts__badge--on .accounts__platform {
+  font-weight: 600;
+}
+
+.accounts__badge:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.accounts__user {
+  font-weight: 600;
+}
+
+.accounts__pending {
+  color: var(--cq-muted);
+}
+
 .filters {
   display: flex;
   flex-wrap: wrap;

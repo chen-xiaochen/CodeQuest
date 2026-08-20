@@ -22,6 +22,7 @@ import java.util.logging.Logger
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
  *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`;
+ *   账号状态端点(WP38,经 [authApi] 注入后启用):`GET /api/auth/status`;
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
  *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
@@ -43,6 +44,7 @@ class ResourceHttpServer(
     private val solutionsApi: SolutionsApi? = null,
     private val statsApi: StatisticsApi? = null,
     private val searchApi: SearchApi? = null,
+    private val authApi: AuthApi? = null,
 ) {
     private val lock = Any()
     private var server: HttpServer? = null
@@ -122,6 +124,18 @@ class ResourceHttpServer(
 
             path == "/api/platforms" && exchange.isGet() -> {
                 runProblemApi(exchange) { it.listPlatforms() }
+            }
+
+            // WP38:账号状态快照(同步;未装配 authApi 时 503,形态同 stats/search)
+            path == "/api/auth/status" && exchange.isGet() -> {
+                val api = authApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        api.authStatus()
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
             }
 
             path == "/api/problems" && exchange.isGet() -> {

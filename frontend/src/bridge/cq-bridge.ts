@@ -49,6 +49,12 @@ export const TOPIC_AUTH_LOGIN = 'auth:login'
 /** 1.0.x:登录结果回推(Kotlin → 页面);payload {ok, platform, error?}。 */
 export const TOPIC_AUTH_LOGIN_RESULT = 'auth:login-result'
 
+/** WP38:账号条登出(页面 → Kotlin);payload {platform}。 */
+export const TOPIC_AUTH_LOGOUT = 'auth:logout'
+
+/** WP38:登出结果回推(Kotlin → 页面);payload {ok, platform, error?}。 */
+export const TOPIC_AUTH_LOGOUT_RESULT = 'auth:logout-result'
+
 /** 1.0.x:一键开刷(页面 → Kotlin);payload {platform, remoteId, title, difficulty, url}。 */
 export const TOPIC_CHALLENGE_CREATE = 'challenge:create'
 

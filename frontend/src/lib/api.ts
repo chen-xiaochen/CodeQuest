@@ -11,6 +11,13 @@ export interface PlatformSummary {
   displayName: string
 }
 
+/** WP38:平台登录快照(/api/auth/status);userId 恒 null(SPI 无只读 session 契约)。 */
+export interface AuthStatusItem {
+  platform: string
+  loggedIn: boolean
+  userId: string | null
+}
+
 export interface ProblemListItem {
   remoteId: string
   title: string
@@ -94,6 +101,11 @@ async function unwrap<T>(response: Response): Promise<T> {
 
 export function fetchPlatforms(): Promise<PlatformSummary[]> {
   return getJson<{ platforms: PlatformSummary[] }>('/api/platforms').then((body) => body.platforms)
+}
+
+/** WP38:全部平台登录快照(同步,不触发登录流程)。 */
+export function fetchAuthStatus(): Promise<AuthStatusItem[]> {
+  return getJson<{ items: AuthStatusItem[] }>('/api/auth/status').then((body) => body.items)
 }
 
 export interface ProblemListQuery {

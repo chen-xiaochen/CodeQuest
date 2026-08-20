@@ -5,7 +5,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ProblemsApp from '../../src/pages/problems/App.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, resetGlobalBridgeHook } from '../../src/bridge/cq-bridge'
+import {
+  TOPIC_AUTH_LOGIN,
+  TOPIC_AUTH_LOGIN_RESULT,
+  TOPIC_AUTH_LOGOUT,
+  TOPIC_AUTH_LOGOUT_RESULT,
+  resetGlobalBridgeHook,
+} from '../../src/bridge/cq-bridge'
 
 type FetchHandler = (url: string) => { status: number; body: unknown } | undefined
 
@@ -323,4 +329,145 @@ describe('problems page', () => {
 
     expect(wrapper.findAll('.problems__row').length).toBe(4)
   })
+
+  // -----------------------------------------------------------------
+  // WP38:账号条(每平台徽标;点击登录/登出)
+  // -----------------------------------------------------------------
+
+  it('renders account badges with logged-in highlight and muted logged-out', async () => {
+    mockListPage(ROWS, false)
+    handler = withAuthStatus(handler, [
+      { platform: 'leetcode', loggedIn: true, userId: null },
+      { platform: 'leetcodecn', loggedIn: false, userId: null },
+    ])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const badges = wrapper.findAll('.accounts__badge')
+    expect(badges.length).toBe(2)
+    expect(badges[0].classes()).toContain('accounts__badge--on')
+    expect(badges[0].attributes('title')).toContain('log out')
+    expect(badges[0].text()).toContain('LeetCode')
+    expect(badges[1].classes()).not.toContain('accounts__badge--on')
+    expect(badges[1].attributes('title')).toContain('log in')
+  })
+
+  it('shows the platform userId on a logged-in badge when available', async () => {
+    mockListPage(ROWS, false)
+    handler = withAuthStatus(handler, [
+      { platform: 'leetcode', loggedIn: true, userId: 'alice' },
+    ])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const badge = wrapper.find('.accounts__badge')
+    expect(badge.text()).toContain('alice')
+  })
+
+  it('sends auth:login when clicking a logged-out badge', async () => {
+    mockListPage(ROWS, false)
+    handler = withAuthStatus(handler, [
+      { platform: 'leetcode', loggedIn: true, userId: null },
+      { platform: 'leetcodecn', loggedIn: false, userId: null },
+    ])
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    window.cqSend = (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.findAll('.accounts__badge')[1].trigger('click')
+
+    expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGIN, payload: { platform: 'leetcodecn' } }])
+  })
+
+  it('sends auth:logout for a logged-in badge and refreshes status after the result', async () => {
+    mockListPage(ROWS, false)
+    const statusHits = { value: 0 }
+    handler = (url) => {
+      if (url.startsWith('/api/auth/status')) {
+        statusHits.value += 1
+        return {
+          status: 200,
+          body: { items: [{ platform: 'leetcode', loggedIn: true, userId: null }] },
+        }
+      }
+      return mockListPageHandler(url)
+    }
+    const sends: Array<{ topic: string; payload: unknown }> = []
+    window.cqSend = (message: string) => {
+      const envelope = JSON.parse(message) as { topic: string; payload: string }
+      sends.push({ topic: envelope.topic, payload: JSON.parse(envelope.payload) })
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+    expect(statusHits.value).toBe(1)
+
+    await wrapper.find('.accounts__badge').trigger('click')
+    expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGOUT, payload: { platform: 'leetcode' } }])
+
+    window.__cqBridge!.emit({
+      topic: TOPIC_AUTH_LOGOUT_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'leetcode' }),
+    })
+    await flushPromises()
+
+    expect(statusHits.value).toBe(2)
+  })
+
+  it('refreshes auth status after auth:login-result from a badge login', async () => {
+    mockListPage(ROWS, false)
+    const statusHits = { value: 0 }
+    handler = (url) => {
+      if (url.startsWith('/api/auth/status')) {
+        statusHits.value += 1
+        return {
+          status: 200,
+          body: { items: [{ platform: 'leetcode', loggedIn: false, userId: null }] },
+        }
+      }
+      return mockListPageHandler(url)
+    }
+    window.cqSend = () => {}
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.find('.accounts__badge').trigger('click')
+    window.__cqBridge!.emit({
+      topic: TOPIC_AUTH_LOGIN_RESULT,
+      payload: JSON.stringify({ ok: true, platform: 'leetcode' }),
+    })
+    await flushPromises()
+
+    expect(statusHits.value).toBe(2)
+  })
 })
+
+/** 在既有 handler 外层叠加 /api/auth/status mock(WP38)。 */
+function withAuthStatus(
+  inner: FetchHandler,
+  items: Array<{ platform: string; loggedIn: boolean; userId: string | null }>,
+): FetchHandler {
+  return (url) => {
+    if (url.startsWith('/api/auth/status')) {
+      return { status: 200, body: { items } }
+    }
+    return inner(url)
+  }
+}
+
+/** mockListPage 的 handler 主体(供用例复用/叠加)。 */
+function mockListPageHandler(url: string): { status: number; body: unknown } | undefined {
+  if (url.startsWith('/api/platforms')) {
+    return {
+      status: 200,
+      body: { platforms: [{ id: 'leetcode', displayName: 'LeetCode' }, { id: 'leetcodecn', displayName: '力扣' }] },
+    }
+  }
+  if (url.startsWith('/api/problems')) {
+    return { status: 200, body: { platform: 'leetcode', offset: 0, limit: 50, items: ROWS, hasMore: false } }
+  }
+  return undefined
+}

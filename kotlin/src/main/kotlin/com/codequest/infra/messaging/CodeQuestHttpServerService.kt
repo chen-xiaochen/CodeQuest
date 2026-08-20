@@ -45,6 +45,12 @@ class CodeQuestHttpServerService(
                 ),
             // WP26:题解引用端点——SolutionViewCapable 平台拉取(纯透传,不落库)
             solutionsApi = SolutionsApi(),
+            // WP38:账号状态端点——实例源经 EP 反转注入(ui 提交链路缓存实例,
+            // 与登录桥/提交流程共享同一登录态),infra 不反向依赖 ui
+            authApi =
+                AuthApi(
+                    platforms = { AuthPlatformSources.forProject(project) },
+                ),
             // WP29:统计端点——submission 表经 StatisticsService 聚合(仓库按请求解析,切库即时生效)
             statsApi =
                 StatisticsApi(

@@ -49,8 +49,12 @@ class AuthLoginBridgeTest {
         private val platformId: PlatformId = PlatformId("hackerrank"),
         private val session: LoginSession? = null,
         private val error: Exception? = null,
+        private val logoutError: Exception? = null,
     ) : AuthCapable {
         var ensureCalled = false
+
+        /** WP38:logout 是否被调用(成功路径断言)。 */
+        var logoutCalled = false
 
         override suspend fun ensureLoggedIn(): LoginSession {
             ensureCalled = true
@@ -60,7 +64,10 @@ class AuthLoginBridgeTest {
 
         override fun isLoggedIn(): Boolean = session != null
 
-        override suspend fun logout() = Unit
+        override suspend fun logout() {
+            logoutCalled = true
+            logoutError?.let { throw it }
+        }
     }
 
     @Test
@@ -120,5 +127,69 @@ class AuthLoginBridgeTest {
         assertEquals("""{"ok":true,"platform":"hackerrank"}""", ok.toJson())
         val failed = AuthLoginResult(ok = false, platform = "hackerrank", error = "boom")
         assertEquals("""{"ok":false,"platform":"hackerrank","error":"boom"}""", failed.toJson())
+    }
+
+    // ------------------------------------------------------------------
+    // WP38:登出桥(auth:logout,账号菜单出口)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `parses auth logout payload`() {
+        val request = parseAuthLogoutPayload("""{"platform":"codeforces"}""")
+        assertEquals("codeforces", request?.platform)
+    }
+
+    @Test
+    fun `rejects blank or malformed logout payload`() {
+        assertNull(parseAuthLogoutPayload("""{"platform":"  "}"""))
+        assertNull(parseAuthLogoutPayload("""{"other":1}"""))
+        assertNull(parseAuthLogoutPayload("not-json"))
+    }
+
+    @Test
+    fun `logout succeeds for auth capable platform`() =
+        runBlocking {
+            val auth = FakeAuth()
+            val result =
+                performLogout(PlatformId("hackerrank")) { FakePlatform(it, auth) }
+            assertTrue(result.ok)
+            assertEquals("hackerrank", result.platform)
+            assertNull(result.error)
+            assertTrue(auth.logoutCalled)
+        }
+
+    @Test
+    fun `logout failure carries exception message`() =
+        runBlocking {
+            val auth = FakeAuth(logoutError = OJException("credential store unavailable"))
+            val result =
+                performLogout(PlatformId("hackerrank")) { FakePlatform(it, auth) }
+            assertFalse(result.ok)
+            assertEquals("hackerrank", result.platform)
+            assertEquals("credential store unavailable", result.error)
+        }
+
+    @Test
+    fun `logout unknown platform reports failure`() =
+        runBlocking {
+            val result = performLogout(PlatformId("ghost")) { null }
+            assertFalse(result.ok)
+            assertTrue(result.error!!.contains("unknown", ignoreCase = true))
+        }
+
+    @Test
+    fun `logout non auth capable platform reports failure`() =
+        runBlocking {
+            val result = performLogout(PlatformId("x")) { BarePlatform(it) }
+            assertFalse(result.ok)
+            assertTrue(result.error!!.contains("logout", ignoreCase = true))
+        }
+
+    @Test
+    fun `logout result json is stable`() {
+        val ok = AuthLogoutResult(ok = true, platform = "codeforces")
+        assertEquals("""{"ok":true,"platform":"codeforces"}""", ok.toJson())
+        val failed = AuthLogoutResult(ok = false, platform = "codeforces", error = "boom")
+        assertEquals("""{"ok":false,"platform":"codeforces","error":"boom"}""", failed.toJson())
     }
 }

@@ -48,6 +48,11 @@
         <extensionPoint qualifiedName="com.codequest.antiBotHandlerProvider"
                         interface="com.codequest.spi.AntiBotChallengeHandlerProvider"
                         dynamic="true"/>
+        <!-- WP38:账号状态数据源注入(ui 提交链路缓存实例 → infra /api/auth/status,
+             与 ojTransportProvider 同为反转注入点,infra 不反向依赖 ui) -->
+        <extensionPoint qualifiedName="com.codequest.authPlatformSourceProvider"
+                        interface="com.codequest.infra.messaging.AuthPlatformSourceProvider"
+                        dynamic="true"/>
     </extensionPoints>
 
     <extensions defaultExtensionNs="com.codequest">
@@ -76,6 +81,8 @@
         <!-- WP27:HackerRank cookie 粘贴登录装配 -->
         <ojAuthPromptProvider implementation="com.codequest.ui.submission.HackerRankAuthPromptProvider"/>
         <antiBotHandlerProvider implementation="com.codequest.ui.antibot.JcefAntiBotChallengeHandlerProvider"/>
+        <!-- WP38:账号状态数据源实现(提交链路缓存实例,与登录桥/提交流程共享登录态) -->
+        <authPlatformSourceProvider implementation="com.codequest.ui.toolwindow.SubmissionAuthPlatformSourceProvider"/>
     </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
