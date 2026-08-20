@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 /**
  * [unit] WP25:AtCoderSubmissionService——Turnstile 二元组获取(旧常量逐字)、
@@ -224,5 +225,20 @@ class AtCoderSubmissionServiceTest {
         // problemIndex 可为多字符(如 APG4b 课程的 cp):按最后一个 `_` 拆分
         assertEquals("APG4b" to "APG4b_cp", parseProblemRemoteId("APG4b_cp"))
         assertEquals("abc100" to "abc100_a", parseProblemRemoteId("abc100_a"))
+    }
+
+    @Test
+    fun `submission view url derives contest id and detail fetch reports none`() = runBlocking {
+        val svc = service(transport(statusScript = listOf("Judging" to "WJ")))
+
+        // 旧 showSubmissionDetails URL 事实:/contests/<cid>/submissions/<sid>
+        assertEquals(
+            "https://atcoder.jp/contests/abc390/submissions/65432101",
+            svc.submissionViewUrl("65432101", "abc390_g"),
+        )
+        assertNull(svc.submissionViewUrl("65432101", ""))
+        assertNull(svc.submissionViewUrl("65432101", "malformed"))
+        // 旧 Form 无平台侧补充详情(详情页耗时/内存列旧实现从未提取)→ 如实申报无详情
+        assertNull(svc.fetchSubmissionDetail("65432101", "abc390_g"))
     }
 }

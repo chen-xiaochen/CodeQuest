@@ -4,6 +4,7 @@ import com.codequest.core.model.OJException
 import com.codequest.core.model.SubmissionResult
 import com.codequest.spi.BaseSubmissionFlow
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmitRequest
 import kotlinx.coroutines.delay
@@ -33,7 +34,8 @@ class LuoguSubmissionService(
             backoffMultiplier = FIXED_BACKOFF,
         ),
     delayFn: suspend (Long) -> Unit = { ms -> delay(ms) },
-) : SubmissionCapable {
+) : SubmissionCapable,
+    SubmissionDetailCapable {
     private val flow =
         object : BaseSubmissionFlow(pollConfig, delayFn) {
             override suspend fun fetchRemoteStatus(handle: SubmissionHandle) = api.fetchRecordStatus(handle.remoteSubmissionId)
@@ -51,6 +53,16 @@ class LuoguSubmissionService(
 
     /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
     fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
+
+    /**
+     * WP36:不重拉(继承默认 null)。旧 LuoGuSubmissionResultForm 的详情区全部来自
+     * 本地数据(判定/时间/语言/代码/消息);record 页虽可 GET 重判,但旧实现从未在
+     * 详情视图消费平台侧补充字段——如实申报"无详情"而非报错。
+     */
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? = luoguRecordUrl(remoteSubmissionId)
 
     companion object {
         /** 旧实现轮询固定 2s 间隔(Temporal.sleep(2.second))。 */

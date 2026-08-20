@@ -7,6 +7,7 @@ import com.codequest.spi.AntiBotChallengeHandler
 import com.codequest.spi.BaseSubmissionFlow
 import com.codequest.spi.OJRuntime
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmissionStatusSnapshot
 import com.codequest.spi.SubmitRequest
@@ -36,7 +37,8 @@ class AtCoderSubmissionService(
     private val antiBotSource: () -> AntiBotChallengeHandler = OJRuntime::antiBotHandler,
     pollConfig: BaseSubmissionFlow.PollConfig = BaseSubmissionFlow.PollConfig(),
     delayFn: suspend (Long) -> Unit = { ms -> delay(ms) },
-) : SubmissionCapable {
+) : SubmissionCapable,
+    SubmissionDetailCapable {
     /** submissionId → 所属竞赛 id(轮询 URL `/contests/<cid>/submissions/<sid>` 要用)。 */
     private val contestIds = ConcurrentHashMap<String, String>()
 
@@ -84,6 +86,22 @@ class AtCoderSubmissionService(
 
     /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
     fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
+
+    /**
+     * WP36:不重拉(继承默认 null)。旧 AtCoderSubmissionResultForm 的详情区全部来自
+     * 本地数据(判定/时间/语言/代码/消息);提交详情页的耗时/内存列旧实现从未提取
+     * (只读判定),本实现同样不提取——如实申报"无详情"而非报错。
+     */
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? {
+        if (problemRemoteId.isEmpty()) return null
+        // 旧 showSubmissionDetails URL 事实:/contests/<cid>/submissions/<sid>/
+        val contestId =
+            runCatching { parseProblemRemoteId(problemRemoteId).first }.getOrNull() ?: return null
+        return atCoderSubmissionUrl(contestId, remoteSubmissionId)
+    }
 }
 
 /**

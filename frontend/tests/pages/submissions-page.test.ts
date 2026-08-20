@@ -1,6 +1,7 @@
 /**
  * WP21:submissions 页真实列表(端点 mock)——行渲染/verdict 徽标/耗时内存格式化/
  * challengeId 过滤转发/分页追加/桥 `submission:updated` 推送刷新/错误态。
+ * WP36:行点击详情面板——三件套/extras/message/viewUrl/展开互斥/缓存/错误态/加载态。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -165,5 +166,219 @@ describe('submissions page', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('No submissions yet')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WP36:行点击详情面板(/api/submission/{id}/detail 端点 mock)
+// ---------------------------------------------------------------------------
+
+function detailBody(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    challengeId: 'c-1',
+    challengeName: 'Two Sum',
+    platformId: 'leetcode',
+    remoteSubmissionId: `remote-${id}`,
+    language: 'Kotlin',
+    verdict: { type: 'WrongAnswer' },
+    timeMs: 68,
+    memoryKb: 41200,
+    submittedAt: '2026-08-15T10:00:00Z',
+    code: 'class Solution',
+    message: 'Wrong Answer',
+    errorCase: {
+      input: 'nums = [2,7,11,15]\ntarget = 9',
+      expectedOutput: '[0,1]',
+      actualOutput: '[2,2]',
+    },
+    extras: { testcases: '12/14', runtimePercentile: '42.10%' },
+    viewUrl: `https://leetcode.com/problems/two-sum/submissions/remote-${id}/`,
+    ...overrides,
+  }
+}
+
+function mockListAndDetail(
+  items: Array<{ id: string; overrides?: Record<string, unknown> }>,
+): void {
+  const byId = new Map(items.map((item) => [item.id, detailBody(item.id, item.overrides)]))
+  handler = (url) => {
+    if (url.startsWith('/api/submissions')) {
+      return {
+        status: 200,
+        body: {
+          challengeId: null,
+          offset: 0,
+          limit: 50,
+          items: items.map(({ id }) => submissionItem(id)),
+          hasMore: false,
+        },
+      }
+    }
+    const match = url.match(/^\/api\/submission\/([^/]+)\/detail$/)
+    if (match) {
+      const body = byId.get(match[1])
+      return body ? { status: 200, body } : { status: 404, body: { error: 'not-found' } }
+    }
+    return undefined
+  }
+}
+
+describe('submissions detail panel (WP36)', () => {
+  it('expands a detail panel with error case triplet, message, extras and view url', async () => {
+    mockListAndDetail([{ id: 's-1' }])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    expect(wrapper.find('.detail-row').exists()).toBe(false)
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+
+    expect(fetchCalls).toContain('/api/submission/s-1/detail')
+    expect(wrapper.find('.detail-row').exists()).toBe(true)
+    expect(wrapper.find('.detail__message').text()).toContain('Wrong Answer')
+
+    // 三件套三段齐全,等宽 pre 承载内容
+    const cases = wrapper.findAll('.detail__case')
+    expect(cases.length).toBe(3)
+    expect(cases[0].find('.detail__case-label').text()).toBe('Input')
+    expect(cases[0].find('.detail__case-value').text()).toContain('nums = [2,7,11,15]')
+    expect(cases[1].find('.detail__case-label').text()).toBe('Expected output')
+    expect(cases[1].find('.detail__case-value').text()).toContain('[0,1]')
+    expect(cases[2].find('.detail__case-label').text()).toBe('Actual output')
+    expect(cases[2].find('.detail__case-value').text()).toContain('[2,2]')
+
+    // extras 键值对 + 平台站外链 + 合并后的指标
+    const extras = wrapper.find('.detail__extras').text()
+    expect(extras).toContain('testcases')
+    expect(extras).toContain('12/14')
+    expect(wrapper.find('.detail__view-url').attributes('href')).toBe(
+      'https://leetcode.com/problems/two-sum/submissions/remote-s-1/',
+    )
+    expect(wrapper.find('.detail__meta').text()).toContain('68 ms')
+  })
+
+  it('keeps expansion mutually exclusive, collapses on second click and caches by id', async () => {
+    mockListAndDetail([{ id: 's-1' }, { id: 's-2' }])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    const rows = wrapper.findAll('.submissions__row')
+    await rows[0].trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.detail-row').length).toBe(1)
+
+    // 展开另一行:互斥,旧面板收起(新面板数据指向 s-2 的远端提交)
+    await rows[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('.detail-row').length).toBe(1)
+    expect(wrapper.find('.detail__view-url').attributes('href')).toContain('remote-s-2')
+
+    // 再点同一行:收起
+    await wrapper.findAll('.submissions__row')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail-row').exists()).toBe(false)
+
+    // 重开第一行:按 id 缓存,不重复拉取
+    const detailCallsBefore = fetchCalls.filter((url) => url.includes('/detail')).length
+    await wrapper.findAll('.submissions__row')[0].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail-row').exists()).toBe(true)
+    expect(fetchCalls.filter((url) => url.includes('/detail')).length).toBe(detailCallsBefore)
+  })
+
+  it('shows detail error state with backend error code and retries', async () => {
+    mockListPage([submissionItem('s-1')])
+    handler = (url) => {
+      if (url.startsWith('/api/submissions')) {
+        return { status: 200, body: { challengeId: null, offset: 0, limit: 50, items: [submissionItem('s-1')], hasMore: false } }
+      }
+      if (url === '/api/submission/s-1/detail') {
+        return { status: 502, body: { error: 'oj-error', message: 'LeetCode 详情拉取失败' } }
+      }
+      return undefined
+    }
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+
+    const panel = wrapper.find('.detail-state--error')
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('oj-error')
+
+    await panel.find('button').trigger('click')
+    await flushPromises()
+    expect(fetchCalls.filter((url) => url === '/api/submission/s-1/detail').length).toBe(2)
+  })
+
+  it('renders merged local fields only when platform detail has nothing extra', async () => {
+    mockListAndDetail([
+      {
+        id: 's-1',
+        overrides: {
+          verdict: { type: 'Accepted' },
+          timeMs: null,
+          memoryKb: null,
+          message: undefined,
+          errorCase: null,
+          extras: null,
+          viewUrl: null,
+        },
+      },
+    ])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+
+    // 本地兜底字段仍在;三件套/extras/外链缺失不渲染,也不视为错误
+    expect(wrapper.find('.detail-state--error').exists()).toBe(false)
+    expect(wrapper.find('.detail__case').exists()).toBe(false)
+    expect(wrapper.find('.detail__extras').exists()).toBe(false)
+    expect(wrapper.find('.detail__view-url').exists()).toBe(false)
+    const meta = wrapper.find('.detail__meta').text()
+    expect(meta).toContain('Accepted')
+    expect(meta).toContain('Kotlin')
+    expect(meta).toContain('—')
+  })
+
+  it('shows loading state while the detail request is in flight', async () => {
+    mockListPage([submissionItem('s-1')])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/submission/s-1/detail') {
+          await gate
+          return jsonResponse(200, detailBody('s-1'))
+        }
+        return jsonResponse(200, {
+          challengeId: null,
+          offset: 0,
+          limit: 50,
+          items: [submissionItem('s-1')],
+          hasMore: false,
+        })
+      }),
+    )
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail-state').text()).toContain('Loading submission details…')
+    expect(wrapper.find('.detail__case').exists()).toBe(false)
+
+    release()
+    await flushPromises()
+    expect(wrapper.find('.detail__case').exists()).toBe(true)
   })
 })

@@ -6,6 +6,7 @@ import com.codequest.spi.AntiBotChallengeHandler
 import com.codequest.spi.BaseSubmissionFlow
 import com.codequest.spi.OJRuntime
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmissionStatusSnapshot
 import com.codequest.spi.SubmitRequest
@@ -36,7 +37,8 @@ class CodeForcesSubmissionService(
     private val antiBotSource: () -> AntiBotChallengeHandler = OJRuntime::antiBotHandler,
     pollConfig: BaseSubmissionFlow.PollConfig = BaseSubmissionFlow.PollConfig(),
     delayFn: suspend (Long) -> Unit = { ms -> delay(ms) },
-) : SubmissionCapable {
+) : SubmissionCapable,
+    SubmissionDetailCapable {
     /** submissionId → 提交时 Turnstile 弹窗取得的 csrf_token(轮询端点必带,旧实现闭包持有)。 */
     private val csrfTokens = ConcurrentHashMap<String, SubmissionContext>()
 
@@ -87,6 +89,24 @@ class CodeForcesSubmissionService(
 
     /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
     fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
+
+    /**
+     * WP36:不重拉(继承默认 null)。旧 CodeForcesSubmissionResultForm 的详情区全部
+     * 来自本地数据(判定/时间/语言/代码/消息),轮询端点 /data/submitSource 需要提交时
+     * 留存的 csrf(重启即失,旧实现同样只提供浏览器出口),平台侧无补充字段——如实申报
+     * "无详情"而非报错。
+     */
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? {
+        if (problemRemoteId.isEmpty()) return null
+        // 旧 showSubmissionDetails 事实:problemset/problemsets 两前缀;problemsetName
+        // (gym)本地不可得,取默认 problemset 形态
+        val contestId =
+            runCatching { parseProblemRemoteId(problemRemoteId).first }.getOrNull() ?: return null
+        return "https://$CODEFORCES_DOMAIN/problemset/submission/$contestId/$remoteSubmissionId"
+    }
 }
 
 /**

@@ -1,14 +1,23 @@
 <script setup lang="ts">
 /**
- * 提交历史页(WP21 真实数据):`GET /api/submissions`(可带 URL query
- * `?challengeId=` 过滤单一工作区)→ 题目/语言/verdict 徽标/耗时/内存/时间列表;
+ * 提交历史页(WP21 真实数据;WP36 详情面板):`GET /api/submissions`(可带 URL
+ * query `?challengeId=` 过滤单一工作区)→ 题目/语言/verdict 徽标/耗时/内存/时间列表;
+ * 行点击展开详情面板(`GET /api/submission/{id}/detail`,本地快照+平台详情合并:
+ * verdict/耗时/内存/语言 + 错误用例三件套 input/expected/actual 对比 + extras 键值
+ * + 平台站外链;展开互斥,再点收起,按 id 缓存不再重复拉取);
  * Kotlin 侧提交落库后经桥 `submission:updated` 推送本页刷新(桥推送优先,
  * Refresh 按钮兜底)。
  */
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_SUBMISSION_UPDATED, cqBridge } from '../../bridge/cq-bridge'
-import { ApiError, fetchSubmissions, type SubmissionListItem } from '../../lib/api'
+import {
+  ApiError,
+  fetchSubmissionDetail,
+  fetchSubmissions,
+  type SubmissionDetailResult,
+  type SubmissionListItem,
+} from '../../lib/api'
 import { formatMemoryKb, formatMillis, formatTimestamp, verdictMeta } from '../../lib/verdict'
 
 const PAGE_SIZE = 50
@@ -20,6 +29,16 @@ const offset = ref(0)
 const hasMore = ref(false)
 const loading = ref(false)
 const error = ref('')
+
+/** 当前展开详情面板的行(单展开互斥;再点同一行收起)。 */
+const expandedId = ref<string | null>(null)
+
+/** 详情面板按 id 缓存(loading/ready/error 三态;重开不重复拉取)。 */
+type PanelState =
+  | { status: 'loading' }
+  | { status: 'ready'; data: SubmissionDetailResult }
+  | { status: 'error'; message: string }
+const panels = reactive<Record<string, PanelState>>({})
 
 /** URL query 携带 challengeId 时过滤单一工作区(提交完成后的定向视图)。 */
 const params = new URLSearchParams(window.location.search)
@@ -56,6 +75,64 @@ function reload(): void {
   offset.value = 0
   hasMore.value = false
   void loadPage(false)
+}
+
+// ---------------------------------------------------------------------------
+// WP36:详情面板(展开互斥;按 id 缓存)
+// ---------------------------------------------------------------------------
+
+function toggleDetail(id: string): void {
+  if (expandedId.value === id) {
+    expandedId.value = null
+    return
+  }
+  expandedId.value = id
+  if (panels[id] === undefined) {
+    void loadDetail(id)
+  }
+}
+
+async function loadDetail(id: string): Promise<void> {
+  panels[id] = { status: 'loading' }
+  try {
+    panels[id] = { status: 'ready', data: await fetchSubmissionDetail(id) }
+  } catch (cause) {
+    panels[id] = { status: 'error', message: describeError(cause) }
+  }
+}
+
+/**
+ * ready 态详情的模板取值口(vue-tsc 无法跨指令窄化 Record 索引访问的判别联合,
+ * 模板内统一经本函数取值)。**仅在 `v-else-if="panels[item.id]?.status === 'ready'"`
+ * 守卫的分支内调用**——非 ready 态渲染该分支的先决条件不成立,不会走到。
+ */
+function detailOf(id: string): SubmissionDetailResult {
+  const state = panels[id]
+  return state != null && state.status === 'ready'
+    ? state.data
+    : (undefined as unknown as SubmissionDetailResult)
+}
+
+/** 错误态文案(同理,仅错误分支渲染时取值)。 */
+function errorOf(id: string): string {
+  const state = panels[id]
+  return state != null && state.status === 'error' ? state.message : ''
+}
+
+/** 错误用例三件套的可展示条目(null 值渲染为 —,保持三段结构可对照)。 */
+function caseEntries(
+  errorCase: SubmissionDetailResult['errorCase'],
+): Array<{ label: string; value: string; missing: boolean }> {
+  const case_ = errorCase ?? {}
+  return [
+    { label: 'Input', value: case_.input ?? '', missing: case_.input == null },
+    { label: 'Expected output', value: case_.expectedOutput ?? '', missing: case_.expectedOutput == null },
+    { label: 'Actual output', value: case_.actualOutput ?? '', missing: case_.actualOutput == null },
+  ]
+}
+
+function extrasEntries(detail: SubmissionDetailResult): Array<[string, string]> {
+  return Object.entries(detail.extras ?? {})
 }
 
 /** 桥推送:提交落库后 Kotlin 侧发 `submission:updated`,重拉第一页。 */
@@ -107,21 +184,105 @@ onUnmounted(() => {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="item in items" :key="item.id">
-          <td class="submissions__problem">
-            <span class="submissions__name">{{ item.challengeName ?? item.challengeId }}</span>
-            <span class="submissions__meta">{{ item.platformId }} · #{{ item.remoteSubmissionId }}</span>
-          </td>
-          <td>{{ item.language }}</td>
-          <td>
-            <span class="verdict-badge" :class="`verdict-badge--${verdictMeta(item.verdict).tone}`">
-              {{ verdictMeta(item.verdict).label }}
-            </span>
-          </td>
-          <td class="submissions__num">{{ formatMillis(item.timeMs) }}</td>
-          <td class="submissions__num">{{ formatMemoryKb(item.memoryKb) }}</td>
-          <td class="submissions__time">{{ formatTimestamp(item.submittedAt) }}</td>
-        </tr>
+        <template v-for="item in items" :key="item.id">
+          <tr
+            class="submissions__row"
+            :class="{ 'submissions__row--expanded': expandedId === item.id }"
+            :aria-expanded="expandedId === item.id"
+            @click="toggleDetail(item.id)"
+          >
+            <td class="submissions__problem">
+              <span class="submissions__name">{{ item.challengeName ?? item.challengeId }}</span>
+              <span class="submissions__meta">{{ item.platformId }} · #{{ item.remoteSubmissionId }}</span>
+            </td>
+            <td>{{ item.language }}</td>
+            <td>
+              <span class="verdict-badge" :class="`verdict-badge--${verdictMeta(item.verdict).tone}`">
+                {{ verdictMeta(item.verdict).label }}
+              </span>
+            </td>
+            <td class="submissions__num">{{ formatMillis(item.timeMs) }}</td>
+            <td class="submissions__num">{{ formatMemoryKb(item.memoryKb) }}</td>
+            <td class="submissions__time">{{ formatTimestamp(item.submittedAt) }}</td>
+          </tr>
+          <tr v-if="expandedId === item.id" class="detail-row">
+            <td colspan="6" class="detail-row__cell" @click.stop>
+              <div v-if="panels[item.id]?.status === 'loading'" class="detail-state">Loading submission details…</div>
+              <div
+                v-else-if="panels[item.id]?.status === 'error'"
+                class="detail-state detail-state--error"
+                role="alert"
+              >
+                {{ errorOf(item.id) }}
+                <button type="button" class="state__retry" @click="loadDetail(item.id)">Retry</button>
+              </div>
+              <div v-else-if="panels[item.id]?.status === 'ready'" class="detail">
+                <dl class="detail__meta">
+                  <div class="detail__meta-item">
+                    <dt>Verdict</dt>
+                    <dd>
+                      <span
+                        class="verdict-badge"
+                        :class="`verdict-badge--${verdictMeta(detailOf(item.id).verdict).tone}`"
+                      >
+                        {{ verdictMeta(detailOf(item.id).verdict).label }}
+                      </span>
+                    </dd>
+                  </div>
+                  <div class="detail__meta-item">
+                    <dt>Time</dt>
+                    <dd>{{ formatMillis(detailOf(item.id).timeMs) }}</dd>
+                  </div>
+                  <div class="detail__meta-item">
+                    <dt>Memory</dt>
+                    <dd>{{ formatMemoryKb(detailOf(item.id).memoryKb) }}</dd>
+                  </div>
+                  <div class="detail__meta-item">
+                    <dt>Language</dt>
+                    <dd>{{ detailOf(item.id).language }}</dd>
+                  </div>
+                  <div class="detail__meta-item">
+                    <dt>Submitted</dt>
+                    <dd>{{ formatTimestamp(detailOf(item.id).submittedAt) }}</dd>
+                  </div>
+                </dl>
+
+                <p v-if="detailOf(item.id).message" class="detail__message">
+                  {{ detailOf(item.id).message }}
+                </p>
+
+                <div v-if="detailOf(item.id).errorCase" class="detail__cases">
+                  <section
+                    v-for="entry in caseEntries(detailOf(item.id).errorCase)"
+                    :key="entry.label"
+                    class="detail__case"
+                    :class="{ 'detail__case--missing': entry.missing }"
+                  >
+                    <h4 class="detail__case-label">{{ entry.label }}</h4>
+                    <pre class="detail__case-value">{{ entry.missing ? '—' : entry.value }}</pre>
+                  </section>
+                </div>
+
+                <dl v-if="extrasEntries(detailOf(item.id)).length > 0" class="detail__extras">
+                  <div v-for="[key, value] in extrasEntries(detailOf(item.id))" :key="key" class="detail__extra">
+                    <dt>{{ key }}</dt>
+                    <dd>{{ value }}</dd>
+                  </div>
+                </dl>
+
+                <a
+                  v-if="detailOf(item.id).viewUrl"
+                  class="detail__view-url"
+                  :href="detailOf(item.id).viewUrl ?? undefined"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on {{ detailOf(item.id).platformId }} ↗
+                </a>
+              </div>
+            </td>
+          </tr>
+        </template>
       </tbody>
     </table>
 
@@ -202,6 +363,18 @@ onUnmounted(() => {
   vertical-align: top;
 }
 
+.submissions__row {
+  cursor: pointer;
+}
+
+.submissions__row:hover {
+  background: var(--cq-panel-raised);
+}
+
+.submissions__row--expanded {
+  background: var(--cq-panel-raised);
+}
+
 .submissions__num {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -270,6 +443,125 @@ onUnmounted(() => {
   background: transparent;
   color: var(--cq-muted);
   border: 1px dashed var(--cq-muted);
+}
+
+/* -------------------------------------------------------------------------
+ * WP36:详情面板(行下方展开;等宽三件套对照 + extras 键值 + 站外链)
+ * ------------------------------------------------------------------------- */
+
+.detail-row__cell {
+  background: var(--cq-panel);
+  padding: 12px 14px;
+}
+
+.detail-state {
+  font-size: 12px;
+  color: var(--cq-muted);
+}
+
+.detail-state--error {
+  color: var(--cq-danger);
+}
+
+.detail__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0;
+}
+
+.detail__meta-item dt {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cq-muted);
+  margin-bottom: 2px;
+}
+
+.detail__meta-item dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__message {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--cq-danger);
+  color: var(--cq-danger);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.detail__cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.detail__case-label {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cq-muted);
+}
+
+.detail__case-value {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow: auto;
+  user-select: text;
+}
+
+.detail__case--missing .detail__case-value {
+  color: var(--cq-muted);
+}
+
+.detail__extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 12px 0 0;
+}
+
+.detail__extra dt {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--cq-muted);
+}
+
+.detail__extra dd {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail__view-url {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--cq-accent);
 }
 
 .pager {

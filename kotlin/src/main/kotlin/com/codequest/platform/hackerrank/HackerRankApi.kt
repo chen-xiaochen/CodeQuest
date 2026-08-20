@@ -295,6 +295,8 @@ class HackerRankApi(
         /** 3 = 处理完毕(旧轮询终止条件)。 */
         val scoreProcessed: Int,
         val compileMessage: String?,
+        /** 用例状态列表(1=通过;旧 HACKERRANK_SUBMISSION_CASE.testcasestatus 事实;WP36 详情消费)。 */
+        val testcaseStatus: List<Int> = emptyList(),
     ) {
         fun toSnapshot(): SubmissionStatusSnapshot =
             // 旧实现未提取耗时/内存作快照指标(codechecker_time 仅落库明细),如实为 null
@@ -323,6 +325,7 @@ class HackerRankApi(
             status = model.stringOrEmpty("status"),
             scoreProcessed = model.intOrNullField("score_processed") ?: 0,
             compileMessage = model.stringOrNull("compile_message"),
+            testcaseStatus = model.intArrayField("testcase_status"),
         )
     }
 
@@ -420,3 +423,6 @@ private fun JsonObject.intOrNullField(name: String): Int? = this[name]?.jsonPrim
 private fun JsonObject.longOrNullField(name: String): Long? = this[name]?.jsonPrimitive?.longOrNull
 
 private fun JsonObject.arrayOrEmpty(name: String): List<JsonElement> = (this[name] as? JsonArray) ?: emptyList()
+
+/** int 数组字段(WP36:testcase_status 列表;缺失/形态不符回空)。 */
+private fun JsonObject.intArrayField(name: String): List<Int> = arrayOrEmpty(name).mapNotNull { (it as? JsonPrimitive)?.intOrNull }

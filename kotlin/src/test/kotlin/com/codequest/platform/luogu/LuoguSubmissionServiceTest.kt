@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 /**
  * [unit] WP26:洛谷提交流程——submit(JSON POST 拿 rid)与 watchSubmission
@@ -142,6 +143,19 @@ class LuoguSubmissionServiceTest {
         const val TEST_INTERVAL_MS = 1L
 
         const val FIXED_BACKOFF = 1.0
+    }
+
+    @Test
+    fun `submission view url uses record url and detail fetch reports none`() = runBlocking {
+        val svc = service(FakeOJTransport())
+
+        // 旧 showSubmissionDetails URL 事实:https://www.luogu.com.cn/record/<rid>
+        assertEquals(
+            "https://www.luogu.com.cn/record/R26489801",
+            svc.submissionViewUrl("R26489801", "P1001"),
+        )
+        // 旧 Form 无平台侧补充详情 → 如实申报无详情
+        assertNull(svc.fetchSubmissionDetail("R26489801", "P1001"))
     }
 }
 

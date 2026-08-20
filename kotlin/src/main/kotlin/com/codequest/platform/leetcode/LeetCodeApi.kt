@@ -485,12 +485,70 @@ class LeetCodeApi(
         )
     }
 
+    /**
+     * /check/ 响应的详情超集(WP36):同一端点、全量字段解析。字段名与语义 =
+     * 旧 LeetCodeSubmitAnswerResult.Success 事实(snake_case);
+     * 与 [LeetCodeSubmissionCheck] 分离,轮询热路径不解析用不到的字段。
+     */
+    data class LeetCodeSubmissionCheckDetail(
+        val state: String,
+        val statusMsg: String?,
+        val memory: Int?,
+        val statusRuntime: String?,
+        val prettyLang: String?,
+        val runtimePercentile: Double?,
+        val memoryPercentile: Double?,
+        val totalCorrect: Int?,
+        val totalTestcases: Int?,
+        val inputFormatted: String?,
+        val input: String?,
+        val codeOutput: String?,
+        val expectedOutput: String?,
+        val fullCompileError: String?,
+        val compileError: String?,
+        val fullRuntimeError: String?,
+        val runtimeError: String?,
+    )
+
+    /** 详情拉取(按需低频,如 submissions 页展开;不落库)。 */
+    suspend fun fetchSubmissionCheckDetail(submissionId: String): LeetCodeSubmissionCheckDetail {
+        val raw = transport.get(variant.id, variant.submissionCheckUrl(submissionId), csrfHeaders())
+        val check =
+            json
+                .parseToJsonElement(raw)
+                .jsonObject
+                .takeIf { it["state"] != null }
+                ?: throw OJException("LeetCode 提交详情响应缺少 state 字段: ${raw.take(SNIPPET)}")
+        return LeetCodeSubmissionCheckDetail(
+            state = check["state"]?.jsonPrimitive?.content.orEmpty(),
+            statusMsg = check["status_msg"]?.jsonPrimitive?.contentOrNullIfNull(),
+            memory = check["memory"]?.jsonPrimitive?.intOrNull,
+            statusRuntime = check["status_runtime"]?.jsonPrimitive?.contentOrNullIfNull(),
+            prettyLang = check["pretty_lang"]?.jsonPrimitive?.contentOrNullIfNull(),
+            runtimePercentile = check["runtime_percentile"]?.jsonPrimitive?.numberOrNullPercentile(),
+            memoryPercentile = check["memory_percentile"]?.jsonPrimitive?.numberOrNullPercentile(),
+            totalCorrect = check["total_correct"]?.jsonPrimitive?.flexibleIntOrNull(),
+            totalTestcases = check["total_testcases"]?.jsonPrimitive?.flexibleIntOrNull(),
+            inputFormatted = check["input_formatted"]?.jsonPrimitive?.contentOrNullIfNull(),
+            input = check["input"]?.jsonPrimitive?.contentOrNullIfNull(),
+            codeOutput = check["code_output"]?.jsonPrimitive?.contentOrNullIfNull(),
+            expectedOutput = check["expected_output"]?.jsonPrimitive?.contentOrNullIfNull(),
+            fullCompileError = check["full_compile_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            compileError = check["compile_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            fullRuntimeError = check["full_runtime_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            runtimeError = check["runtime_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+        )
+    }
+
     companion object {
         /** 单次题解列表拉取条数(旧实现列表页默认量级)。 */
         const val DEFAULT_SOLUTION_LIMIT: Int = 20
 
         /** LeetCode 单次题目列表请求上限(协议限制 100)。 */
         const val MAX_PAGE_SIZE: Int = 100
+
+        /** 错误响应截断长度(WP36 详情解析失败信息)。 */
+        private const val SNIPPET: Int = 200
     }
 }
 
@@ -503,3 +561,11 @@ private fun stringArray(values: List<String>): kotlinx.serialization.json.JsonAr
 /** JSON null 字段 → Kotlin null(content 访问对 JsonNull 会抛异常,先判空)。 */
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullIfNull(): String? =
     if (this is kotlinx.serialization.json.JsonNull) null else content
+
+/**
+ * 数字字段兼容解析(WP36):LC /check/ 响应的百分位/计数有时以字符串承载
+ * (旧 circe 模型即按 Option[Float]/Option[Int] 解码,两种形态都见过)。
+ */
+private fun kotlinx.serialization.json.JsonPrimitive.numberOrNullPercentile(): Double? = contentOrNullIfNull()?.toDoubleOrNull()
+
+private fun kotlinx.serialization.json.JsonPrimitive.flexibleIntOrNull(): Int? = intOrNull ?: contentOrNullIfNull()?.toIntOrNull()

@@ -16,6 +16,8 @@ import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.ProblemStatement
 import com.codequest.spi.ProblemSummary
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetail
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmitRequest
 import kotlinx.coroutines.flow.Flow
@@ -34,7 +36,8 @@ class AtCoderPlatform(
 ) : OJPlatform,
     AuthCapable,
     ProblemQueryCapable,
-    SubmissionCapable {
+    SubmissionCapable,
+    SubmissionDetailCapable {
     private val api = AtCoderApi(transport)
     private val auth = AtCoderAuth(api, transport, credentialStore, authPrompt)
     private val problemService = AtCoderProblemService(api)
@@ -64,6 +67,16 @@ class AtCoderPlatform(
     override suspend fun submit(request: SubmitRequest): SubmissionHandle = submissionService.submit(request)
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = submissionService.watchSubmission(handle)
+
+    override suspend fun fetchSubmissionDetail(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): SubmissionDetail? = submissionService.fetchSubmissionDetail(remoteSubmissionId, problemRemoteId)
+
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
 }
 
 /** atcoder 注册(plugin.xml `<ojPlatformProvider implementation=.../>`)。 */

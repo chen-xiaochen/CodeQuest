@@ -19,6 +19,8 @@ import com.codequest.spi.SolutionArticleContent
 import com.codequest.spi.SolutionArticleRef
 import com.codequest.spi.SolutionViewCapable
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetail
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmitRequest
 import kotlinx.coroutines.flow.Flow
@@ -38,7 +40,8 @@ class LuoguPlatform(
     AuthCapable,
     ProblemQueryCapable,
     SubmissionCapable,
-    SolutionViewCapable {
+    SolutionViewCapable,
+    SubmissionDetailCapable {
     private val api = LuoguApi(transport)
     private val auth = LuoguAuth(api, transport, credentialStore, authPrompt)
     private val problemService = LuoguProblemService(api)
@@ -69,6 +72,16 @@ class LuoguPlatform(
     override suspend fun submit(request: SubmitRequest): SubmissionHandle = submissionService.submit(request)
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = submissionService.watchSubmission(handle)
+
+    override suspend fun fetchSubmissionDetail(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): SubmissionDetail? = submissionService.fetchSubmissionDetail(remoteSubmissionId, problemRemoteId)
+
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
 
     override suspend fun fetchSolutions(remoteId: String): List<SolutionArticleRef> = solutions.fetchSolutions(remoteId)
 

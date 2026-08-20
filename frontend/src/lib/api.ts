@@ -236,6 +236,45 @@ export function fetchSubmissions(query: SubmissionListQuery): Promise<Submission
   return getJson<SubmissionListResult>(`/api/submissions?${params.toString()}`)
 }
 
+/** WP36:错误用例三件套(平台侧,如 LeetCode WA 的 input/期望/实际)。 */
+export interface SubmissionErrorCase {
+  input?: string | null
+  expectedOutput?: string | null
+  actualOutput?: string | null
+}
+
+/**
+ * WP36:单次提交详情(本地快照 + 平台详情合并)。
+ * verdict/耗时/内存/语言为「平台侧最新值 ?: 本地快照」;message/三件套/extras/
+ * viewUrl 仅平台给出时存在;code 为本地代码快照(WP40 代码回看复用)。
+ */
+export interface SubmissionDetailResult {
+  id: string
+  challengeId: string
+  /** challenge 主档被删除时缺省。 */
+  challengeName?: string | null
+  platformId: string
+  remoteSubmissionId: string
+  language: string
+  verdict: SubmissionVerdict
+  timeMs?: number | null
+  memoryKb?: number | null
+  /** ISO-8601 即时字符串。 */
+  submittedAt: string
+  code: string
+  message?: string | null
+  errorCase?: SubmissionErrorCase | null
+  /** 平台特有键值对(如 testcases "12/14"、runtimePercentile "95.20%")。 */
+  extras?: Record<string, string> | null
+  /** 平台网站提交详情页(浏览器兜底出口)。 */
+  viewUrl?: string | null
+}
+
+/** WP36:提交详情(平台重拉,不落库;平台错误按既有错误码抛 ApiError)。 */
+export function fetchSubmissionDetail(id: string): Promise<SubmissionDetailResult> {
+  return getJson<SubmissionDetailResult>(`/api/submission/${encodeURIComponent(id)}/detail`)
+}
+
 // ---------------------------------------------------------------------------
 // WP23:竞赛(contest 页数据源;ContestCapable 平台经 /api/contests)
 // ---------------------------------------------------------------------------

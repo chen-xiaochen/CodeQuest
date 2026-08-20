@@ -246,4 +246,19 @@ class CodeForcesSubmissionServiceTest {
             CodeForcesApi.SubmitTokens.parse("a,b,c,d"),
         )
     }
+
+    @Test
+    fun `submission view url derives contest id and detail fetch reports none`() = runBlocking {
+        val svc = service(transport(verdictScript = listOf("""{"verdict":"Accepted"}""")))
+
+        // 旧 showSubmissionDetails 事实(problemsetName 本地不可得,取 problemset 默认形态)
+        assertEquals(
+            "https://codeforces.com/problemset/submission/1927/291234567",
+            svc.submissionViewUrl("291234567", "1927A"),
+        )
+        assertNull(svc.submissionViewUrl("291234567", ""))
+        assertNull(svc.submissionViewUrl("291234567", "not-a-cf-id"))
+        // 旧 Form 无平台侧补充详情(csrf 随提交留存,重启即失)→ 如实申报无详情
+        assertNull(svc.fetchSubmissionDetail("291234567", "1927A"))
+    }
 }

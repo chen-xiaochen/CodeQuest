@@ -22,7 +22,8 @@ import java.util.logging.Logger
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
  *   注入后启用):`GET /api/platforms`、`GET /api/problems`、`GET /api/problem/{remoteId}`;
- *   提交记录端点(WP21,经 [submissionsApi] 注入后启用):`GET /api/submissions`;
+ *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
+ *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
  *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
  *   题解端点(WP26 列表 / WP31 正文,经 [solutionsApi] 注入后启用):
@@ -128,11 +129,16 @@ class ResourceHttpServer(
             }
 
             else -> {
-                // WP20/WP23/WP29/WP31:各路由家族单独提取(handleApi 圈复杂度门禁);未命中再回 404
-                if (!handleProblemRoutes(exchange, path, query) &&
-                    !handleContestRoutes(exchange, path, query) &&
-                    !handleLocalDataRoutes(exchange, path, query)
-                ) {
+                // WP20/WP23/WP29/WP31/WP36:各路由家族单独提取(handleApi 圈复杂度门禁);
+                // 依序尝试,全部未命中再回 404
+                val families =
+                    listOf(
+                        { handleProblemRoutes(exchange, path, query) },
+                        { handleContestRoutes(exchange, path, query) },
+                        { handleSubmissionRoutes(exchange, path, query) },
+                        { handleLocalDataRoutes(exchange, path, query) },
+                    )
+                if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
                 }
             }
@@ -194,24 +200,50 @@ class ResourceHttpServer(
         return true
     }
 
-    /** 本地库数据端点路由(WP21 submissions / WP29 stats / WP30 search;形态同 [handleContestRoutes])。 */
-    private fun handleLocalDataRoutes(
+    /** 提交端点路由家族(WP21 列表 / WP36 详情;形态同 [handleContestRoutes])。 */
+    private fun handleSubmissionRoutes(
         exchange: HttpExchange,
         path: String,
         query: Map<String, String>,
     ): Boolean {
         when {
             path == "/api/submissions" && exchange.isGet() -> {
-                val api = submissionsApi
-                val response =
-                    if (api == null) {
-                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
-                    } else {
-                        runBlocking { api.listSubmissions(query) }
-                    }
-                respondJson(exchange, response.status, response.json, response.headers)
+                runSubmissionsApi(exchange) { api -> api.listSubmissions(query) }
             }
 
+            // WP36:提交详情 `/api/submission/{id}/detail`(id 为本地 submission id,
+            // 不含 "/";URL 解码后交端点。与列表路由 `/api/submissions` 单复数区分;
+            // 无 /detail 后缀的路径不匹配 → 交回上层 404)
+            path.startsWith(SUBMISSION_DETAIL_PREFIX) && path.endsWith(SUBMISSION_DETAIL_MARKER) && exchange.isGet() -> {
+                val id =
+                    path
+                        .removePrefix(SUBMISSION_DETAIL_PREFIX)
+                        .removeSuffix(SUBMISSION_DETAIL_MARKER)
+                if (id.isEmpty() || id.contains('/')) {
+                    respondJson(
+                        exchange,
+                        STATUS_BAD_REQUEST,
+                        """{"error":"bad-request","message":"invalid submission id path segment"}""",
+                    )
+                } else {
+                    runSubmissionsApi(exchange) { api -> api.submissionDetail(urlDecode(id)) }
+                }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 本地库数据端点路由(WP29 stats / WP30 search;形态同 [handleContestRoutes])。 */
+    private fun handleLocalDataRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        when {
             // WP29:刷题统计(summary + 热力图 + 趋势)
             path == "/api/stats" && exchange.isGet() -> {
                 val api = statsApi
@@ -309,6 +341,21 @@ class ResourceHttpServer(
         block: suspend (ContestApi) -> ProblemApiResponse,
     ) {
         val api = contestApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 执行 [SubmissionsApi] 调用并回写应答(形态同 [runProblemApi],WP36 提取路由家族时同步收口)。 */
+    private fun runSubmissionsApi(
+        exchange: HttpExchange,
+        block: suspend (SubmissionsApi) -> ProblemApiResponse,
+    ) {
+        val api = submissionsApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
@@ -478,6 +525,12 @@ class ResourceHttpServer(
         private const val BACKLOG = 0
         private const val API_PREFIX = "/api/"
         private const val PROBLEM_DETAIL_PREFIX = "/api/problem/"
+
+        /** WP36:提交详情路由前缀(`/api/submission/{id}/detail`)。 */
+        private const val SUBMISSION_DETAIL_PREFIX = "/api/submission/"
+
+        /** WP36:提交详情路由后缀(拼在 id 之后)。 */
+        private const val SUBMISSION_DETAIL_MARKER = "/detail"
 
         /** WP26:题解引用列表路由后缀(拼在 remoteId 之后)。 */
         private const val SOLUTIONS_ROUTE_SUFFIX = "/solutions"

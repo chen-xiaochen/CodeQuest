@@ -18,14 +18,16 @@ import com.codequest.spi.SolutionArticleContent
 import com.codequest.spi.SolutionArticleRef
 import com.codequest.spi.SolutionViewCapable
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.SubmissionDetail
+import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmitRequest
 import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现四个能力接口并按服务拆分委托:
- * auth / problem / submission / solutions。
+ * (身份差异见 [LeetCodeVariant]),组合实现五个能力接口并按服务拆分委托:
+ * auth / problem / submission / solutions / submission detail(WP36)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -36,7 +38,8 @@ class LeetCodePlatform(
     AuthCapable,
     ProblemQueryCapable,
     SubmissionCapable,
-    SolutionViewCapable {
+    SolutionViewCapable,
+    SubmissionDetailCapable {
     private val api = LeetCodeApi(variant, transport)
     private val auth = LeetCodeAuth(variant, api, transport, credentialStore, cookiePrompt)
     private val problemService = LeetCodeProblemService(variant, api)
@@ -74,6 +77,16 @@ class LeetCodePlatform(
         remoteId: String,
         solutionId: String,
     ): SolutionArticleContent = solutions.fetchSolutionContent(remoteId, solutionId)
+
+    override suspend fun fetchSubmissionDetail(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): SubmissionDetail = submissionService.fetchSubmissionDetail(remoteSubmissionId, problemRemoteId)
+
+    override fun submissionViewUrl(
+        remoteSubmissionId: String,
+        problemRemoteId: String,
+    ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
 }
 
 /** leetcode.com 注册(plugin.xml `<ojPlatformProvider implementation=.../>`)。 */
