@@ -2,6 +2,8 @@
  * WP21:submissions 页真实列表(端点 mock)——行渲染/verdict 徽标/耗时内存格式化/
  * challengeId 过滤转发/分页追加/桥 `submission:updated` 推送刷新/错误态。
  * WP36:行点击详情面板——三件套/extras/message/viewUrl/展开互斥/缓存/错误态/加载态。
+ * WP40:详情面板 Details/Code 切换——Code 态高亮代码块/空快照降级/tab 按行独立/
+ * 未知语言纯文本降级/复制按钮。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -380,5 +382,121 @@ describe('submissions detail panel (WP36)', () => {
     release()
     await flushPromises()
     expect(wrapper.find('.detail__case').exists()).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WP40:详情面板 Details/Code 切换(本地 codeSnapshot 回看,零新端点)
+// ---------------------------------------------------------------------------
+
+const KOTLIN_SNIPPET = 'fun main() {\n    println(42)\n}'
+
+function codeTabButton(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('.detail__tab').find((button) => button.text() === 'Code')!
+}
+
+describe('submissions detail panel code view (WP40)', () => {
+  it('defaults to the Details tab and switches to a highlighted code block on Code', async () => {
+    mockListAndDetail([{ id: 's-1', overrides: { code: KOTLIN_SNIPPET, language: 'Kotlin' } }])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+
+    // 默认 Details 态:meta 可见,代码块未渲染
+    expect(wrapper.find('.detail__meta').exists()).toBe(true)
+    expect(wrapper.find('.detail__code').exists()).toBe(false)
+
+    await codeTabButton(wrapper).trigger('click')
+
+    // Code 态:高亮代码块 pre>code.hljs,kotlin 注册语言产生 token span
+    expect(wrapper.find('.detail__meta').exists()).toBe(false)
+    const code = wrapper.find('.detail__code code.hljs')
+    expect(code.exists()).toBe(true)
+    expect(code.text()).toContain('fun main()')
+    expect(code.element.innerHTML).toContain('hljs-keyword')
+    expect(codeTabButton(wrapper).attributes('aria-selected')).toBe('true')
+  })
+
+  it('shows a placeholder when the code snapshot is empty', async () => {
+    mockListAndDetail([{ id: 's-1', overrides: { code: '   ' } }])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+    await codeTabButton(wrapper).trigger('click')
+
+    expect(wrapper.find('.detail__code').exists()).toBe(false)
+    expect(wrapper.find('.detail__code-empty').text()).toContain(
+      'No code snapshot stored for this submission',
+    )
+  })
+
+  it('keeps tab state per row and restores it when a panel is reopened', async () => {
+    mockListAndDetail([
+      { id: 's-1', overrides: { code: KOTLIN_SNIPPET } },
+      { id: 's-2', overrides: { code: KOTLIN_SNIPPET } },
+    ])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    const rows = wrapper.findAll('.submissions__row')
+    await rows[0].trigger('click')
+    await flushPromises()
+    await codeTabButton(wrapper).trigger('click')
+    expect(wrapper.find('.detail__code').exists()).toBe(true)
+
+    // 收起 s-1,展开 s-2:s-2 不受 s-1 的 Code 态影响,默认 Details
+    await rows[0].trigger('click')
+    await wrapper.findAll('.submissions__row')[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail__meta').exists()).toBe(true)
+    expect(wrapper.find('.detail__code').exists()).toBe(false)
+
+    // 收起 s-2,重开 s-1:保持上次选择的 Code 态
+    await wrapper.findAll('.submissions__row')[1].trigger('click')
+    await wrapper.findAll('.submissions__row')[0].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail__code').exists()).toBe(true)
+  })
+
+  it('falls back to plain text for unregistered languages', async () => {
+    mockListAndDetail([{ id: 's-1', overrides: { code: '++++++++[>++++<-]>', language: 'Brainfuck' } }])
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+    await codeTabButton(wrapper).trigger('click')
+
+    // 仍渲染在 pre>code.hljs 中,但无 hljs token span(纯文本转义降级)
+    const code = wrapper.find('.detail__code code.hljs')
+    expect(code.exists()).toBe(true)
+    expect(code.text()).toContain('++++++++[>++++<-]>')
+    expect(code.element.innerHTML).not.toContain('hljs-')
+  })
+
+  it('copies the snapshot to the clipboard from the Code tab', async () => {
+    mockListAndDetail([{ id: 's-1', overrides: { code: KOTLIN_SNIPPET } }])
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+
+    const wrapper = mount(SubmissionsApp)
+    await flushPromises()
+
+    await wrapper.find('.submissions__row').trigger('click')
+    await flushPromises()
+    await codeTabButton(wrapper).trigger('click')
+
+    await wrapper.find('.detail__copy').trigger('click')
+    await flushPromises()
+
+    expect(writeText).toHaveBeenCalledWith(KOTLIN_SNIPPET)
+    expect(wrapper.find('.detail__copy').text()).toBe('Copied')
   })
 })

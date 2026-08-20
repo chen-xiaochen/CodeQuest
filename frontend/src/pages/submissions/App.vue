@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * 提交历史页(WP21 真实数据;WP36 详情面板):`GET /api/submissions`(可带 URL
- * query `?challengeId=` 过滤单一工作区)→ 题目/语言/verdict 徽标/耗时/内存/时间列表;
- * 行点击展开详情面板(`GET /api/submission/{id}/detail`,本地快照+平台详情合并:
- * verdict/耗时/内存/语言 + 错误用例三件套 input/expected/actual 对比 + extras 键值
- * + 平台站外链;展开互斥,再点收起,按 id 缓存不再重复拉取);
+ * 提交历史页(WP21 真实数据;WP36 详情面板;WP40 代码回看):`GET /api/submissions`
+ * (可带 URL query `?challengeId=` 过滤单一工作区)→ 题目/语言/verdict 徽标/耗时/
+ * 内存/时间列表;行点击展开详情面板(`GET /api/submission/{id}/detail`,本地快照+
+ * 平台详情合并:verdict/耗时/内存/语言 + 错误用例三件套 input/expected/actual 对比
+ * + extras 键值 + 平台站外链;展开互斥,再点收起,按 id 缓存不再重复拉取);
+ * 面板内 Details/Code 双 tab(按行独立,收起重开保持)——Code 态渲染本地 codeSnapshot
+ * (hljs 按需高亮,未知语言纯文本降级,空快照提示文案,附 Copy 按钮);
  * Kotlin 侧提交落库后经桥 `submission:updated` 推送本页刷新(桥推送优先,
  * Refresh 按钮兜底)。
  */
@@ -18,6 +20,7 @@ import {
   type SubmissionDetailResult,
   type SubmissionListItem,
 } from '../../lib/api'
+import { highlightCode } from '../../lib/highlight'
 import { formatMemoryKb, formatMillis, formatTimestamp, verdictMeta } from '../../lib/verdict'
 
 const PAGE_SIZE = 50
@@ -135,6 +138,51 @@ function extrasEntries(detail: SubmissionDetailResult): Array<[string, string]> 
   return Object.entries(detail.extras ?? {})
 }
 
+// ---------------------------------------------------------------------------
+// WP40:详情面板 Details/Code 切换(本地 codeSnapshot 回看)
+// ---------------------------------------------------------------------------
+
+/** 面板内视图 tab;按行独立记录,收起再展开保持上次选择。 */
+type DetailTab = 'details' | 'code'
+const detailTabs = reactive<Record<string, DetailTab>>({})
+
+function tabOf(id: string): DetailTab {
+  return detailTabs[id] ?? 'details'
+}
+
+function setDetailTab(id: string, tab: DetailTab): void {
+  detailTabs[id] = tab
+}
+
+/** 有无代码快照(空串/纯空白视为无;同理仅 ready 分支调用)。 */
+function hasCode(id: string): boolean {
+  const code = detailOf(id).code
+  return code != null && code.trim() !== ''
+}
+
+/** Code 态高亮 HTML(hljs/escapeHtml 输出均已转义,v-html 无注入面)。 */
+function highlightedCode(id: string): string {
+  const detail = detailOf(id)
+  return highlightCode(detail.code, detail.language)
+}
+
+/** 复制按钮回显(1.2s 后复位;剪贴板不可用时静默,手动选中复制兜底)。 */
+const copiedId = ref<string | null>(null)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+async function copyCode(id: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(detailOf(id).code)
+    copiedId.value = id
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
+      copiedId.value = null
+    }, 1200)
+  } catch {
+    // 忽略:非安全上下文/权限拒绝
+  }
+}
+
 /** 桥推送:提交落库后 Kotlin 侧发 `submission:updated`,重拉第一页。 */
 function onSubmissionUpdated(): void {
   reload()
@@ -149,6 +197,8 @@ onMounted(() => {
 onUnmounted(() => {
   offBridge?.()
   offBridge = null
+  if (copyTimer) clearTimeout(copyTimer)
+  copyTimer = null
 })
 </script>
 
@@ -217,68 +267,111 @@ onUnmounted(() => {
                 <button type="button" class="state__retry" @click="loadDetail(item.id)">Retry</button>
               </div>
               <div v-else-if="panels[item.id]?.status === 'ready'" class="detail">
-                <dl class="detail__meta">
-                  <div class="detail__meta-item">
-                    <dt>Verdict</dt>
-                    <dd>
-                      <span
-                        class="verdict-badge"
-                        :class="`verdict-badge--${verdictMeta(detailOf(item.id).verdict).tone}`"
-                      >
-                        {{ verdictMeta(detailOf(item.id).verdict).label }}
-                      </span>
-                    </dd>
-                  </div>
-                  <div class="detail__meta-item">
-                    <dt>Time</dt>
-                    <dd>{{ formatMillis(detailOf(item.id).timeMs) }}</dd>
-                  </div>
-                  <div class="detail__meta-item">
-                    <dt>Memory</dt>
-                    <dd>{{ formatMemoryKb(detailOf(item.id).memoryKb) }}</dd>
-                  </div>
-                  <div class="detail__meta-item">
-                    <dt>Language</dt>
-                    <dd>{{ detailOf(item.id).language }}</dd>
-                  </div>
-                  <div class="detail__meta-item">
-                    <dt>Submitted</dt>
-                    <dd>{{ formatTimestamp(detailOf(item.id).submittedAt) }}</dd>
-                  </div>
-                </dl>
-
-                <p v-if="detailOf(item.id).message" class="detail__message">
-                  {{ detailOf(item.id).message }}
-                </p>
-
-                <div v-if="detailOf(item.id).errorCase" class="detail__cases">
-                  <section
-                    v-for="entry in caseEntries(detailOf(item.id).errorCase)"
-                    :key="entry.label"
-                    class="detail__case"
-                    :class="{ 'detail__case--missing': entry.missing }"
+                <div class="detail__tabs" role="tablist" aria-label="submission detail views">
+                  <button
+                    type="button"
+                    role="tab"
+                    class="detail__tab"
+                    :class="{ 'detail__tab--active': tabOf(item.id) === 'details' }"
+                    :aria-selected="tabOf(item.id) === 'details'"
+                    @click="setDetailTab(item.id, 'details')"
                   >
-                    <h4 class="detail__case-label">{{ entry.label }}</h4>
-                    <pre class="detail__case-value">{{ entry.missing ? '—' : entry.value }}</pre>
-                  </section>
+                    Details
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    class="detail__tab"
+                    :class="{ 'detail__tab--active': tabOf(item.id) === 'code' }"
+                    :aria-selected="tabOf(item.id) === 'code'"
+                    @click="setDetailTab(item.id, 'code')"
+                  >
+                    Code
+                  </button>
+                  <button
+                    v-if="tabOf(item.id) === 'code' && hasCode(item.id)"
+                    type="button"
+                    class="detail__copy"
+                    @click="copyCode(item.id)"
+                  >
+                    {{ copiedId === item.id ? 'Copied' : 'Copy' }}
+                  </button>
                 </div>
 
-                <dl v-if="extrasEntries(detailOf(item.id)).length > 0" class="detail__extras">
-                  <div v-for="[key, value] in extrasEntries(detailOf(item.id))" :key="key" class="detail__extra">
-                    <dt>{{ key }}</dt>
-                    <dd>{{ value }}</dd>
-                  </div>
-                </dl>
+                <template v-if="tabOf(item.id) === 'code'">
+                  <p v-if="!hasCode(item.id)" class="detail__code-empty">
+                    No code snapshot stored for this submission.
+                  </p>
+                  <pre v-else class="detail__code">
+                    <!-- eslint-disable-next-line vue/no-v-html — highlight.js 输出已转义,无用户可控标签 -->
+                    <code class="hljs" v-html="highlightedCode(item.id)"></code>
+                  </pre>
+                </template>
 
-                <a
-                  v-if="detailOf(item.id).viewUrl"
-                  class="detail__view-url"
-                  :href="detailOf(item.id).viewUrl ?? undefined"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View on {{ detailOf(item.id).platformId }} ↗
-                </a>
+                <template v-else>
+                  <dl class="detail__meta">
+                    <div class="detail__meta-item">
+                      <dt>Verdict</dt>
+                      <dd>
+                        <span
+                          class="verdict-badge"
+                          :class="`verdict-badge--${verdictMeta(detailOf(item.id).verdict).tone}`"
+                        >
+                          {{ verdictMeta(detailOf(item.id).verdict).label }}
+                        </span>
+                      </dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>Time</dt>
+                      <dd>{{ formatMillis(detailOf(item.id).timeMs) }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>Memory</dt>
+                      <dd>{{ formatMemoryKb(detailOf(item.id).memoryKb) }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>Language</dt>
+                      <dd>{{ detailOf(item.id).language }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>Submitted</dt>
+                      <dd>{{ formatTimestamp(detailOf(item.id).submittedAt) }}</dd>
+                    </div>
+                  </dl>
+
+                  <p v-if="detailOf(item.id).message" class="detail__message">
+                    {{ detailOf(item.id).message }}
+                  </p>
+
+                  <div v-if="detailOf(item.id).errorCase" class="detail__cases">
+                    <section
+                      v-for="entry in caseEntries(detailOf(item.id).errorCase)"
+                      :key="entry.label"
+                      class="detail__case"
+                      :class="{ 'detail__case--missing': entry.missing }"
+                    >
+                      <h4 class="detail__case-label">{{ entry.label }}</h4>
+                      <pre class="detail__case-value">{{ entry.missing ? '—' : entry.value }}</pre>
+                    </section>
+                  </div>
+
+                  <dl v-if="extrasEntries(detailOf(item.id)).length > 0" class="detail__extras">
+                    <div v-for="[key, value] in extrasEntries(detailOf(item.id))" :key="key" class="detail__extra">
+                      <dt>{{ key }}</dt>
+                      <dd>{{ value }}</dd>
+                    </div>
+                  </dl>
+
+                  <a
+                    v-if="detailOf(item.id).viewUrl"
+                    class="detail__view-url"
+                    :href="detailOf(item.id).viewUrl ?? undefined"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on {{ detailOf(item.id).platformId }} ↗
+                  </a>
+                </template>
               </div>
             </td>
           </tr>
@@ -562,6 +655,77 @@ onUnmounted(() => {
   margin-top: 12px;
   font-size: 12px;
   color: var(--cq-accent);
+}
+
+/* -------------------------------------------------------------------------
+ * WP40:Details/Code 切换(Code 态 = 本地 codeSnapshot 高亮回看)
+ * ------------------------------------------------------------------------- */
+
+.detail__tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.detail__tab {
+  padding: 2px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--cq-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.detail__tab:hover {
+  color: var(--cq-fg);
+}
+
+.detail__tab--active {
+  background: var(--cq-panel-raised);
+  border-color: var(--cq-accent);
+  color: var(--cq-fg);
+}
+
+.detail__copy {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.detail__copy:hover {
+  border-color: var(--cq-accent);
+}
+
+.detail__code {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel-raised);
+  max-height: 420px;
+  overflow: auto;
+}
+
+.detail__code code {
+  display: block;
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  /* 不折行,靠 pre 横向滚动 */
+  white-space: pre;
+}
+
+.detail__code-empty {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--cq-muted);
 }
 
 .pager {
