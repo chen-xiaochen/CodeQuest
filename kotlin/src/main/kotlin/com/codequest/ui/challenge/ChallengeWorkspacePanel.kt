@@ -10,6 +10,7 @@ import com.codequest.infra.execution.JavaRunner
 import com.codequest.infra.execution.KotlinRunner
 import com.codequest.infra.execution.OutputComparator
 import com.codequest.infra.execution.RunnerRegistry
+import com.codequest.infra.settings.CodeQuestSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
@@ -232,7 +233,9 @@ class ChallengeWorkspacePanel(
         if (name.isBlank()) return
         onPooled {
             val created = runBlocking { loadCreated(challenge) } ?: error("challenge has no language configuration")
-            val solution = runBlocking { service().createSolution(created, name.trim(), "") }
+            // 修复#45:生成时读设置——新建解法用当前模板覆盖(对齐原版 LanguageSettings 语义)
+            val override = CodeQuestSettings.getInstance(project).entryTemplateOverride(created.language.language)
+            val solution = runBlocking { service().createSolution(created, name.trim(), "", template = override) }
             openInEditor(created.workspaceRoot.resolve(solution.filePath))
             reloadSolutions(challenge)
         }

@@ -1,3 +1,10 @@
+## 1.1.1
+### Fixed
+- Challenge code files now follow the configured database folder: with a folder set, new workspaces are generated under `<folder>/codequest/` next to `codequest.db` (previously they always went under the project root regardless of the setting). Workspaces created before the change keep resolving at their existing location. Default (empty) landing spot is now the tidier `<project>/codequest/` subdirectory.
+- New Solution files re-render with the current settings template override (generation-time read, matching the legacy LanguageSettings behavior) instead of the template stored when the workspace was created.
+- A database-folder switch failure no longer fails the whole settings apply: templates/CSS stay saved, the failure is logged, and the new path takes effect after restart.
+- Problems/search list rows are single-line (status badge / id / title / tags / difficulty) so titles align across rows, and solved problems show a filled green ✓ badge (tried = hollow ring) for at-a-glance status.
+
 ## 1.1.0
 ### Added
 - Submission result details panel (`/api/submission/:id/detail`): LeetCode / LeetCode CN include the error-testcase triple (input / expected / actual output), HackerRank shows testcase counts; CodeForces / AtCoder / Luogu link to the site as before (no public API). Submissions rows expand into Details / Code tabs — code review renders the stored snapshot with syntax highlighting and copy, no network needed.

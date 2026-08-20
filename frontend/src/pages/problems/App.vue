@@ -2,7 +2,7 @@
 /**
  * 题目列表页(WP20 真实数据):平台下拉(/api/platforms)+ 关键字 + 难度筛选 +
  * 分页(加载更多);点击行经桥 nav:openProblem 打开题面工具窗口。
- * WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做)+ 状态下拉——本地过滤
+ * WP37:状态徽标列(🔒 会员 / ✓ AC 绿实心圆 / ○ 已尝试 / 空 未做)+ 状态下拉——本地过滤
  * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
  * WP38:头部账号条(原版 AccountActionGroup 对齐)——每平台徽标(/api/auth/status
  * 快照):已登录高亮,点击登出;未登录灰,点击触发 auth:login 登录对话框。
@@ -364,6 +364,7 @@ onUnmounted(() => {
 
     <ul v-if="visibleItems.length > 0" class="problems" aria-label="problem list">
       <li v-for="item in visibleItems" :key="item.remoteId">
+        <!-- 修复反馈:单行行布局(状态徽标 | 题号 | 标题 | 标签 | 难度),各行等高、标题严格对齐 -->
         <button type="button" class="problems__row" @click="openProblem(item)">
           <span
             class="status-icon"
@@ -385,15 +386,12 @@ onUnmounted(() => {
               />
             </svg>
             <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
-            <template v-else-if="statusIconOf(item).kind === 'tried'">●</template>
           </span>
-          <span class="problems__title">
-            <span class="problems__remote">{{ item.remoteId }}</span>
-            {{ item.title }}
-          </span>
+          <span class="problems__remote">{{ item.remoteId }}</span>
+          <span class="problems__title">{{ item.title }}</span>
           <span class="problems__meta">
-            <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
             <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.join(' · ') }}</span>
+            <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
           </span>
         </button>
       </li>
@@ -581,29 +579,36 @@ onUnmounted(() => {
   background: var(--cq-panel-raised);
 }
 
-/* WP37:状态图标列(🔒 会员 / ✓ AC / ● 已尝试 / 空 未做;主题变量配色) */
+/* WP37:状态徽标列——修复反馈后改为实心/空心圆徽标,一眼可辨:
+   AC = 绿底白✓(实心圆) / TRIED = 主题色空心圆 / 🔒 会员 / 空 未做 */
 .status-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 700;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
   line-height: 1;
   user-select: none;
 }
 
 .status-icon--ac {
-  color: var(--cq-diff-easy);
+  background: var(--cq-diff-easy);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .status-icon--tried {
-  color: var(--cq-accent);
-  font-size: 10px;
+  border: 2px solid var(--cq-accent);
 }
 
-.status-icon--locked,
+.status-icon--locked {
+  border-radius: 0;
+  color: var(--cq-muted);
+}
+
 .status-icon__lock {
   color: var(--cq-muted);
 }
@@ -615,25 +620,33 @@ onUnmounted(() => {
   color: var(--cq-muted);
 }
 
-.problems__title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
+/* 修复反馈:题号/标题/标签全部单行化,各行等高、标题基线对齐 */
 .problems__remote {
+  flex: 0 1 96px;
+  min-width: 48px;
   font-size: 11px;
   color: var(--cq-muted);
   font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.problems__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .problems__meta {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .problems__tags {

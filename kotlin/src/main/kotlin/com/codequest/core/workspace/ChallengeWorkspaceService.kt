@@ -106,11 +106,15 @@ class ChallengeWorkspaceService(
     /**
      * 在工作区下新建一个解法:按语言模板重新渲染为独立文件(solutions/ 子目录),
      * 附解法名/笔记头注释,连同 note 落库。
+     *
+     * @param template 覆盖模板(修复#45:对齐原版"生成时读设置"语义——设置面板改过
+     *   模板后,新建解法用**当前**覆盖而非工作区落库时的旧模板);null 用落库模板
      */
     suspend fun createSolution(
         created: CreatedChallenge,
         name: String,
         note: String,
+        template: String? = null,
     ): Solution {
         val language = requireNotNull(WorkspaceLanguage.fromId(created.language.language))
         val (beginRegion, endRegion) = ChallengeTemplates.regionMarkers(language.id)
@@ -136,7 +140,7 @@ class ChallengeWorkspaceService(
                 "${language.commentPrefix} Solution: $name",
                 note.lineSequence().firstOrNull()?.let { "${language.commentPrefix} Note: $it" },
             ).filterNotNull()
-        val rendered = TemplateEngine().render(created.language.template, context)
+        val rendered = TemplateEngine().render(template ?: created.language.template, context)
         val content = header.joinToString("\n", postfix = "\n\n") + ensureTrailingNewline(rendered)
         val filePath = SOLUTIONS_DIR + "/" + fileName
         val file = created.workspaceRoot.resolve(filePath)

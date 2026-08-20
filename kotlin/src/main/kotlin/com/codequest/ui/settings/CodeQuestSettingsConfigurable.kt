@@ -4,6 +4,7 @@ import com.codequest.core.workspace.WorkspaceLanguage
 import com.codequest.infra.db.DatabaseFolders
 import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.settings.CodeQuestSettings
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
@@ -163,9 +164,18 @@ class CodeQuestSettingsConfigurable(
         // 并把编辑器回填为规范文本(空覆盖 → 内置默认)
         drafts = TemplateDraftsState(initial = settings.state.templates)
         templateArea?.text = drafts?.editorText(languageComboValue.id).orEmpty()
-        project.messageBus
-            .syncPublisher(CodeQuestSettings.DATABASE_FOLDER_TOPIC)
-            .databaseFolderChanged(effectiveFile.parent)
+        // 修复#45 附带加固:切库失败不再判定整个 apply 失败——模板/CSS 已写入 state,
+        // 若在此抛异常,设置对话框报"无法保存设置"会让用户误以为**全部**改动未生效;
+        // 失败仅记日志(重启后按新路径打开),不阻塞设置保存。
+        runCatching {
+            project.messageBus
+                .syncPublisher(CodeQuestSettings.DATABASE_FOLDER_TOPIC)
+                .databaseFolderChanged(effectiveFile.parent)
+        }.onFailure { error ->
+            Logger
+                .getInstance(CodeQuestSettingsConfigurable::class.java)
+                .warn("Database folder switch failed (state kept, effective after restart): $error")
+        }
     }
 
     override fun disposeUIResources() {

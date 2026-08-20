@@ -96,6 +96,60 @@ class ChallengeTemplateWiringTest {
         }
     }
 
+    /**
+     * [regression] 修复#45:新建解法按**当前**设置覆盖渲染(生成时读设置,对齐原版
+     * LanguageSettings 语义),而非工作区落库时的旧模板。
+     */
+    @Test
+    fun `createSolution renders with current settings override instead of stored template`() {
+        val (db, dir) = newTempDatabase()
+        db.use {
+            val challenges = ExposedChallengeRepository(db)
+            val service = service(it, challenges, dir)
+            // challenge 以无覆盖创建(落库内置模板),之后用户在设置里加了覆盖
+            val created =
+                runBlocking {
+                    createChallengeWithTemplate(service, problem(), "kotlin", settingsWithTemplate("kotlin", null))
+                }
+
+            val solution =
+                runBlocking {
+                    service.createSolution(
+                        created,
+                        "approach two",
+                        "",
+                        template = "// SOLUTION-OVERRIDE \${challenge.name}",
+                    )
+                }
+
+            val content = Files.readString(created.workspaceRoot.resolve(solution.filePath))
+            assertTrue(content.contains("SOLUTION-OVERRIDE"), content)
+            assertTrue(content.contains("两数之和"), content)
+        }
+    }
+
+    @Test
+    fun `createSolution without override keeps stored template`() {
+        val (db, dir) = newTempDatabase()
+        db.use {
+            val challenges = ExposedChallengeRepository(db)
+            val service = service(it, challenges, dir)
+            val override = "// STORED-OVERRIDE \${challenge.name}\n\${beginRegion}\n\${endRegion}\n"
+            val created =
+                runBlocking {
+                    createChallengeWithTemplate(service, problem(), "kotlin", settingsWithTemplate("kotlin", override))
+                }
+
+            val solution =
+                runBlocking {
+                    service.createSolution(created, "approach one", "", template = null)
+                }
+
+            val content = Files.readString(created.workspaceRoot.resolve(solution.filePath))
+            assertTrue(content.contains("STORED-OVERRIDE"), content)
+        }
+    }
+
     private fun service(
         db: com.codequest.infra.db.CodeQuestDatabase,
         challenges: ExposedChallengeRepository,
