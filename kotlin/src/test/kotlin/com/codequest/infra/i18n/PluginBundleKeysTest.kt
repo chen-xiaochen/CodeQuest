@@ -61,6 +61,25 @@ class PluginBundleKeysTest {
         "cookieDialog.title",
         "cookieDialog.description",
         "cookieDialog.cookiesLabel",
+        // WP51:主侧栏三 tab + 工具窗显示名 + 挑战面板/对话框/运行输出
+        "toolwindow.panel.problems.title",
+        "toolwindow.panel.problems.description",
+        "toolwindow.panel.contest.title",
+        "toolwindow.panel.contest.description",
+        "toolwindow.panel.stats.title",
+        "toolwindow.panel.stats.description",
+        "toolwindow.panel.jcefFallback",
+        "toolwindow.displayName.main",
+        "toolwindow.displayName.problemView",
+        "toolwindow.displayName.challenge",
+        "challenge.panel.tab.workspace",
+        "challenge.panel.tab.submissions",
+        "challenge.panel.submissionsFallback",
+        "challenge.panel.challenge.label",
+        "challenge.panel.run.case",
+        "challenge.panel.run.summary",
+        "challenge.dialog.new.title",
+        "challenge.dialog.import.title",
     )
 
     private fun keysOf(bundle: ResourceBundle): Set<String> = bundle.keys.toList().toSet()

@@ -10,6 +10,7 @@ import com.codequest.infra.execution.JavaRunner
 import com.codequest.infra.execution.KotlinRunner
 import com.codequest.infra.execution.OutputComparator
 import com.codequest.infra.execution.RunnerRegistry
+import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.settings.CodeQuestSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -22,6 +23,7 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.CollectionListModel
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBList
+import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.dsl.builder.Align
@@ -35,17 +37,53 @@ import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
 
 /**
- * CodeQuest Challenge 工具窗口工厂(WP16)。面板实现在 [ChallengeWorkspacePanel]。
+ * CodeQuest Challenge 工具窗口工厂(WP16 建立;WP51 外层改 JBTabbedPane 两 tab + 显示名本地化)。
+ *
+ * - 「工作区」tab = 现有 Swing 面板 [ChallengeWorkspacePanel];
+ * - 「提交记录」tab = [ChallengeSubmissionsTab](JCEF 惰性加载 `/submissions/?challengeId=`,
+ *   原独立 SubmissionsToolWindowFactory 删除,提交记录并入本窗口);
+ * - 选中挑战变化联动提交记录 tab 的过滤参数;提交完成导航经 [ChallengeToolWindowNavigator]。
  */
 class ChallengeWorkspaceToolWindowFactory :
     ToolWindowFactory,
     DumbAware {
+    /** WP51:显示名本地化(id 不动——id 改动使用户既有窗口布局失效)。 */
+    override fun init(toolWindow: ToolWindow) {
+        val name = PluginBundle.message("toolwindow.displayName.challenge")
+        toolWindow.stripeTitle = name
+        toolWindow.title = name
+    }
+
     override fun createToolWindowContent(
         project: Project,
         toolWindow: ToolWindow,
     ) {
-        val panel = ChallengeWorkspacePanel(project)
-        val content = ContentFactory.getInstance().createContent(panel.component, "", false)
+        val workspace = ChallengeWorkspacePanel(project)
+        val submissions = ChallengeSubmissionsTab(project)
+
+        val tabs = JBTabbedPane()
+        tabs.addTab(PluginBundle.message("challenge.panel.tab.workspace"), workspace.component)
+        tabs.addTab(PluginBundle.message("challenge.panel.tab.submissions"), submissions.component)
+        val submissionsTabIndex = tabs.tabCount - 1
+        // 提交记录 tab 惰性创建:首次切到该 tab 才建 JCEF 浏览器
+        tabs.addChangeListener {
+            if (tabs.selectedIndex == submissionsTabIndex) submissions.onTabSelected()
+        }
+        // 选中挑战变化 → 提交记录 tab 按新 challengeId 刷新
+        workspace.onChallengeSelected = { challenge -> submissions.onChallengeChanged(challenge?.id?.value) }
+
+        // 提交完成导航:激活本窗口 + 选中提交记录 tab;内容创建前收到的请求记 pending
+        val navigator = project.getService(ChallengeToolWindowNavigator::class.java)
+
+        fun selectSubmissionsTab(challengeId: String?) {
+            tabs.selectedIndex = submissionsTabIndex
+            submissions.show(challengeId)
+        }
+        navigator.attach(::selectSubmissionsTab)
+        navigator.consumePendingChallengeId()?.let(::selectSubmissionsTab)
+
+        val content = ContentFactory.getInstance().createContent(tabs, "", false)
+        content.setDisposer(com.intellij.openapi.Disposable { navigator.attach(null) })
         toolWindow.contentManager.addContent(content)
     }
 
@@ -96,10 +134,25 @@ class ChallengeWorkspacePanel(
 
     val component: JComponent = buildPanel()
 
+    /**
+     * (WP51) 选中挑战变化时回调(EDT)。挑战工具窗工厂接线:通知「提交记录」tab
+     * 按新 challengeId 刷新 JCEF 页面 URL。
+     */
+    var onChallengeSelected: ((Challenge?) -> Unit)? = null
+
     init {
         challengeCombo.renderer = textRenderer { it.name }
         solutionList.cellRenderer = textRenderer { it.name }
-        testCaseList.cellRenderer = textRenderer { testCase -> "Case: ${testCase.input.lineSequence().firstOrNull().orEmpty()}" }
+        testCaseList.cellRenderer =
+            textRenderer { testCase ->
+                PluginBundle.message(
+                    "challenge.panel.testCase.preview",
+                    testCase.input
+                        .lineSequence()
+                        .firstOrNull()
+                        .orEmpty(),
+                )
+            }
         challengeCombo.addActionListener { loadSelectedChallenge() }
         solutionList.selectionMode = ListSelectionModel.SINGLE_SELECTION
         testCaseList.selectionMode = ListSelectionModel.SINGLE_SELECTION
@@ -125,46 +178,46 @@ class ChallengeWorkspacePanel(
 
     private fun buildPanel(): JComponent =
         panel {
-            row("Challenge:") {
+            row(PluginBundle.message("challenge.panel.challenge.label")) {
                 cell(challengeCombo)
                     .resizableColumn()
                     .align(Align.FILL)
-                button("Refresh") { refreshChallenges() }
-                button("New Challenge...") { showNewChallengeDialog() }
-                button("Open Entry") { openSelectedEntry() }
+                button(PluginBundle.message("challenge.panel.refresh")) { refreshChallenges() }
+                button(PluginBundle.message("challenge.panel.newChallenge")) { showNewChallengeDialog() }
+                button(PluginBundle.message("challenge.panel.openEntry")) { openSelectedEntry() }
             }
-            group("Solutions") {
+            group(PluginBundle.message("challenge.panel.solutions.group")) {
                 row {
                     cell(solutionList).resizableColumn().align(Align.FILL)
                 }.resizableRow()
                 row {
-                    button("New Solution...") { createNewSolution() }
-                    button("Open File") { openSelectedSolution() }
-                    button("Save Note") { saveSelectedNote() }
-                    button("Delete") { deleteSelectedSolution() }
+                    button(PluginBundle.message("challenge.panel.newSolution")) { createNewSolution() }
+                    button(PluginBundle.message("challenge.panel.openFile")) { openSelectedSolution() }
+                    button(PluginBundle.message("challenge.panel.saveNote")) { saveSelectedNote() }
+                    button(PluginBundle.message("challenge.panel.delete")) { deleteSelectedSolution() }
                 }
-                row("Note (Markdown, searchable):") {
+                row(PluginBundle.message("challenge.panel.note.label")) {
                     cell(noteArea).resizableColumn().align(Align.FILL)
                 }.resizableRow()
             }
-            group("Test Cases") {
+            group(PluginBundle.message("challenge.panel.testCases.group")) {
                 row {
                     cell(testCaseList).resizableColumn().align(Align.FILL)
                 }.resizableRow()
                 row {
-                    button("New") { clearTestCaseForm() }
-                    button("Save") { saveTestCaseForm() }
-                    button("Import...") { importTestCases() }
-                    button("Delete") { deleteSelectedTestCase() }
-                    button("Run All") { runAllTestCases() }
+                    button(PluginBundle.message("challenge.panel.new")) { clearTestCaseForm() }
+                    button(PluginBundle.message("challenge.panel.save")) { saveTestCaseForm() }
+                    button(PluginBundle.message("challenge.panel.import")) { importTestCases() }
+                    button(PluginBundle.message("challenge.panel.delete")) { deleteSelectedTestCase() }
+                    button(PluginBundle.message("challenge.panel.runAll")) { runAllTestCases() }
                 }
-                row("Input:") {
+                row(PluginBundle.message("challenge.panel.input.label")) {
                     cell(inputArea).resizableColumn().align(Align.FILL)
                 }.resizableRow()
-                row("Expected output:") {
+                row(PluginBundle.message("challenge.panel.expected.label")) {
                     cell(expectedArea).resizableColumn().align(Align.FILL)
                 }.resizableRow()
-                row("Run output:") {
+                row(PluginBundle.message("challenge.panel.runOutput.label")) {
                     cell(runOutputArea).resizableColumn().align(Align.FILL)
                 }.resizableRow()
             }
@@ -216,7 +269,13 @@ class ChallengeWorkspacePanel(
             if (created != null) {
                 openInEditor(created.entryFile)
             } else {
-                onEdt { Messages.showWarningDialog(project, "No language configuration found for this challenge.", "Open Entry") }
+                onEdt {
+                    Messages.showWarningDialog(
+                        project,
+                        PluginBundle.message("challenge.panel.dialog.noLanguage"),
+                        PluginBundle.message("challenge.panel.dialog.openEntryTitle"),
+                    )
+                }
             }
         }
     }
@@ -228,7 +287,11 @@ class ChallengeWorkspacePanel(
     private fun createNewSolution() {
         val challenge = selectedChallenge() ?: return
         val name =
-            Messages.showInputDialog("Solution name:", "New Solution", null)
+            Messages.showInputDialog(
+                PluginBundle.message("challenge.panel.dialog.solutionNamePrompt"),
+                PluginBundle.message("challenge.panel.dialog.newSolutionTitle"),
+                null,
+            )
                 ?: return
         if (name.isBlank()) return
         onPooled {
@@ -267,7 +330,11 @@ class ChallengeWorkspacePanel(
     private fun deleteSelectedSolution() {
         val solution = solutionList.selectedValue ?: return
         val confirmed =
-            Messages.showYesNoDialog("Delete solution '${solution.name}'?", "Delete Solution", Messages.getQuestionIcon())
+            Messages.showYesNoDialog(
+                PluginBundle.message("challenge.panel.dialog.deleteSolutionConfirm", solution.name),
+                PluginBundle.message("challenge.panel.dialog.deleteSolutionTitle"),
+                Messages.getQuestionIcon(),
+            )
         if (confirmed != Messages.YES) return
         onPooled {
             runBlocking { manager().solutionRepository.delete(solution.id) }
@@ -298,7 +365,13 @@ class ChallengeWorkspacePanel(
 
     private fun deleteSelectedTestCase() {
         val case = testCaseList.selectedValue ?: return
-        if (Messages.showYesNoDialog("Delete this test case?", "Delete Test Case", Messages.getQuestionIcon()) != Messages.YES) {
+        if (
+            Messages.showYesNoDialog(
+                PluginBundle.message("challenge.panel.dialog.deleteCaseConfirm"),
+                PluginBundle.message("challenge.panel.dialog.deleteCaseTitle"),
+                Messages.getQuestionIcon(),
+            ) != Messages.YES
+        ) {
             return
         }
         onPooled {
@@ -325,26 +398,34 @@ class ChallengeWorkspacePanel(
     /** 本地运行:逐用例执行入口文件,与 expected 宽松比对。 */
     private fun runAllTestCases() {
         val challenge = selectedChallenge() ?: return
-        appendRunOutput("Running test cases for '${challenge.name}'...\n")
+        appendRunOutput(PluginBundle.message("challenge.panel.run.start", challenge.name) + "\n")
         onPooled {
             val created = runBlocking { loadCreated(challenge) }
             if (created == null) {
-                onEdt { appendRunOutput("No language configuration found.\n") }
+                onEdt { appendRunOutput(PluginBundle.message("challenge.panel.run.noLanguage") + "\n") }
                 return@onPooled
             }
             val languageId = created.language.language
             val runner = runnerRegistry.forLanguage(languageId)
             if (runner == null) {
-                onEdt { appendRunOutput("Local run is not supported for language '$languageId' yet.\n") }
+                onEdt { appendRunOutput(PluginBundle.message("challenge.panel.run.languageUnsupported", languageId) + "\n") }
                 return@onPooled
             }
             if (!runner.isAvailable()) {
-                onEdt { appendRunOutput("Runner for '$languageId' unavailable: ${runner.unavailableReason()}\n") }
+                onEdt {
+                    val reason =
+                        PluginBundle.message(
+                            "challenge.panel.run.runnerUnavailable",
+                            languageId,
+                            runner.unavailableReason().orEmpty(),
+                        )
+                    appendRunOutput(reason + "\n")
+                }
                 return@onPooled
             }
             val cases = runBlocking { manager().testCaseRepository.findByChallenge(challenge.id) }
             if (cases.isEmpty()) {
-                onEdt { appendRunOutput("No test cases to run.\n") }
+                onEdt { appendRunOutput(PluginBundle.message("challenge.panel.run.noCases") + "\n") }
                 return@onPooled
             }
             var passed = 0
@@ -355,26 +436,36 @@ class ChallengeWorkspacePanel(
                 onEdt {
                     appendRunOutput(
                         buildString {
-                            append("Case ")
-                                .append(index + 1)
-                                .append(": ")
-                                .append(if (ok) "PASSED" else "FAILED")
-                                .append('\n')
+                            append(
+                                PluginBundle.message(
+                                    "challenge.panel.run.case",
+                                    index + 1,
+                                    PluginBundle.message(if (ok) "challenge.panel.run.passed" else "challenge.panel.run.failed"),
+                                ),
+                            ).append('\n')
                             if (!ok) {
                                 if (!result.succeeded) {
-                                    append("  program failed (exit=").append(result.exitCode)
-                                    if (result.timedOut) append(", timed out")
-                                    append(")\n  stderr: ").append(result.stderr.take(STDERR_PREVIEW_CHARS)).append('\n')
+                                    append(
+                                        if (result.timedOut) {
+                                            PluginBundle.message("challenge.panel.run.programFailedTimeout", result.exitCode)
+                                        } else {
+                                            PluginBundle.message("challenge.panel.run.programFailed", result.exitCode)
+                                        },
+                                    ).append('\n')
+                                    append(PluginBundle.message("challenge.panel.run.stderr", result.stderr.take(STDERR_PREVIEW_CHARS)))
+                                        .append('\n')
                                 } else {
-                                    append("  expected: ").append(testCase.expected.take(PREVIEW_CHARS)).append('\n')
-                                    append("  actual:   ").append(result.stdout.take(PREVIEW_CHARS)).append('\n')
+                                    append(PluginBundle.message("challenge.panel.run.expected", testCase.expected.take(PREVIEW_CHARS)))
+                                        .append('\n')
+                                    append(PluginBundle.message("challenge.panel.run.actual", result.stdout.take(PREVIEW_CHARS)))
+                                        .append('\n')
                                 }
                             }
                         },
                     )
                 }
             }
-            onEdt { appendRunOutput("Summary: $passed/${cases.size} passed.\n\n") }
+            onEdt { appendRunOutput(PluginBundle.message("challenge.panel.run.summary", passed, cases.size) + "\n\n") }
         }
     }
 
@@ -394,10 +485,12 @@ class ChallengeWorkspacePanel(
         if (challenge == null) {
             solutionModel.replaceAll(emptyList())
             testCaseModel.replaceAll(emptyList())
-            return
+        } else {
+            reloadSolutions(challenge)
+            reloadTestCases(challenge)
         }
-        reloadSolutions(challenge)
-        reloadTestCases(challenge)
+        // WP51:选中挑战变化 → 通知工具窗层刷新「提交记录」tab 的 challengeId 过滤
+        onChallengeSelected?.invoke(challenge)
     }
 
     private fun reloadSolutions(challenge: Challenge?) {
@@ -459,7 +552,11 @@ class ChallengeWorkspacePanel(
             } catch (error: Exception) {
                 logger.severe("Challenge workspace action failed: $error")
                 onEdt {
-                    Messages.showErrorDialog(project, error.message ?: error.toString(), "CodeQuest Challenge")
+                    Messages.showErrorDialog(
+                        project,
+                        error.message ?: error.toString(),
+                        PluginBundle.message("challenge.panel.dialog.errorTitle"),
+                    )
                 }
             }
         }

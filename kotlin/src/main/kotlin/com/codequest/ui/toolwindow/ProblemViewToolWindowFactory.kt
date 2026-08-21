@@ -1,5 +1,6 @@
 package com.codequest.ui.toolwindow
 
+import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.messaging.CodeQuestHttpServerService
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
@@ -18,6 +19,13 @@ class ProblemViewToolWindowFactory :
     DumbAware {
     private companion object {
         private val LOGGER = Logger.getLogger(ProblemViewToolWindowFactory::class.java.name)
+    }
+
+    /** WP51:显示名本地化(id 不动——id 改动使用户既有窗口布局失效)。 */
+    override fun init(toolWindow: ToolWindow) {
+        val name = PluginBundle.message("toolwindow.displayName.problemView")
+        toolWindow.stripeTitle = name
+        toolWindow.title = name
     }
 
     override fun createToolWindowContent(

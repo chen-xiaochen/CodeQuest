@@ -1,6 +1,7 @@
 package com.codequest.ui.challenge
 
 import com.codequest.core.workspace.TestCaseParser
+import com.codequest.infra.i18n.PluginBundle
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.components.JBTextArea
@@ -29,11 +30,11 @@ class ImportTestCasesDialog(
         }
     private val previewLabel =
         com.intellij.ui.components
-            .JBLabel("0 cases parsed")
+            .JBLabel(PluginBundle.message("challenge.dialog.import.zeroParsed"))
 
     init {
         init()
-        title = "Import Test Cases"
+        title = PluginBundle.message("challenge.dialog.import.title")
         textArea.document.addDocumentListener(
             object : javax.swing.event.DocumentListener {
                 override fun insertUpdate(e: javax.swing.event.DocumentEvent?) = refreshPreview()
@@ -62,7 +63,7 @@ class ImportTestCasesDialog(
     override fun doValidate(): com.intellij.openapi.ui.ValidationInfo? =
         if (parsedCases.isEmpty()) {
             com.intellij.openapi.ui
-                .ValidationInfo("No valid Input/Output sections found", textArea)
+                .ValidationInfo(PluginBundle.message("challenge.dialog.import.invalid"), textArea)
         } else {
             null
         }
@@ -71,8 +72,22 @@ class ImportTestCasesDialog(
         val cases = TestCaseParser.parseOrNull(textArea.text)
         previewLabel.text =
             when {
-                cases.isEmpty() -> "0 cases parsed (format: Input:/Output: sections separated by ---)"
-                else -> "${cases.size} case(s) parsed; first input: ${cases.first().input.lineSequence().firstOrNull().orEmpty()}"
+                cases.isEmpty() -> {
+                    PluginBundle.message("challenge.dialog.import.zeroParsed")
+                }
+
+                else -> {
+                    PluginBundle.message(
+                        "challenge.dialog.import.parsed",
+                        cases.size,
+                        cases
+                            .first()
+                            .input
+                            .lineSequence()
+                            .firstOrNull()
+                            .orEmpty(),
+                    )
+                }
             }
     }
 }

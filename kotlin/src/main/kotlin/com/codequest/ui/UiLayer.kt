@@ -3,7 +3,7 @@ package com.codequest.ui
 /**
  * `ui` 层:最上层,只做界面壳与交互转发,可依赖 platform/spi/core/infra。
  *
- * - toolwindow:左侧 CodeQuest 主侧栏(Problems / Contest / Statistics / Search 可切换面板,
+ * - toolwindow:左侧 CodeQuest 主侧栏(题库/竞赛/统计三 tab,WP51 起 Search 并入题库页,
  *   Kotlin UI DSL 壳 + JCEF 内容区,无 GUI Designer .form)
  * - jcef:CQBridge 桥(postMessage/on,消息仅承载命令与事件)
  * - actions:编辑器与工具栏动作

@@ -73,7 +73,7 @@ class NewChallengeDialog(
 
     init {
         init()
-        title = "Create Challenge Workspace"
+        title = PluginBundle.message("challenge.dialog.new.title")
         refreshLanguageOptions()
         // 起始代码桩跟随默认语言(仅构造时;之后切换语言不覆盖已编辑内容)
         (languageCombo.selectedItem as? WorkspaceLanguage)?.let { codeArea.text = ChallengeTemplates.defaultCode(it.id) }
@@ -81,31 +81,31 @@ class NewChallengeDialog(
 
     override fun createCenterPanel(): JComponent =
         panel {
-            row("Platform:") {
+            row(PluginBundle.message("challenge.dialog.new.platform")) {
                 comboBox(platforms.toList())
                     .bindItem({ platform }, { platform = it ?: platforms.first() })
                     .apply { component.addActionListener { refreshLanguageOptions() } }
             }
-            row("Problem ID / slug:") {
+            row(PluginBundle.message("challenge.dialog.new.remoteId")) {
                 cell(remoteIdField).resizableColumn().align(Align.FILL)
             }
-            row("Title:") {
+            row(PluginBundle.message("challenge.dialog.new.problemTitle")) {
                 cell(titleField).resizableColumn().align(Align.FILL)
             }
-            row("Difficulty:") {
+            row(PluginBundle.message("challenge.dialog.new.difficulty")) {
                 cell(difficultyField).resizableColumn().align(Align.FILL)
             }
-            row("URL:") {
+            row(PluginBundle.message("challenge.dialog.new.url")) {
                 cell(urlField).resizableColumn().align(Align.FILL)
             }
-            row("Language:") {
+            row(PluginBundle.message("challenge.dialog.new.language")) {
                 cell(languageCombo)
             }
             row {
                 cell(noTemplateHint)
                 cell(openSettingsButton)
             }
-            row("Starting code:") {
+            row(PluginBundle.message("challenge.dialog.new.startingCode")) {
                 cell(codeArea).resizableColumn().align(Align.FILL)
             }.resizableRow()
         }
@@ -133,8 +133,12 @@ class NewChallengeDialog(
     }
 
     override fun doValidate(): ValidationInfo? {
-        if (titleField.text.isNullOrBlank()) return ValidationInfo("Title must not be empty", titleField)
-        if (remoteIdField.text.isNullOrBlank()) return ValidationInfo("Problem ID must not be empty", remoteIdField)
+        if (titleField.text.isNullOrBlank()) {
+            return ValidationInfo(PluginBundle.message("challenge.dialog.new.titleRequired"), titleField)
+        }
+        if (remoteIdField.text.isNullOrBlank()) {
+            return ValidationInfo(PluginBundle.message("challenge.dialog.new.remoteIdRequired"), remoteIdField)
+        }
         // WP47:无可用语言禁创建(OK 已禁用,此处防程序化触发)
         selectedLanguage() ?: return ValidationInfo(PluginBundle.message("challenge.new.noTemplateHint"))
         return null
@@ -188,7 +192,7 @@ class NewChallengeDialog(
                         com.intellij.openapi.ui.Messages.showErrorDialog(
                             project,
                             error.message ?: error.toString(),
-                            "Create Challenge Failed",
+                            PluginBundle.message("challenge.dialog.new.createFailedTitle"),
                         )
                         okAction.isEnabled = true
                     }

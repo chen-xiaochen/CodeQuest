@@ -93,6 +93,8 @@
 
         <!-- WP20:题面工具窗口导航(nav:openProblem 桥消息 → 打开题目) -->
         <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewNavigator"/>
+        <!-- WP51:挑战工具窗口导航(提交完成 → 激活挑战窗 + 选中提交记录 tab) -->
+        <projectService serviceImplementation="com.codequest.ui.challenge.ChallengeToolWindowNavigator"/>
 
         <!-- WP15:设置持久化 + 数据库管理(项目级服务,随项目启动/关闭) -->
         <projectService serviceImplementation="com.codequest.infra.settings.CodeQuestSettings"/>
@@ -113,12 +115,9 @@
                     factoryClass="com.codequest.ui.toolwindow.ProblemViewToolWindowFactory"
                     anchor="right"
                     icon="AllIcons.Toolwindows.ToolWindowProject"/>
-        <toolWindow id="CodeQuest Submissions"
-                    factoryClass="com.codequest.ui.toolwindow.SubmissionsToolWindowFactory"
-                    anchor="bottom"
-                    icon="AllIcons.Toolwindows.ToolWindowProject"/>
 
-        <!-- WP16:challenge 工作区(创建/多解法/测试用例/本地运行) -->
+        <!-- WP16:challenge 工作区(创建/多解法/测试用例/本地运行);WP51 提交记录并入本窗,
+             独立 Submissions 工具窗删除(displayName 经工厂 init 本地化,id 一律不动) -->
         <toolWindow id="CodeQuest Challenge"
                     factoryClass="com.codequest.ui.challenge.ChallengeWorkspaceToolWindowFactory"
                     anchor="bottom"
