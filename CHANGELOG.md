@@ -1,3 +1,8 @@
+## 1.2.3
+### Fixed
+- Settings template editor rewired to eliminate cross-key text leaks: the style/language dropdowns no longer use the UI DSL two-way `bindItem` binding, whose programmatic selection events during init/reset could fire the switch handler while the internal style/language state was still stale — flushing the editor text into the wrong `(style, language)` key. This was the root cause of "configuring Java makes every language show the same Java template" and "start-coding creates a .kt file": the saved text landed on the wrong keys while `leetcode:java` stayed empty, letting the leftover polluted `leetcode:kotlin` entry win the default-language pick.
+- Dropdowns are now initialized to match the internal selection before listeners attach, programmatic selections are suppressed during reset, and only genuine user selections trigger the flush/refill sequence.
+
 ## 1.2.2
 ### Fixed
 - Settings template browsing no longer implicitly enables a language: switching the style/language dropdown away from an untouched built-in default (never configured, text unchanged) keeps it unconfigured, instead of silently persisting the default text as "configured" and enabling that language. Explicitly clicking OK/Apply on a tab still enables it as before. This also fixes the confusing flow where configuring Java (from the default Kotlin tab) accidentally enabled Kotlin too.

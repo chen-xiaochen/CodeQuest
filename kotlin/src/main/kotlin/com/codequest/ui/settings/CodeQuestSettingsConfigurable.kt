@@ -15,11 +15,11 @@ import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.dsl.builder.Align
-import com.intellij.ui.dsl.builder.bindItem
 import com.intellij.ui.dsl.builder.panel
 import java.awt.Font
 import java.nio.file.Files
 import java.nio.file.Paths
+import javax.swing.JComboBox
 import javax.swing.JComponent
 
 /**
@@ -63,6 +63,17 @@ class CodeQuestSettingsConfigurable(
     private var folderField: TextFieldWithBrowseButton? = null
     private var styleComboValue: TemplateStyle = INITIAL_TEMPLATE_STYLE
     private var languageComboValue: WorkspaceLanguage = languages.first()
+
+    /** 1.2.3:持有下拉组件引用,reset 时显式同步显示与内部值(bindItem 已弃用,见下)。 */
+    private var styleCombo: JComboBox<TemplateStyle>? = null
+    private var languageCombo: JComboBox<WorkspaceLanguage>? = null
+
+    /**
+     * 1.2.3:**程序化选择防抖**——JComboBox 的 ActionListener 对程序化
+     * setSelectedItem 同样触发;初始化/reset 期间同步下拉显示时置 true,
+     * 仅用户真实选择走 switchSelection(否则与内部值错位后产生错键 flush)。
+     */
+    private var suppressTemplateSelection = false
     private var templateArea: JBTextArea? = null
     private var cssArea: JBTextArea? = null
     private var drafts: TemplateDraftsState? = null
@@ -108,12 +119,28 @@ class CodeQuestSettingsConfigurable(
 
             group(PluginBundle.message("settings.templates.group")) {
                 row(PluginBundle.message("settings.templates.style.label")) {
-                    comboBox(TemplateStyle.entries.toList(), styleListRenderer())
-                        .bindItem({ styleComboValue }, { style -> style?.let { switchSelection(it, languageComboValue) } })
+                    // 1.2.3:弃用 bindItem(其 reset/apply 期间的程序化 setSelectedItem 会触发
+                    // setter,与内部值错位后把编辑器文本 flush 到错误 (风格,语言) 键——实测
+                    // 「配 Java 后所有语言串成同一份模版/开刷落到 Kotlin」的根因);改为
+                    // 挂监听前显式初始化选中项(显示=内部值)+ ActionListener 只认用户选择。
+                    val combo = comboBox(TemplateStyle.entries.toList(), styleListRenderer()).component
+                    combo.selectedItem = styleComboValue
+                    styleCombo = combo
+                    combo.addActionListener {
+                        if (suppressTemplateSelection) return@addActionListener
+                        val selected = combo.selectedItem as? TemplateStyle ?: return@addActionListener
+                        switchSelection(selected, languageComboValue)
+                    }
                 }
                 row(PluginBundle.message("settings.templates.language.label")) {
-                    comboBox(languages)
-                        .bindItem({ languageComboValue }, { language -> language?.let { switchSelection(styleComboValue, it) } })
+                    val combo = comboBox(languages).component
+                    combo.selectedItem = languageComboValue
+                    languageCombo = combo
+                    combo.addActionListener {
+                        if (suppressTemplateSelection) return@addActionListener
+                        val selected = combo.selectedItem as? WorkspaceLanguage ?: return@addActionListener
+                        switchSelection(styleComboValue, selected)
+                    }
                 }
                 row {
                     comment(PluginBundle.message("settings.templates.description"))
@@ -153,8 +180,16 @@ class CodeQuestSettingsConfigurable(
         folderField?.text = state.databaseFolder
         drafts = TemplateDraftsState(initial = state.templates)
         cssArea?.text = state.customCss
-        // 不重置风格/语言选择(combo 与两个 comboValue 始终经 switchSelection 同步),
-        // 仅按新草稿回填当前 (风格,语言) 编辑器文本
+        // 1.2.2/1.2.3:定位回「当前风格下已配置的语言」(Java 优先),并显式同步下拉
+        // 显示与内部值——程序化设置期间防抖,不触发 switchSelection 的错键 flush
+        suppressTemplateSelection = true
+        languageComboValue =
+            TemplateAvailability.defaultLanguage(
+                TemplateAvailability.usableLanguages(INITIAL_TEMPLATE_STYLE, state.templates),
+            ) ?: languages.first()
+        styleCombo?.selectedItem = styleComboValue
+        languageCombo?.selectedItem = languageComboValue
+        suppressTemplateSelection = false
         templateArea?.text = drafts?.editorText(styleComboValue, languageComboValue.id).orEmpty()
     }
 
@@ -197,6 +232,8 @@ class CodeQuestSettingsConfigurable(
 
     override fun disposeUIResources() {
         folderField = null
+        styleCombo = null
+        languageCombo = null
         templateArea = null
         cssArea = null
         drafts = null
