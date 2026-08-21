@@ -34,7 +34,7 @@
 
 ## 已完成 loop 归档
 
-### loop-20260821-ui-revamp(achieved):UI 重构——面板精简 4→3/平台登录门控+力扣中国回落/模版 ACM·LeetCode 双风格×语言显式启用+默认Java/全界面中文化(WP44-52,commits eb7002f..7e66e92;人工走查 docs/ui-revamp-manual-checklist.md;1.2.0 待定版)
+### loop-20260821-ui-revamp(achieved):UI 重构——面板精简 4→3/平台登录门控+力扣中国回落/模版 ACM·LeetCode 双风格×语言显式启用+默认Java/全界面中文化(WP44-52,commits eb7002f..7e66e92;人工走查 docs/ui-revamp-manual-checklist.md C 节(沙箱+Playwright 实测 B-1/2/3/7+端点恢复全 PASS);定版 1.2.0)
 ### loop-20260819-codequest-rewrite-m7(achieved):原版设计对齐九项——提交详情/状态列/账号/模板CSS/代码回看/题解排序/缩放/公司题单(WP36-43,commits 6ecbd62..2017c23)
 ### 1.0.x 直修(非 loop):浏览链路登录入口(a42a105)/力扣CN 中文化(eb28532)/一键开刷(db898bd)
 ### loop-20260819-codequest-rewrite-m6(achieved):删旧工程/CI 单轨/文档/1.0.0 发布

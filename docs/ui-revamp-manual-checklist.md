@@ -78,3 +78,16 @@
 1. 题库 tab 顶部子视图切换「平台题库 | 本地搜索」。
 2. 切到「本地搜索」:可按关键字/标签搜索本地题目;切回「平台题库」列表状态保留(双视图保活)。
 3. 落地页(欢迎页入口)确认「本地搜索」入口仍可直达 `/search/` 页。
+
+## C. 沙箱实测结果（2026-08-21，runIde 沙箱 + Playwright，定版前走查）
+
+环境：沙箱 IDE 内置 HTTP 服务 127.0.0.1:6916；沙箱带入本机凭据（力扣中国已登录，userId=black__boy）。
+
+| 项 | 结论 | 证据 |
+|---|---|---|
+| B-1 前端中文（六页） | ✅ PASS | 题库/竞赛/统计(中文空态)/题面/提交记录(中文空态)/落地页逐页断言全中文，截图 .claude/tmp/walkthrough-*.png |
+| B-2 平台门控 | ✅ PASS | 平台下拉选项=['力扣']（仅已登录平台）；有力扣登录时无兜底提示条；竞赛页未登录平台被滤出并显示引导文案 |
+| B-3 账号区 | ✅ PASS | 六平台常驻；力扣行显示用户名 black__boy + 「退出」按钮；未登录平台「登录」按钮 |
+| B-3' 重启恢复（端点级） | ✅ PASS | GET /api/auth/status 与 POST /api/auth/refresh 均返回 leetcodecn loggedIn=true + userId（restoreSession 静默恢复实证；IDE 进程重启场景仍建议人工复验一次） |
+| B-7 本地搜索子视图 | ✅ PASS | 「平台题库｜本地搜索」切换器存在，点击后本地搜索面板渲染 |
+| B-4/B-5/B-6（Swing 侧） | ⚠️ 单测+产物证据 | B-4 Dialog 门控/Bridge 三态（Kotlin 单测）、B-5 双风格草稿核+帮助 keys（TemplateDraftsStateTest+bundle）、B-6 Navigator（WP51 产物核验：3 toolWindow/类入 jar）；GUI 视觉确认留日常使用复核 |
