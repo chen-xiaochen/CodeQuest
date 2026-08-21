@@ -225,7 +225,6 @@ class ChallengeWorkspacePanel(
     // 动作:多解法
     // ------------------------------------------------------------------
 
-    @Suppress("DEPRECATION") // WP47 迁移:创建链路改按平台风格读双参签名 entryTemplateOverride(style, languageId)
     private fun createNewSolution() {
         val challenge = selectedChallenge() ?: return
         val name =
@@ -234,8 +233,11 @@ class ChallengeWorkspacePanel(
         if (name.isBlank()) return
         onPooled {
             val created = runBlocking { loadCreated(challenge) } ?: error("challenge has no language configuration")
-            // 修复#45:生成时读设置——新建解法用当前模板覆盖(对齐原版 LanguageSettings 语义)
-            val override = CodeQuestSettings.getInstance(project).entryTemplateOverride(created.language.language)
+            // 修复#45(WP47 风格化):生成时读设置——按平台风格读当前模板覆盖(对齐原版 LanguageSettings 语义)
+            val override =
+                CodeQuestSettings
+                    .getInstance(project)
+                    .entryTemplateOverride(templateStyleOf(created.problem.platformId), created.language.language)
             val solution = runBlocking { service().createSolution(created, name.trim(), "", template = override) }
             openInEditor(created.workspaceRoot.resolve(solution.filePath))
             reloadSolutions(challenge)

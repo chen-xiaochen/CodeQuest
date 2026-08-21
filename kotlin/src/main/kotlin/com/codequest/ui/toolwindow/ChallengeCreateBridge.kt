@@ -5,10 +5,10 @@ import com.codequest.core.model.PlatformId
 import com.codequest.core.model.Problem
 import com.codequest.core.model.ProblemId
 import com.codequest.core.workspace.ChallengeWorkspaceService
-import com.codequest.core.workspace.WorkspaceLanguage
+import com.codequest.core.workspace.TemplateAvailability
 import com.codequest.infra.db.DatabaseManager
+import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.settings.CodeQuestSettings
-import com.codequest.spi.LanguageInfo
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
@@ -17,7 +17,6 @@ import com.codequest.ui.jcef.CQBridge
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -38,11 +37,11 @@ import java.util.logging.Logger
  *
  * 此前开刷要去底部工具窗手填 New Challenge 表单(平台/题目 ID/标题/难度/URL 全靠用户抄);
  * 原版交互是「题目信息全来自列表选中行,用户只选语言」。本命令把题面页已加载的数据
- * 全量自动带入:题面页 Start coding 按钮 → 语言选择(单语言免选,多语言 EDT 模态菜单)
- * → 同题同语言已存在直接打开(幂等,原版 currentSelectedCanBeOpened 语义),否则创建
- * 工作区并在编辑器打开入口文件。底部手填 New Challenge 保留为兜底。
+ * 全量自动带入:题面页 Start coding 按钮 → 语言自动选择(WP47:平台风格下已配置模版
+ * 的语言,Java 优先)→ 同题同语言已存在直接打开(幂等,原版 currentSelectedCanBeOpened
+ * 语义),否则创建工作区并在编辑器打开入口文件。底部手填 New Challenge 保留为兜底。
  *
- * 逻辑核(payload 解析/[languagePlanForPlatform]/[createOrOpen])为纯函数式注入,
+ * 逻辑核(payload 解析/[languageIdForCreate]/[createOrOpen])为纯函数式注入,
  * 单测不依赖 IntelliJ 运行时;[register] 只做桥与 IDE 组件接线。
  */
 object ChallengeCreateBridge {
@@ -107,28 +106,20 @@ fun parseChallengeCreatePayload(payload: String): ChallengeCreateRequest? =
         }
     }.getOrNull()
 
-/** 语言决策:单语言自动选(原版 setPopupGroup(false) 语义),多语言返回候选交由 UI 菜单。 */
-sealed interface ChallengeLanguagePlan {
-    data class Auto(
-        val languageId: String,
-    ) : ChallengeLanguagePlan
-
-    data class Choice(
-        val languageIds: List<String>,
-    ) : ChallengeLanguagePlan
-}
-
-/** 语言决策逻辑核(纯函数):平台不存在/无工作区语言映射→失败;否则 Auto 或 Choice。 */
-fun languagePlanForPlatform(platform: OJPlatform?): Result<ChallengeLanguagePlan> {
+/**
+ * 语言决策逻辑核(WP47,纯函数):候选 = 该平台风格([PlatformInfo.templateStyle])下
+ * **已配置模版**的可用语言([TemplateAvailability]);Java 优先,否则取第一个;全无可用
+ * → 失败([IllegalStateException],调用方转引导配置模版的用户文案)。
+ */
+fun languageIdForCreate(
+    platform: OJPlatform?,
+    templates: Map<String, String>,
+): Result<String> {
     if (platform == null) return Result.failure(IllegalArgumentException("unknown platform"))
-    val languages =
-        platform.info.supportedLanguages
-            .mapNotNull(LanguageInfo::workspaceLanguageId)
-            .distinct()
-    if (languages.isEmpty()) return Result.failure(IllegalStateException("platform has no workspace languages"))
-    return Result.success(
-        if (languages.size == 1) ChallengeLanguagePlan.Auto(languages.single()) else ChallengeLanguagePlan.Choice(languages),
-    )
+    val language =
+        TemplateAvailability.defaultLanguage(TemplateAvailability.usableLanguages(platform.info.templateStyle, templates))
+            ?: return Result.failure(IllegalStateException("no usable language"))
+    return Result.success(language.id)
 }
 
 /** challenge:create-result 的载荷。 */
@@ -159,21 +150,18 @@ private suspend fun performCreate(
     request: ChallengeCreateRequest,
 ): ChallengeCreateResult {
     val platform = OJPlatformRegistry.find(PlatformId(request.platform))
-    val plan =
-        languagePlanForPlatform(platform).getOrElse { error ->
-            return ChallengeCreateResult(ok = false, error = error.message)
-        }
+    // WP47:语言自动选择——平台风格下已配置模版的语言,Java 优先;全无可用引导去设置
     val languageId =
-        when (plan) {
-            is ChallengeLanguagePlan.Auto -> {
-                plan.languageId
+        languageIdForCreate(platform, CodeQuestSettings.getInstance(project).state.templates)
+            .getOrElse { error ->
+                val message =
+                    if (error is IllegalStateException) {
+                        PluginBundle.message("challenge.create.error.noUsableLanguage")
+                    } else {
+                        error.message
+                    }
+                return ChallengeCreateResult(ok = false, error = message)
             }
-
-            is ChallengeLanguagePlan.Choice -> {
-                chooseLanguageSync(plan.languageIds)
-                    ?: return ChallengeCreateResult(ok = false, error = "cancelled")
-            }
-        }
     return runCatching {
         val entryFile = createOrOpenInProject(project, request, languageId)
         openInEditor(project, entryFile)
@@ -181,16 +169,6 @@ private suspend fun performCreate(
     }.getOrElse { error ->
         ChallengeCreateResult(ok = false, error = error.message ?: error.javaClass.simpleName)
     }
-}
-
-/** 多语言选择:pooled 线程内经 invokeAndWait 弹 EDT 模态选择(UiCookiePrompt 同模式)。 */
-private fun chooseLanguageSync(languageIds: List<String>): String? {
-    val displayNames = languageIds.map { WorkspaceLanguage.fromId(it)?.displayName ?: it }
-    var chosen: Int = -1
-    ApplicationManager.getApplication().invokeAndWait {
-        chosen = Messages.showChooseDialog("Language:", "Start Coding", displayNames.toTypedArray(), displayNames.first(), null)
-    }
-    return languageIds.getOrNull(chosen)
 }
 
 /** 项目侧 createOrOpen 实现:主档复用/补建 → 幂等查找 → 创建。 */

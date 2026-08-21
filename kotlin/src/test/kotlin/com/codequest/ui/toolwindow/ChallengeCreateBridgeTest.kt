@@ -2,7 +2,6 @@ package com.codequest.ui.toolwindow
 
 import com.codequest.core.model.PlatformId
 import com.codequest.core.workspace.TemplateStyle
-import com.codequest.spi.LanguageInfo
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.PlatformInfo
 import kotlinx.coroutines.runBlocking
@@ -15,22 +14,20 @@ import java.nio.file.Path
 
 /**
  * 一键开刷(1.0.x,参考原版 OpenChallengeActionGroup 交互):题面页
- * `challenge:create` 桥命令——题目信息全自动,用户只选语言;同题同语言
- * 已存在则直接打开(幂等),否则创建工作区并打开编辑器。
+ * `challenge:create` 桥命令——题目信息全自动,语言自动选择(WP47:平台风格下
+ * 已配置模版,Java 优先);同题同语言已存在则直接打开(幂等),否则创建工作区
+ * 并打开编辑器。
  */
 @Suppress("FunctionName")
 class ChallengeCreateBridgeTest {
     private class FakePlatform(
         platformId: PlatformId,
-        languages: List<LanguageInfo>,
+        private val style: TemplateStyle = TemplateStyle.ACM,
     ) : OJPlatform {
         override val id = platformId
         override val domain = "${platformId.value}.example.com"
-        override val info =
-            PlatformInfo(displayName = platformId.value, iconPath = null, supportedLanguages = languages, templateStyle = TemplateStyle.ACM)
+        override val info = PlatformInfo(displayName = platformId.value, iconPath = null, templateStyle = style)
     }
-
-    private fun language(id: String) = LanguageInfo(id = "x-$id", displayName = id, workspaceLanguageId = id)
 
     @Test
     fun `parses challenge create payload`() {
@@ -53,43 +50,54 @@ class ChallengeCreateBridgeTest {
         assertNull(parseChallengeCreatePayload("not-json"))
     }
 
+    /** (WP47) 语言三态之一:平台未知 → 失败。 */
     @Test
-    fun `language plan fails for unknown platform or empty languages`() {
-        assertTrue(languagePlanForPlatform(FakePlatform(PlatformId("x"), emptyList())).isFailure)
-        assertTrue(languagePlanForPlatform(null).isFailure)
+    fun `language decision fails for unknown platform`() {
+        assertTrue(languageIdForCreate(null, mapOf("acm:java" to "j")).isFailure)
     }
 
+    /** (WP47) 语言三态之二:Java 优先——风格下已配置(即使 kotlin 排在声明顺序首位)。 */
     @Test
-    fun `single language is chosen automatically`() {
-        val plan = languagePlanForPlatform(FakePlatform(PlatformId("x"), listOf(language("java"))))
-        assertEquals(ChallengeLanguagePlan.Auto("java"), plan.getOrNull())
-    }
-
-    @Test
-    fun `multiple languages require user choice`() {
-        val plan =
-            languagePlanForPlatform(
-                FakePlatform(PlatformId("x"), listOf(language("java"), language("kotlin"))),
+    fun `java is preferred when configured under the platform style`() {
+        val decision =
+            languageIdForCreate(
+                FakePlatform(PlatformId("codeforces")),
+                mapOf("acm:kotlin" to "k", "acm:java" to "j"),
             )
-        assertEquals(
-            ChallengeLanguagePlan.Choice(listOf("java", "kotlin")),
-            plan.getOrNull(),
-        )
+        assertEquals("java", decision.getOrNull())
     }
 
+    /** (WP47) 语言三态之二回退:Java 未配置(含空白条目)→ 第一个可用语言;跨风格键不串。 */
     @Test
-    fun `languages without workspace mapping are skipped`() {
-        val plan =
-            languagePlanForPlatform(
-                FakePlatform(
-                    PlatformId("x"),
-                    listOf(
-                        LanguageInfo(id = "py2", displayName = "Python 2", workspaceLanguageId = null),
-                        language("python"),
-                    ),
-                ),
+    fun `falls back to first usable language when java unconfigured`() {
+        val decision =
+            languageIdForCreate(
+                FakePlatform(PlatformId("codeforces")),
+                mapOf("acm:java" to "", "leetcode:java" to "j", "acm:python3" to "p"),
             )
-        assertEquals(ChallengeLanguagePlan.Auto("python"), plan.getOrNull())
+        assertEquals("python3", decision.getOrNull())
+    }
+
+    /** (WP47) 语言三态之三:该风格下全无可用语言 → 失败(调用方转引导配置模版文案)。 */
+    @Test
+    fun `language decision fails when no language configured under the platform style`() {
+        val decision =
+            languageIdForCreate(
+                FakePlatform(PlatformId("codeforces")),
+                mapOf("leetcode:java" to "j"),
+            )
+        assertTrue(decision.isFailure)
+    }
+
+    /** (WP47) 风格维度:LEETCODE 风格平台读 `leetcode:` 键。 */
+    @Test
+    fun `leetcode style platform reads leetcode keys`() {
+        val decision =
+            languageIdForCreate(
+                FakePlatform(PlatformId("leetcode"), style = TemplateStyle.LEETCODE),
+                mapOf("leetcode:go" to "g"),
+            )
+        assertEquals("go", decision.getOrNull())
     }
 
     @Test
