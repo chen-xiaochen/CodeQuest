@@ -23,7 +23,8 @@ import java.util.logging.Logger
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
  *   注入后启用):`GET /api/platforms`、`GET /api/problems`(WP42 起支持 `company=`
  *   公司题单参数)、`GET /api/companies`、`GET /api/problem/{remoteId}`;
- *   账号状态端点(WP38,经 [authApi] 注入后启用):`GET /api/auth/status`;
+ *   账号状态端点(WP38,经 [authApi] 注入后启用):`GET /api/auth/status`、
+ *   静默恢复 `POST /api/auth/refresh`(WP48);
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
  *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
@@ -139,6 +140,19 @@ class ResourceHttpServer(
                         ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
                     } else {
                         api.authStatus()
+                    }
+                respondJson(exchange, response.status, response.json, response.headers)
+            }
+
+            // WP48:静默登录恢复(并发 restoreSession,suspend;平台源与 status 同一
+            // AuthApi 实例注入,恢复置位的 verified 即 status 读到的快照)
+            path == "/api/auth/refresh" && exchange.requestMethod.uppercase() == "POST" -> {
+                val api = authApi
+                val response =
+                    if (api == null) {
+                        ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+                    } else {
+                        runBlocking { api.authRefresh() }
                     }
                 respondJson(exchange, response.status, response.json, response.headers)
             }

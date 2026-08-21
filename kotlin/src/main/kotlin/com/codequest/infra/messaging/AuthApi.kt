@@ -5,6 +5,9 @@ import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -14,9 +17,15 @@ import kotlinx.serialization.json.Json
  *
  * ## 端点契约(由 [ResourceHttpServer] 挂载)
  *
- * `GET /api/auth/status` → `{"items":[{"platform":"leetcode","loggedIn":true,"userId":null}]}`
+ * `GET /api/auth/status` → `{"items":[{"platform":"leetcode","loggedIn":true,"userId":"u"}]}`
  * ——全部已注册平台的同步登录快照([AuthCapable.isLoggedIn],不触发登录流程、不上网络);
  * 非 AuthCapable 平台不排除,`loggedIn` 如实为 false。
+ *
+ * `POST /api/auth/refresh`(WP48)→ 与 status 同构响应:对全部 AuthCapable 平台
+ * **并发**静默恢复([AuthCapable.restoreSession]:只尝试已存凭据注入+校验,
+ * 绝不弹窗),items 反映恢复后的 loggedIn/userId;单平台恢复抛异常按未登录
+ * 处理(不拖垮整批)。实例源与 status 同一 [platforms] 通道——restore 置位的
+ * verified 即后续 status 读到的快照。
  *
  * ## 数据源与分层(ui → infra 反转注入)
  *
@@ -27,12 +36,11 @@ import kotlinx.serialization.json.Json
  * 由 ui 层注册提交链路同源实例的解析入口;未注册时回退 [OJPlatformRegistry]
  * (测试/降级用)。
  *
- * ## userId 契约
+ * ## userId 契约(WP48 起)
  *
- * [AuthCapable] 现契约只有 `ensureLoggedIn(): LoginSession`(交互式,可能弹窗),
- * 无「只读当前 session」方法;本端点绝不触发登录,故 `userId` **恒为 null**
- * (如实上报而非隐瞒字段,前端徽标降级为只显示平台名)。后续 SPI 若补只读
- * session 契约,本端点透传即可。
+ * status 透传 [AuthCapable.currentSession] 只读快照(WP44 契约):已登录平台
+ * 如实带回 userId,未登录(currentSession 为 null)为 null——快照不触发网络,
+ * 登录实时性归 ensureLoggedIn/refresh 端点。
  */
 class AuthApi(
     private val platforms: () -> List<OJPlatform> = OJPlatformRegistry::all,
@@ -44,18 +52,46 @@ class AuthApi(
             STATUS_OK,
             json.encodeToString(
                 AuthStatusResponseDto.serializer(),
-                AuthStatusResponseDto(
-                    items =
-                        platforms().map { platform ->
-                            AuthStatusItemDto(
-                                platform = platform.id.value,
-                                loggedIn = (platform as? AuthCapable)?.isLoggedIn() ?: false,
-                                userId = null,
-                            )
-                        },
-                ),
+                AuthStatusResponseDto(items = platforms().map { it.toAuthStatusItem() }),
             ),
         )
+
+    /** `POST /api/auth/refresh`(WP48):并发静默恢复全部 AuthCapable 平台。 */
+    suspend fun authRefresh(): ProblemApiResponse =
+        coroutineScope {
+            val items =
+                platforms()
+                    .map { platform -> async { restoreSnapshot(platform) } }
+                    .awaitAll()
+            ProblemApiResponse(
+                STATUS_OK,
+                json.encodeToString(AuthStatusResponseDto.serializer(), AuthStatusResponseDto(items = items)),
+            )
+        }
+
+    /** 同步快照项:loggedIn 读内存标志,userId 透传只读会话(WP48)。 */
+    private fun OJPlatform.toAuthStatusItem(): AuthStatusItemDto {
+        val auth = this as? AuthCapable
+        return AuthStatusItemDto(
+            platform = id.value,
+            loggedIn = auth?.isLoggedIn() ?: false,
+            userId = auth?.currentSession()?.userId,
+        )
+    }
+
+    /**
+     * 单平台恢复快照:restoreSession 成功 → loggedIn true + 会话 userId;
+     * 返回 null(无已存凭据/校验失败)/抛异常/非 AuthCapable → 如实未登录。
+     */
+    private suspend fun restoreSnapshot(platform: OJPlatform): AuthStatusItemDto {
+        val auth = platform as? AuthCapable ?: return AuthStatusItemDto(platform = platform.id.value, loggedIn = false)
+        val session = runCatching { auth.restoreSession() }.getOrNull()
+        return AuthStatusItemDto(
+            platform = platform.id.value,
+            loggedIn = session != null,
+            userId = session?.userId,
+        )
+    }
 
     private companion object {
         private val DEFAULT_JSON = Json { encodeDefaults = true }
@@ -89,6 +125,6 @@ private data class AuthStatusResponseDto(
 private data class AuthStatusItemDto(
     val platform: String,
     val loggedIn: Boolean,
-    /** 恒 null:SPI 无只读 session 契约(见 [AuthApi] KDoc);保留字段以稳定前端类型。 */
+    /** WP48 起透传 currentSession 只读快照;未登录/非 AuthCapable 为 null。 */
     val userId: String? = null,
 )

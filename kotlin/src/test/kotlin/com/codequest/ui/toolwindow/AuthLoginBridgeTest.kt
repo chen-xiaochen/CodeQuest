@@ -111,15 +111,16 @@ class AuthLoginBridgeTest {
         runBlocking {
             val result = performLogin(PlatformId("ghost")) { null }
             assertFalse(result.ok)
-            assertTrue(result.error!!.contains("unknown", ignoreCase = true))
+            // WP48 错误串入 bundle 跟随 IDE 语言;断言不绑定 locale:非空 + 携带平台 id
+            assertTrue(result.error!!.contains("ghost"))
         }
 
     @Test
     fun `non auth capable platform reports failure`() =
         runBlocking {
-            val result = performLogin(PlatformId("x")) { BarePlatform(it) }
+            val result = performLogin(PlatformId("atcoder")) { BarePlatform(it) }
             assertFalse(result.ok)
-            assertTrue(result.error!!.contains("login", ignoreCase = true))
+            assertTrue(result.error!!.contains("atcoder"))
         }
 
     @Test
@@ -175,15 +176,16 @@ class AuthLoginBridgeTest {
         runBlocking {
             val result = performLogout(PlatformId("ghost")) { null }
             assertFalse(result.ok)
-            assertTrue(result.error!!.contains("unknown", ignoreCase = true))
+            // WP48 错误串入 bundle 跟随 IDE 语言;断言不绑定 locale:非空 + 携带平台 id
+            assertTrue(result.error!!.contains("ghost"))
         }
 
     @Test
     fun `logout non auth capable platform reports failure`() =
         runBlocking {
-            val result = performLogout(PlatformId("x")) { BarePlatform(it) }
+            val result = performLogout(PlatformId("atcoder")) { BarePlatform(it) }
             assertFalse(result.ok)
-            assertTrue(result.error!!.contains("logout", ignoreCase = true))
+            assertTrue(result.error!!.contains("atcoder"))
         }
 
     @Test

@@ -11,7 +11,7 @@ export interface PlatformSummary {
   displayName: string
 }
 
-/** WP38:平台登录快照(/api/auth/status);userId 恒 null(SPI 无只读 session 契约)。 */
+/** WP38:平台登录快照(/api/auth/status);WP48 起 userId 透传只读会话快照(未登录 null)。 */
 export interface AuthStatusItem {
   platform: string
   loggedIn: boolean
@@ -106,6 +106,14 @@ export function fetchPlatforms(): Promise<PlatformSummary[]> {
 /** WP38:全部平台登录快照(同步,不触发登录流程)。 */
 export function fetchAuthStatus(): Promise<AuthStatusItem[]> {
   return getJson<{ items: AuthStatusItem[] }>('/api/auth/status').then((body) => body.items)
+}
+
+/**
+ * WP48:静默恢复并刷新登录快照(POST /api/auth/refresh,并发 restoreSession、
+ * 绝不弹窗);返回与 [fetchAuthStatus] 同构的 items(恢复后的 loggedIn/userId)。
+ */
+export function refreshAuthStatus(): Promise<AuthStatusItem[]> {
+  return sendJson<{ items: AuthStatusItem[] }>('/api/auth/refresh', 'POST').then((body) => body.items)
 }
 
 export interface ProblemListQuery {

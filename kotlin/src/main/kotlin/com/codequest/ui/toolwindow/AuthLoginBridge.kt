@@ -1,6 +1,7 @@
 package com.codequest.ui.toolwindow
 
 import com.codequest.core.model.PlatformId
+import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.messaging.AuthPlatformSourceProvider
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.OJPlatform
@@ -41,6 +42,12 @@ import java.util.logging.Logger
  * 未登录为无害 no-op)→ `auth:logout-result` {ok, platform, error?} 回推。
  * 另附 [SubmissionAuthPlatformSourceProvider]:为 infra 的 `/api/auth/status`
  * 端点反转注入本层缓存实例(ui → infra EP,不破坏分层)。
+ *
+ * ## WP48:错误文案 bundle 化
+ *
+ * performLogin/performLogout 的用户可见错误串(未知平台/无交互式登录/无登出)
+ * 迁入 PluginBundle(`auth.error.*`,中英双语),跟 IDE 语言切换;单测断言
+ * 平台 id 片段而非具体文案,不绑定 locale。
  */
 object AuthLoginBridge {
     /** 页面 → Kotlin:请求登录;payload `{"platform":"hackerrank"}`。 */
@@ -147,11 +154,19 @@ suspend fun performLogin(
 ): AuthLoginResult {
     val platform = resolvePlatform(platformId)
     if (platform == null) {
-        return AuthLoginResult(ok = false, platform = platformId.value, error = "unknown platform: ${platformId.value}")
+        return AuthLoginResult(
+            ok = false,
+            platform = platformId.value,
+            error = PluginBundle.message("auth.error.unknownPlatform", platformId.value),
+        )
     }
     val auth = platform as? AuthCapable
     if (auth == null) {
-        return AuthLoginResult(ok = false, platform = platformId.value, error = "platform ${platformId.value} has no interactive login")
+        return AuthLoginResult(
+            ok = false,
+            platform = platformId.value,
+            error = PluginBundle.message("auth.error.noInteractiveLogin", platformId.value),
+        )
     }
     return try {
         auth.ensureLoggedIn()
@@ -202,11 +217,19 @@ suspend fun performLogout(
 ): AuthLogoutResult {
     val platform = resolvePlatform(platformId)
     if (platform == null) {
-        return AuthLogoutResult(ok = false, platform = platformId.value, error = "unknown platform: ${platformId.value}")
+        return AuthLogoutResult(
+            ok = false,
+            platform = platformId.value,
+            error = PluginBundle.message("auth.error.unknownPlatform", platformId.value),
+        )
     }
     val auth =
         platform as? AuthCapable
-            ?: return AuthLogoutResult(ok = false, platform = platformId.value, error = "platform ${platformId.value} has no logout")
+            ?: return AuthLogoutResult(
+                ok = false,
+                platform = platformId.value,
+                error = PluginBundle.message("auth.error.noLogout", platformId.value),
+            )
     return try {
         auth.logout()
         AuthLogoutResult(ok = true, platform = platformId.value)
