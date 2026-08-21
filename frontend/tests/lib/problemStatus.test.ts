@@ -13,8 +13,8 @@ import {
 describe('problemStatus', () => {
   describe('statusIconOf', () => {
     it('maps AC / TRIED / UNSOLVED to distinct icon kinds with titles', () => {
-      expect(statusIconOf({ status: 'AC' })).toEqual({ kind: 'ac', title: 'Solved' })
-      expect(statusIconOf({ status: 'TRIED' })).toEqual({ kind: 'tried', title: 'Tried' })
+      expect(statusIconOf({ status: 'AC' })).toEqual({ kind: 'ac', title: '已解决' })
+      expect(statusIconOf({ status: 'TRIED' })).toEqual({ kind: 'tried', title: '已尝试' })
       expect(statusIconOf({ status: 'UNSOLVED' })).toEqual({ kind: 'unsolved', title: '' })
     })
 
@@ -26,7 +26,7 @@ describe('problemStatus', () => {
     it('prefers the lock icon for paidOnly regardless of solve status', () => {
       expect(statusIconOf({ status: 'AC', paidOnly: true })).toEqual({
         kind: 'locked',
-        title: 'Premium problem (locked)',
+        title: '会员题(已锁定)',
       })
       expect(statusIconOf({ paidOnly: true }).kind).toBe('locked')
     })

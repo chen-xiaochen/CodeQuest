@@ -39,14 +39,15 @@ export function statusOf(item: ProblemStatusFields): ProblemStatus {
  * 本工具不感知会员态,只按列表数据(YAGNI)。
  */
 export function statusIconOf(item: ProblemStatusFields): StatusIcon {
+  // WP49:提示文案中文化(仅 problems/search 两页消费)
   if (item.paidOnly) {
-    return { kind: 'locked', title: 'Premium problem (locked)' }
+    return { kind: 'locked', title: '会员题(已锁定)' }
   }
   switch (statusOf(item)) {
     case 'AC':
-      return { kind: 'ac', title: 'Solved' }
+      return { kind: 'ac', title: '已解决' }
     case 'TRIED':
-      return { kind: 'tried', title: 'Tried' }
+      return { kind: 'tried', title: '已尝试' }
     default:
       return { kind: 'unsolved', title: '' }
   }

@@ -102,7 +102,7 @@ describe('search page', () => {
     expect(rows[0].find('.platform-badge').text()).toBe('codeforces')
     expect(rows[0].find('.diff-badge--easy').exists()).toBe(true)
     const chips = rows[0].findAll('.source-chip')
-    expect(chips.map((chip) => chip.text())).toEqual(['Title', 'Statement'])
+    expect(chips.map((chip) => chip.text())).toEqual(['标题', '题面'])
     expect(chips[0].classes()).toContain('source-chip--title')
     expect(chips[1].classes()).toContain('source-chip--content')
 
@@ -203,7 +203,7 @@ describe('search page', () => {
 
     expect(wrapper.findAll('.results__row').length).toBe(4)
     expect(wrapper.text()).toContain('1927A-p2')
-    expect(wrapper.text()).toContain('4 of 4')
+    expect(wrapper.text()).toContain('已加载 4 / 共 4 条')
   })
 
   it('shows filtered empty state when a keyword yields no rows', async () => {
@@ -226,7 +226,7 @@ describe('search page', () => {
     await flushPromises()
 
     expect(wrapper.findAll('.results__row').length).toBe(0)
-    expect(wrapper.text()).toContain('No results matched')
+    expect(wrapper.text()).toContain('没有匹配结果')
   })
 
   it('shows browse-mode empty state when nothing is indexed', async () => {
@@ -245,7 +245,7 @@ describe('search page', () => {
     const wrapper = mount(SearchApp)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No problems indexed yet')
+    expect(wrapper.text()).toContain('本地库还没有已缓存的题目')
   })
 
   it('shows error state with backend error code', async () => {
@@ -286,12 +286,12 @@ describe('search page', () => {
     const rows = wrapper.findAll('.results__row')
     expect(rows.length).toBe(4)
     expect(rows[0].find('.status-icon--ac').exists()).toBe(true)
-    expect(rows[0].find('.status-icon').attributes('title')).toBe('Solved')
+    expect(rows[0].find('.status-icon').attributes('title')).toBe('已解决')
     expect(rows[1].find('.status-icon--tried').exists()).toBe(true)
     expect(rows[2].find('.status-icon--unsolved').exists()).toBe(true)
     expect(rows[2].find('.status-icon').attributes('title')).toBe('')
     expect(rows[3].find('.status-icon--locked').exists()).toBe(true)
-    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('Premium problem (locked)')
+    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('会员题(已锁定)')
   })
 
   it('filters loaded results by status locally without refetching', async () => {
@@ -324,6 +324,6 @@ describe('search page', () => {
 
     expect(wrapper.find('.filter-note').exists()).toBe(false)
     await wrapper.findAll('select')[1].setValue('TRIED')
-    expect(wrapper.find('.filter-note').text()).toContain('loaded items')
+    expect(wrapper.find('.filter-note').text()).toContain('已加载条目')
   })
 })

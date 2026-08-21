@@ -1,17 +1,21 @@
 <script setup lang="ts">
 /**
- * 题目列表页(WP20 真实数据):平台下拉(/api/platforms)+ 关键字 + 难度筛选 +
+ * 题库页(WP20 真实数据):平台下拉(/api/platforms)+ 关键字 + 难度筛选 +
  * 分页(加载更多);点击行经桥 nav:openProblem 打开题面工具窗口。
- * WP37:状态徽标列(🔒 会员 / ✓ AC 绿实心圆 / ○ 已尝试 / 空 未做)+ 状态下拉——本地过滤
+ * WP37:状态徽标列(🔒 会员 / ✓ AC / ○ 已尝试 / 空 未做)+ 状态下拉——本地过滤
  * 已加载项(端点不加参数;后页未加载项不参与,筛选激活时 UI 注明)。
- * WP38:头部账号条(原版 AccountActionGroup 对齐)——每平台徽标(/api/auth/status
- * 快照):已登录高亮,点击登出;未登录灰,点击触发 auth:login 登录对话框。
  * WP42:公司下拉(仅 /api/companies 有数据的 LC 系平台渲染)+ 期间下拉——选中后
  * 列表改走公司题单查询(company/period 参数);keyword 在公司模式下被后端忽略
  * (旧实现事实,激活时 UI 注明)。
+ * WP49:①账号区重设计——全部平台常驻,已登录=平台名+用户名+显式「退出」按钮,
+ * 未登录=「登录」按钮(替代点击整行切换);②平台下拉门控——仅保留已登录平台,
+ * 全未登录回落力扣中国并提示;③加载时序——先 GET status 瞬时渲染,再异步 POST
+ * refresh 静默恢复重启前登录态;④「平台题库｜本地搜索」子视图切换(本地搜索
+ * 复用 SearchPanel,状态本地保持);⑤文案中文化。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
+import SearchPanel from '../search/SearchPanel.vue'
 import {
   TOPIC_AUTH_LOGIN,
   TOPIC_AUTH_LOGIN_RESULT,
@@ -26,6 +30,7 @@ import {
   fetchCompanies,
   fetchPlatforms,
   fetchProblems,
+  refreshAuthStatus as requestAuthRefresh,
   type AuthStatusItem,
   type CompanySummary,
   type PlatformSummary,
@@ -38,18 +43,26 @@ import {
   type ProblemStatusFields,
   type ProblemStatusFilter,
 } from '../../lib/problemStatus'
+import { FALLBACK_PLATFORM_ID, filterPlatformsByAuth, pickDefaultPlatform } from './platformGate'
 
 const PAGE_SIZE = 50
 const DIFFICULTY_OPTIONS = ['', 'easy', 'medium', 'hard'] as const
 /** WP42:面试期间(旧 InterviewParameterAction 的 slug 逐字事实;默认 30 天同旧 UI)。 */
 const DEFAULT_PERIOD = 'thirty-days'
 const PERIOD_OPTIONS = [
-  { value: 'thirty-days', label: 'Last 30 days' },
-  { value: 'three-months', label: 'Last 3 months' },
-  { value: 'six-months', label: 'Last 6 months' },
-  { value: 'more-than-six-months', label: 'More than 6 months' },
-  { value: 'all', label: 'All time' },
+  { value: 'thirty-days', label: '近 30 天' },
+  { value: 'three-months', label: '近 3 个月' },
+  { value: 'six-months', label: '近 6 个月' },
+  { value: 'more-than-six-months', label: '半年以上' },
+  { value: 'all', label: '全部时间' },
 ] as const
+
+const DIFFICULTY_LABELS: Record<string, string> = {
+  '': '全部难度',
+  easy: '简单',
+  medium: '中等',
+  hard: '困难',
+}
 
 const bridge = cqBridge()
 
@@ -75,52 +88,110 @@ const errorCode = ref('')
 /** WP37:本地过滤后的可见行(仅作用于已加载项;不发请求、不影响分页游标)。 */
 const visibleItems = computed(() => filterByStatus(items.value, statusFilter.value))
 
-/** 登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
+/** 浏览链路登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
 const loginPending = ref(false)
 
 // ---------------------------------------------------------------------
-// WP38:账号条(每平台登录快照 + 登录/登出入口)
+// WP49:账号区(全部平台常驻 + 显式登录/退出按钮)与平台门控
 // ---------------------------------------------------------------------
 
 const authItems = ref<AuthStatusItem[]>([])
 
-/** 账号条进行中的平台 id(登录或登出;期间全部徽标置灰防重复触发)。 */
+/** GET /api/auth/status 是否成功过——失败/未装配时不门控(展示全部平台)。 */
+const authKnown = ref(false)
+
+/** 账号区进行中的平台 id(登录或登出;期间全部按钮置灰防重复触发)。 */
 const authPending = ref('')
 
-function refreshAuthStatus(): void {
-  fetchAuthStatus()
-    .then((items) => {
-      authItems.value = items
-    })
-    .catch(() => {
-      // 状态条非关键路径:拉取失败保持现状(如端点未装配/启动竞态)
-    })
-}
+/** 账号区行:platforms(全量,常驻)⋈ authItems(登录态;缺失按未登录)。 */
+const accountRows = computed(() =>
+  platforms.value.map((entry) => {
+    const auth = authItems.value.find((item) => item.platform === entry.id)
+    return {
+      id: entry.id,
+      displayName: entry.displayName,
+      loggedIn: auth?.loggedIn ?? false,
+      userId: auth?.userId ?? null,
+    }
+  }),
+)
 
-function displayNameOf(platformId: string): string {
-  return platforms.value.find((entry) => entry.id === platformId)?.displayName ?? platformId
-}
+/** 门控后的已登录平台(纯函数,可单测)。 */
+const filteredPlatforms = computed(() => filterPlatformsByAuth(platforms.value, authItems.value))
 
-function badgeTitle(item: AuthStatusItem): string {
-  if (item.loggedIn) {
-    const who = item.userId ? ` as ${item.userId}` : ''
-    return `${displayNameOf(item.platform)} — logged in${who}, click to log out`
-  }
-  return `${displayNameOf(item.platform)} — not logged in, click to log in`
-}
+/**
+ * 平台下拉可见项:已登录平台;全未登录回落力扣中国(FALLBACK_PLATFORM_ID);
+ * 登录快照不可用(端点失败/未装配)时不门控,展示全部平台。
+ */
+const visiblePlatforms = computed(() => {
+  if (!authKnown.value) return platforms.value
+  if (filteredPlatforms.value.length > 0) return filteredPlatforms.value
+  return platforms.value.filter((entry) => entry.id === FALLBACK_PLATFORM_ID)
+})
 
-function handleBadgeClick(item: AuthStatusItem): void {
+/** 全未登录回落提示条。 */
+const showFallbackHint = computed(
+  () => authKnown.value && filteredPlatforms.value.length === 0,
+)
+
+/** 显式登录/退出按钮(WP49 替代点击整行切换):发既有 TOPIC_AUTH_LOGIN/LOGOUT。 */
+function handleAuthAction(row: { id: string; loggedIn: boolean }): void {
   if (authPending.value) return
-  authPending.value = item.platform
-  bridge.send(item.loggedIn ? TOPIC_AUTH_LOGOUT : TOPIC_AUTH_LOGIN, { platform: item.platform })
+  authPending.value = row.id
+  bridge.send(row.loggedIn ? TOPIC_AUTH_LOGOUT : TOPIC_AUTH_LOGIN, { platform: row.id })
 }
 
-/** 登出结果:回执平台清进行中标记并刷新快照。 */
+/**
+ * 登录态变化后重校验平台选择:当前平台仍在可见清单则不动;否则切到
+ * 门控默认项(已登录第一项/力扣中国兜底)并刷新公司与列表。
+ */
+function revalidatePlatformSelection(): void {
+  const visible = visiblePlatforms.value
+  if (visible.length === 0) {
+    if (platform.value === '') return
+    platform.value = ''
+    company.value = ''
+    period.value = DEFAULT_PERIOD
+    companies.value = []
+    reload()
+    return
+  }
+  if (visible.some((entry) => entry.id === platform.value)) return
+  platform.value = pickDefaultPlatform(visible)
+  void handlePlatformChange()
+}
+
+/** 重拉平台清单 + 登录快照(登录/登出结果事件后)。 */
+async function reloadAuthAndPlatforms(): Promise<void> {
+  const [platformsResult, authResult] = await Promise.allSettled([
+    fetchPlatforms(),
+    fetchAuthStatus(),
+  ])
+  if (platformsResult.status === 'fulfilled') platforms.value = platformsResult.value
+  if (authResult.status === 'fulfilled') {
+    authItems.value = authResult.value
+    authKnown.value = true
+  }
+  revalidatePlatformSelection()
+}
+
+/** WP48:静默恢复重启前登录态(POST /api/auth/refresh,不弹窗),成功后刷新门控。 */
+async function silentRestore(): Promise<void> {
+  try {
+    authItems.value = await requestAuthRefresh()
+    authKnown.value = true
+    revalidatePlatformSelection()
+  } catch {
+    // 静默恢复失败(网络/端点未装配)保持 GET status 快照,不打扰用户
+  }
+}
+
+/** 登出结果:回执平台清进行中标记并重拉两接口。 */
 function handleLogoutResult(payload: unknown): void {
   const result = payload as { platform?: string }
   if (!result || result.platform !== authPending.value) return
   authPending.value = ''
-  refreshAuthStatus()
+  void reloadAuthAndPlatforms()
 }
 
 /** 浏览链路登录入口(1.0.x):Kotlin 弹平台登录对话框,结果经 auth:login-result 回推。 */
@@ -130,14 +201,14 @@ function requestLogin(): void {
   bridge.send(TOPIC_AUTH_LOGIN, { platform: platform.value })
 }
 
-/** 登录结果:徽标反馈(任意平台)+ 当前平台重载列表(登录态已注入 cookie)。 */
+/** 登录结果:重拉两接口 + 当前平台重载列表(登录态已注入 cookie)。 */
 function handleLoginResult(payload: unknown): void {
   const result = payload as { ok?: boolean; platform?: string }
   if (!result) return
   if (result.platform === authPending.value) {
     authPending.value = ''
   }
-  refreshAuthStatus()
+  void reloadAuthAndPlatforms()
   if (result.platform !== platform.value) return
   loginPending.value = false
   if (result.ok) {
@@ -145,11 +216,18 @@ function handleLoginResult(payload: unknown): void {
   }
 }
 
-const DIFFICULTY_LABELS: Record<string, string> = {
-  '': 'All difficulties',
-  easy: 'Easy',
-  medium: 'Medium',
-  hard: 'Hard',
+// ---------------------------------------------------------------------
+// WP49:子视图切换(平台题库｜本地搜索;状态本地保持)
+// ---------------------------------------------------------------------
+
+type Subview = 'platform' | 'search'
+const subview = ref<Subview>('platform')
+/** 本地搜索子视图惰性挂载(首次切换才建),之后 v-show 保持组件状态。 */
+const searchMounted = ref(false)
+
+function switchSubview(next: Subview): void {
+  subview.value = next
+  if (next === 'search') searchMounted.value = true
 }
 
 function describeError(cause: unknown): string {
@@ -237,15 +315,27 @@ let detachLogoutResult: (() => void) | null = null
 onMounted(async () => {
   detachLoginResult = bridge.on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
   detachLogoutResult = bridge.on(TOPIC_AUTH_LOGOUT_RESULT, handleLogoutResult)
-  refreshAuthStatus()
-  try {
-    platforms.value = await fetchPlatforms()
-    platform.value = platforms.value[0]?.id ?? ''
+
+  // WP49 加载时序:先 GET status + 平台清单(瞬时渲染账号区与下拉)——
+  // status 失败不门控(authKnown=false);平台清单失败进错误态
+  const [platformsResult, authResult] = await Promise.allSettled([
+    fetchPlatforms(),
+    fetchAuthStatus(),
+  ])
+  if (platformsResult.status === 'fulfilled') platforms.value = platformsResult.value
+  else error.value = describeError(platformsResult.reason)
+  if (authResult.status === 'fulfilled') {
+    authItems.value = authResult.value
+    authKnown.value = true
+  }
+  if (visiblePlatforms.value.length > 0) {
+    platform.value = pickDefaultPlatform(visiblePlatforms.value)
     await refreshCompanies()
     reload()
-  } catch (cause) {
-    error.value = describeError(cause)
   }
+
+  // 异步静默恢复(POST /api/auth/refresh):不阻塞首屏,结果刷新账号区与门控
+  void silentRestore()
 })
 
 onUnmounted(() => {
@@ -257,166 +347,204 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppShell title="Problems" subtitle="Browse and open problems by platform, keyword and difficulty.">
-    <!-- WP38:账号条(原版 AccountActionGroup 对齐)——已登录高亮点击登出,未登录灰点击登录 -->
-    <div v-if="authItems.length > 0" class="accounts" aria-label="account status">
-      <button
-        v-for="item in authItems"
-        :key="item.platform"
-        type="button"
-        class="accounts__badge"
-        :class="{ 'accounts__badge--on': item.loggedIn }"
-        :disabled="authPending !== ''"
-        :title="badgeTitle(item)"
-        @click="handleBadgeClick(item)"
+  <AppShell title="题库" subtitle="按平台浏览与筛选题目;平台需登录后可选,本地数据可在「本地搜索」跨平台检索。">
+    <!-- WP49:账号区——全部平台常驻;已登录=平台名+用户名+「退出」,未登录=「登录」 -->
+    <div v-if="accountRows.length > 0" class="accounts" aria-label="账号状态">
+      <div
+        v-for="row in accountRows"
+        :key="row.id"
+        class="accounts__item"
+        :class="{ 'accounts__item--on': row.loggedIn }"
       >
-        <span class="accounts__platform">{{ displayNameOf(item.platform) }}</span>
-        <span v-if="item.userId" class="accounts__user">{{ item.userId }}</span>
-        <span v-if="authPending === item.platform" class="accounts__pending">…</span>
-      </button>
-    </div>
-
-    <form class="filters" @submit.prevent="reload">
-      <label class="filters__field">
-        <span>Platform</span>
-        <select v-model="platform" @change="handlePlatformChange">
-          <option v-for="entry in platforms" :key="entry.id" :value="entry.id">
-            {{ entry.displayName }}
-          </option>
-        </select>
-      </label>
-      <label class="filters__field filters__field--grow">
-        <span>Keyword</span>
-        <input
-          v-model="keyword"
-          type="search"
-          placeholder="Search by title or id…"
-        />
-      </label>
-      <label class="filters__field">
-        <span>Difficulty</span>
-        <select v-model="difficulty" @change="reload">
-          <option v-for="option in DIFFICULTY_OPTIONS" :key="option" :value="option">
-            {{ DIFFICULTY_LABELS[option] }}
-          </option>
-        </select>
-      </label>
-      <!-- WP37:状态筛选为本地过滤(仅作用于已加载项),不触发请求 -->
-      <label class="filters__field">
-        <span>Status</span>
-        <select v-model="statusFilter">
-          <option value="">All statuses</option>
-          <option value="AC">Solved</option>
-          <option value="TRIED">Tried</option>
-          <option value="UNSOLVED">Unsolved</option>
-        </select>
-      </label>
-      <!-- WP42:公司下拉(仅 CompanyQueryCapable 平台渲染;选中后走公司题单查询) -->
-      <label v-if="companies.length > 0" class="filters__field">
-        <span>Company</span>
-        <select v-model="company" @change="reload">
-          <option value="">All companies</option>
-          <option v-for="entry in companies" :key="entry.slug" :value="entry.slug">
-            {{ entry.name }} ({{ entry.questionCount }})
-          </option>
-        </select>
-      </label>
-      <!-- WP42:面试期间(仅公司模式出现;默认 30 天,旧 UI 默认值) -->
-      <label v-if="companies.length > 0 && company !== ''" class="filters__field">
-        <span>Period</span>
-        <select v-model="period" @change="reload">
-          <option v-for="option in PERIOD_OPTIONS" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-      </label>
-      <div class="filters__actions">
-        <button type="submit" :disabled="loading || !platform">Search</button>
-        <button type="button" :disabled="loading" @click="resetFilters">Reset</button>
-      </div>
-    </form>
-
-    <p v-if="statusFilter !== ''" class="filter-note">
-      Status filter applies to loaded items only — load more to expand the scope.
-    </p>
-
-    <p v-if="company !== '' && keyword.trim() !== ''" class="filter-note">
-      Keyword is ignored in company list mode (platform limitation).
-    </p>
-
-    <p v-if="error" class="state state--error" role="alert">
-      {{ error }}
-      <button
-        v-if="errorCode === 'auth-expired'"
-        type="button"
-        class="state__login"
-        :disabled="loginPending"
-        @click="requestLogin"
-      >
-        {{ loginPending ? 'Logging in…' : 'Login' }}
-      </button>
-    </p>
-    <p v-else-if="loading && items.length === 0" class="state">Loading problems…</p>
-    <p v-else-if="!loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
-      No loaded items match the status filter. Load more or clear the filter.
-    </p>
-    <p v-else-if="!loading && items.length === 0" class="state">No problems matched. Adjust the filters and retry.</p>
-
-    <ul v-if="visibleItems.length > 0" class="problems" aria-label="problem list">
-      <li v-for="item in visibleItems" :key="item.remoteId">
-        <!-- 修复反馈:单行行布局(状态徽标 | 题号 | 标题 | 标签 | 难度),各行等高、标题严格对齐 -->
-        <button type="button" class="problems__row" @click="openProblem(item)">
-          <span
-            class="status-icon"
-            :class="`status-icon--${statusIconOf(item).kind}`"
-            :title="statusIconOf(item).title"
-            :aria-label="statusIconOf(item).title || undefined"
-          >
-            <svg
-              v-if="statusIconOf(item).kind === 'locked'"
-              class="status-icon__lock"
-              viewBox="0 0 16 16"
-              width="12"
-              height="12"
-              aria-hidden="true"
-            >
-              <path
-                d="M4.5 7V5a3.5 3.5 0 1 1 7 0v2h1v7h-9V7h1zm2 0h3V5a1.5 1.5 0 1 0-3 0v2z"
-                fill="currentColor"
-              />
-            </svg>
-            <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
-          </span>
-          <span class="problems__remote">{{ item.remoteId }}</span>
-          <span class="problems__title">{{ item.title }}</span>
-          <span class="problems__meta">
-            <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.join(' · ') }}</span>
-            <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
-          </span>
+        <span class="accounts__platform">{{ row.displayName }}</span>
+        <span v-if="row.loggedIn && row.userId" class="accounts__user">{{ row.userId }}</span>
+        <button
+          type="button"
+          class="accounts__action"
+          :disabled="authPending !== ''"
+          @click="handleAuthAction(row)"
+        >
+          {{ authPending === row.id ? '处理中…' : row.loggedIn ? '退出' : '登录' }}
         </button>
-      </li>
-    </ul>
-
-    <div v-if="items.length > 0" class="pager">
-      <span class="pager__count">
-        {{ statusFilter === '' ? items.length : `${visibleItems.length} of ${items.length}` }} loaded
-      </span>
-      <button
-        v-if="hasMore"
-        type="button"
-        class="pager__more"
-        :disabled="loading"
-        @click="loadPage(true)"
-      >
-        {{ loading ? 'Loading…' : 'Load more' }}
-      </button>
-      <span v-else class="pager__done">end of results</span>
+      </div>
     </div>
+
+    <!-- WP49:子视图切换(平台题库｜本地搜索,互斥显示、状态本地保持) -->
+    <div class="subviews" role="tablist" aria-label="子视图切换">
+      <button
+        type="button"
+        class="subviews__tab"
+        :class="{ 'subviews__tab--on': subview === 'platform' }"
+        role="tab"
+        :aria-selected="subview === 'platform'"
+        @click="switchSubview('platform')"
+      >
+        平台题库
+      </button>
+      <button
+        type="button"
+        class="subviews__tab"
+        :class="{ 'subviews__tab--on': subview === 'search' }"
+        role="tab"
+        :aria-selected="subview === 'search'"
+        @click="switchSubview('search')"
+      >
+        本地搜索
+      </button>
+    </div>
+
+    <!-- 平台题库子视图 -->
+    <div v-show="subview === 'platform'" class="platform-view">
+      <!-- WP49:全未登录回落提示条 -->
+      <p v-if="showFallbackHint" class="fallback-hint">
+        当前无已登录平台,默认展示力扣中国;在上方账号区登录后即可切换其他平台。
+      </p>
+
+      <form class="filters" @submit.prevent="reload">
+        <label class="filters__field">
+          <span>平台</span>
+          <select v-model="platform" @change="handlePlatformChange">
+            <option v-for="entry in visiblePlatforms" :key="entry.id" :value="entry.id">
+              {{ entry.displayName }}
+            </option>
+          </select>
+        </label>
+        <label class="filters__field filters__field--grow">
+          <span>关键字</span>
+          <input
+            v-model="keyword"
+            type="search"
+            placeholder="按题号或标题搜索…"
+          />
+        </label>
+        <label class="filters__field">
+          <span>难度</span>
+          <select v-model="difficulty" @change="reload">
+            <option v-for="option in DIFFICULTY_OPTIONS" :key="option" :value="option">
+              {{ DIFFICULTY_LABELS[option] }}
+            </option>
+          </select>
+        </label>
+        <!-- WP37:状态筛选为本地过滤(仅作用于已加载项),不触发请求 -->
+        <label class="filters__field">
+          <span>状态</span>
+          <select v-model="statusFilter">
+            <option value="">全部状态</option>
+            <option value="AC">已解决</option>
+            <option value="TRIED">已尝试</option>
+            <option value="UNSOLVED">未解决</option>
+          </select>
+        </label>
+        <!-- WP42:公司下拉(仅 CompanyQueryCapable 平台渲染;选中后走公司题单查询) -->
+        <label v-if="companies.length > 0" class="filters__field">
+          <span>公司</span>
+          <select v-model="company" @change="reload">
+            <option value="">全部公司</option>
+            <option v-for="entry in companies" :key="entry.slug" :value="entry.slug">
+              {{ entry.name }} ({{ entry.questionCount }})
+            </option>
+          </select>
+        </label>
+        <!-- WP42:面试期间(仅公司模式出现;默认 30 天,旧 UI 默认值) -->
+        <label v-if="companies.length > 0 && company !== ''" class="filters__field">
+          <span>期间</span>
+          <select v-model="period" @change="reload">
+            <option v-for="option in PERIOD_OPTIONS" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </label>
+        <div class="filters__actions">
+          <button type="submit" :disabled="loading || !platform">搜索</button>
+          <button type="button" :disabled="loading" @click="resetFilters">重置</button>
+        </div>
+      </form>
+
+      <p v-if="statusFilter !== ''" class="filter-note">
+        状态筛选仅作用于已加载条目——加载更多可扩大范围。
+      </p>
+
+      <p v-if="company !== '' && keyword.trim() !== ''" class="filter-note">
+        公司题单模式下关键字被忽略(平台限制)。
+      </p>
+
+      <p v-if="error" class="state state--error" role="alert">
+        {{ error }}
+        <button
+          v-if="errorCode === 'auth-expired'"
+          type="button"
+          class="state__login"
+          :disabled="loginPending"
+          @click="requestLogin"
+        >
+          {{ loginPending ? '登录中…' : '登录' }}
+        </button>
+      </p>
+      <p v-else-if="loading && items.length === 0" class="state">正在加载题目…</p>
+      <p v-else-if="!loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
+        没有已加载条目匹配状态筛选,请加载更多或清除筛选。
+      </p>
+      <p v-else-if="!loading && items.length === 0" class="state">没有匹配的题目,请调整筛选后重试。</p>
+
+      <ul v-if="visibleItems.length > 0" class="problems" aria-label="题目列表">
+        <li v-for="item in visibleItems" :key="item.remoteId">
+          <!-- 修复反馈:单行行布局(状态徽标 | 题号 | 标题 | 标签 | 难度),各行等高、标题严格对齐 -->
+          <button type="button" class="problems__row" @click="openProblem(item)">
+            <span
+              class="status-icon"
+              :class="`status-icon--${statusIconOf(item).kind}`"
+              :title="statusIconOf(item).title"
+              :aria-label="statusIconOf(item).title || undefined"
+            >
+              <svg
+                v-if="statusIconOf(item).kind === 'locked'"
+                class="status-icon__lock"
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                aria-hidden="true"
+              >
+                <path
+                  d="M4.5 7V5a3.5 3.5 0 1 1 7 0v2h1v7h-9V7h1zm2 0h3V5a1.5 1.5 0 1 0-3 0v2z"
+                  fill="currentColor"
+                />
+              </svg>
+              <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
+            </span>
+            <span class="problems__remote">{{ item.remoteId }}</span>
+            <span class="problems__title">{{ item.title }}</span>
+            <span class="problems__meta">
+              <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.join(' · ') }}</span>
+              <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
+            </span>
+          </button>
+        </li>
+      </ul>
+
+      <div v-if="items.length > 0" class="pager">
+        <span class="pager__count">
+          已加载 {{ statusFilter === '' ? items.length : `${visibleItems.length}/${items.length}` }} 条
+        </span>
+        <button
+          v-if="hasMore"
+          type="button"
+          class="pager__more"
+          :disabled="loading"
+          @click="loadPage(true)"
+        >
+          {{ loading ? '正在加载…' : '加载更多' }}
+        </button>
+        <span v-else class="pager__done">已到底部</span>
+      </div>
+    </div>
+
+    <!-- 本地搜索子视图(WP49 复用 SearchPanel;/search/ 独立路由同款) -->
+    <SearchPanel v-if="searchMounted" v-show="subview === 'search'" />
   </AppShell>
 </template>
 
 <style scoped>
-/* WP38:账号条(主题变量配色;已登录=平台名高亮,未登录=灰) */
+/* WP49:账号区(全部平台常驻;已登录=高亮,未登录=灰) */
 .accounts {
   display: flex;
   flex-wrap: wrap;
@@ -424,7 +552,7 @@ onUnmounted(() => {
   margin-bottom: 10px;
 }
 
-.accounts__badge {
+.accounts__item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -434,20 +562,34 @@ onUnmounted(() => {
   background: var(--cq-panel);
   color: var(--cq-muted);
   font-size: 12px;
-  cursor: pointer;
 }
 
-.accounts__badge--on {
+.accounts__item--on {
   border-color: var(--cq-accent);
   background: var(--cq-panel-raised);
   color: var(--cq-accent);
 }
 
-.accounts__badge--on .accounts__platform {
+.accounts__item--on .accounts__platform {
   font-weight: 600;
 }
 
-.accounts__badge:disabled {
+/* WP49:显式登录/退出按钮(替代点击整行切换) */
+.accounts__action {
+  padding: 1px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accounts__action:hover {
+  border-color: var(--cq-accent);
+}
+
+.accounts__action:disabled {
   opacity: 0.6;
   cursor: default;
 }
@@ -456,8 +598,45 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-.accounts__pending {
+/* WP49:子视图切换 tabs */
+.subviews {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--cq-border);
+}
+
+.subviews__tab {
+  padding: 4px 14px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
   color: var(--cq-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.subviews__tab--on {
+  border-color: var(--cq-border);
+  background: var(--cq-panel-raised);
+  color: var(--cq-accent);
+  font-weight: 600;
+}
+
+.subviews__tab:not(.subviews__tab--on):hover {
+  color: var(--cq-fg);
+}
+
+/* WP49:全未登录回落提示条 */
+.fallback-hint {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--cq-accent);
+  border-radius: 8px;
+  background: var(--cq-panel);
+  color: var(--cq-accent);
+  font-size: 12px;
 }
 
 .filters {

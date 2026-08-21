@@ -1,6 +1,8 @@
 /**
  * WP20:problems 页真实列表渲染(端点 mock)——行渲染/难度徽标/分页追加/
  * 点击行发 nav:openProblem 桥消息/错误态。
+ * WP49:账号区显式登录/退出按钮、平台下拉门控与力扣中国回落、静默恢复时序、
+ * 「平台题库｜本地搜索」子视图切换;文案中文化。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -239,15 +241,15 @@ describe('problems page', () => {
     const rows = wrapper.findAll('.problems__row')
     expect(rows.length).toBe(4)
     expect(rows[0].find('.status-icon--ac').exists()).toBe(true)
-    expect(rows[0].find('.status-icon').attributes('title')).toBe('Solved')
+    expect(rows[0].find('.status-icon').attributes('title')).toBe('已解决')
     expect(rows[1].find('.status-icon--tried').exists()).toBe(true)
-    expect(rows[1].find('.status-icon').attributes('title')).toBe('Tried')
+    expect(rows[1].find('.status-icon').attributes('title')).toBe('已尝试')
     // 未做:占位图标存在但无提示文案(原版 Unsolved 渲染空)
     expect(rows[2].find('.status-icon--unsolved').exists()).toBe(true)
     expect(rows[2].find('.status-icon').attributes('title')).toBe('')
     // 会员题:锁优先于刷题状态(即使 status=AC)
     expect(rows[3].find('.status-icon--locked').exists()).toBe(true)
-    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('Premium problem (locked)')
+    expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('会员题(已锁定)')
     expect(rows[3].find('.status-icon--ac').exists()).toBe(false)
   })
 
@@ -298,7 +300,7 @@ describe('problems page', () => {
     expect(wrapper.find('.filter-note').exists()).toBe(false)
     await wrapper.findAll('select')[2].setValue('AC')
     expect(wrapper.find('.filter-note').exists()).toBe(true)
-    expect(wrapper.find('.filter-note').text()).toContain('loaded items')
+    expect(wrapper.find('.filter-note').text()).toContain('已加载条目')
 
     await wrapper.findAll('select')[2].setValue('')
     expect(wrapper.find('.filter-note').exists()).toBe(false)
@@ -313,7 +315,7 @@ describe('problems page', () => {
     await wrapper.findAll('select')[2].setValue('TRIED')
 
     expect(wrapper.findAll('.problems__row').length).toBe(0)
-    expect(wrapper.find('.state').text()).toContain('No loaded items match the status filter')
+    expect(wrapper.find('.state').text()).toContain('没有已加载条目匹配状态筛选')
   })
 
   it('reset clears the status filter along with the other filters', async () => {
@@ -324,17 +326,17 @@ describe('problems page', () => {
     await wrapper.findAll('select')[2].setValue('TRIED')
     expect(wrapper.findAll('.problems__row').length).toBe(1)
 
-    await wrapper.findAll('button').find((btn) => btn.text() === 'Reset')!.trigger('click')
+    await wrapper.findAll('button').find((btn) => btn.text() === '重置')!.trigger('click')
     await flushPromises()
 
     expect(wrapper.findAll('.problems__row').length).toBe(4)
   })
 
   // -----------------------------------------------------------------
-  // WP38:账号条(每平台徽标;点击登录/登出)
+  // WP38/WP49:账号区(全部平台常驻;显式「登录/退出」按钮)
   // -----------------------------------------------------------------
 
-  it('renders account badges with logged-in highlight and muted logged-out', async () => {
+  it('renders account rows for every platform with explicit login/logout buttons', async () => {
     mockListPage(ROWS, false)
     handler = withAuthStatus(handler, [
       { platform: 'leetcode', loggedIn: true, userId: null },
@@ -343,16 +345,17 @@ describe('problems page', () => {
     const wrapper = mount(ProblemsApp)
     await flushPromises()
 
-    const badges = wrapper.findAll('.accounts__badge')
-    expect(badges.length).toBe(2)
-    expect(badges[0].classes()).toContain('accounts__badge--on')
-    expect(badges[0].attributes('title')).toContain('log out')
-    expect(badges[0].text()).toContain('LeetCode')
-    expect(badges[1].classes()).not.toContain('accounts__badge--on')
-    expect(badges[1].attributes('title')).toContain('log in')
+    const rows = wrapper.findAll('.accounts__item')
+    expect(rows.length).toBe(2)
+    expect(rows[0].classes()).toContain('accounts__item--on')
+    expect(rows[0].text()).toContain('LeetCode')
+    expect(rows[0].find('.accounts__action').text()).toBe('退出')
+    expect(rows[1].classes()).not.toContain('accounts__item--on')
+    expect(rows[1].text()).toContain('力扣')
+    expect(rows[1].find('.accounts__action').text()).toBe('登录')
   })
 
-  it('shows the platform userId on a logged-in badge when available', async () => {
+  it('shows the platform userId on a logged-in row when available', async () => {
     mockListPage(ROWS, false)
     handler = withAuthStatus(handler, [
       { platform: 'leetcode', loggedIn: true, userId: 'alice' },
@@ -360,11 +363,11 @@ describe('problems page', () => {
     const wrapper = mount(ProblemsApp)
     await flushPromises()
 
-    const badge = wrapper.find('.accounts__badge')
-    expect(badge.text()).toContain('alice')
+    const row = wrapper.find('.accounts__item')
+    expect(row.text()).toContain('alice')
   })
 
-  it('sends auth:login when clicking a logged-out badge', async () => {
+  it('sends auth:login when clicking the login button of a logged-out platform', async () => {
     mockListPage(ROWS, false)
     handler = withAuthStatus(handler, [
       { platform: 'leetcode', loggedIn: true, userId: null },
@@ -378,12 +381,12 @@ describe('problems page', () => {
     const wrapper = mount(ProblemsApp)
     await flushPromises()
 
-    await wrapper.findAll('.accounts__badge')[1].trigger('click')
+    await wrapper.findAll('.accounts__action')[1].trigger('click')
 
     expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGIN, payload: { platform: 'leetcodecn' } }])
   })
 
-  it('sends auth:logout for a logged-in badge and refreshes status after the result', async () => {
+  it('sends auth:logout when clicking the logout button and refreshes status after the result', async () => {
     mockListPage(ROWS, false)
     const statusHits = { value: 0 }
     handler = (url) => {
@@ -405,7 +408,7 @@ describe('problems page', () => {
     await flushPromises()
     expect(statusHits.value).toBe(1)
 
-    await wrapper.find('.accounts__badge').trigger('click')
+    await wrapper.find('.accounts__action').trigger('click')
     expect(sends).toEqual([{ topic: TOPIC_AUTH_LOGOUT, payload: { platform: 'leetcode' } }])
 
     window.__cqBridge!.emit({
@@ -417,7 +420,7 @@ describe('problems page', () => {
     expect(statusHits.value).toBe(2)
   })
 
-  it('refreshes auth status after auth:login-result from a badge login', async () => {
+  it('refreshes auth status after auth:login-result from an account-area login', async () => {
     mockListPage(ROWS, false)
     const statusHits = { value: 0 }
     handler = (url) => {
@@ -434,7 +437,7 @@ describe('problems page', () => {
     const wrapper = mount(ProblemsApp)
     await flushPromises()
 
-    await wrapper.find('.accounts__badge').trigger('click')
+    await wrapper.find('.accounts__action').trigger('click')
     window.__cqBridge!.emit({
       topic: TOPIC_AUTH_LOGIN_RESULT,
       payload: JSON.stringify({ ok: true, platform: 'leetcode' }),
@@ -490,11 +493,11 @@ describe('problems page', () => {
     // 平台(0)/难度(1)/状态(2)/公司(3):leetcode 有公司能力 → 4 个下拉
     const selects = wrapper.findAll('select')
     expect(selects.length).toBe(4)
-    expect(selects[3].text()).toContain('All companies')
+    expect(selects[3].text()).toContain('全部公司')
     expect(selects[3].text()).toContain('Amazon (40)')
     expect(selects[3].text()).toContain('Google (30)')
     // 未选公司:期间下拉不出现
-    expect(selects[3].text()).not.toContain('Last 30 days')
+    expect(selects[3].text()).not.toContain('近 30 天')
 
     // 切到无公司能力的平台:公司下拉隐藏,剩余 3 个下拉
     await selects[0].setValue('codeforces')
@@ -526,8 +529,8 @@ describe('problems page', () => {
     await flushPromises()
     // 公司模式:平台(0)/难度(1)/状态(2)/公司(3)/期间(4)
     const periodSelect = wrapper.findAll('select')[4]
-    expect(periodSelect.text()).toContain('Last 30 days')
-    expect(periodSelect.text()).toContain('All time')
+    expect(periodSelect.text()).toContain('近 30 天')
+    expect(periodSelect.text()).toContain('全部时间')
 
     await periodSelect.setValue('all')
     await flushPromises()
@@ -566,7 +569,7 @@ describe('problems page', () => {
     await flushPromises()
 
     const notes = wrapper.findAll('.filter-note').map((note) => note.text())
-    expect(notes.some((text) => text.includes('Keyword is ignored'))).toBe(true)
+    expect(notes.some((text) => text.includes('公司题单模式下关键字被忽略'))).toBe(true)
   })
 
   it('clears the company filter on reset', async () => {
@@ -579,10 +582,168 @@ describe('problems page', () => {
     await flushPromises()
     expect(listCalls[listCalls.length - 1]).toContain('company=amazon')
 
-    await wrapper.findAll('button').find((btn) => btn.text() === 'Reset')!.trigger('click')
+    await wrapper.findAll('button').find((btn) => btn.text() === '重置')!.trigger('click')
     await flushPromises()
 
     expect(listCalls[listCalls.length - 1]).not.toContain('company=')
+  })
+
+  // -----------------------------------------------------------------
+  // WP49:平台下拉门控 + 力扣中国回落 + 静默恢复 + 子视图切换
+  // -----------------------------------------------------------------
+
+  const GATE_PLATFORMS = [
+    { id: 'leetcode', displayName: 'LeetCode' },
+    { id: 'leetcodecn', displayName: '力扣' },
+    { id: 'codeforces', displayName: 'Codeforces' },
+  ]
+
+  /** 门控用 handler:三平台 + 列表按 platform 参数回显;listCalls 记录列表请求。 */
+  function gateHandler(listCalls?: string[]): FetchHandler {
+    return (url) => {
+      if (url.startsWith('/api/platforms')) {
+        return { status: 200, body: { platforms: GATE_PLATFORMS } }
+      }
+      if (url.startsWith('/api/problems')) {
+        listCalls?.push(url)
+        const platform = new URLSearchParams(url.split('?')[1] ?? '').get('platform') ?? 'leetcode'
+        return { status: 200, body: { platform, offset: 0, limit: 50, items: ROWS, hasMore: false } }
+      }
+      return undefined
+    }
+  }
+
+  it('filters the platform dropdown to logged-in platforms only', async () => {
+    const listCalls: string[] = []
+    handler = withAuthStatus(gateHandler(listCalls), [
+      { platform: 'leetcode', loggedIn: true, userId: 'u1' },
+      { platform: 'leetcodecn', loggedIn: false, userId: null },
+      { platform: 'codeforces', loggedIn: true, userId: null },
+    ])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const select = wrapper.findAll('select')[0]
+    expect(select.text()).toContain('LeetCode')
+    expect(select.text()).toContain('Codeforces')
+    expect(select.text()).not.toContain('力扣')
+    expect(wrapper.find('.fallback-hint').exists()).toBe(false)
+    // 默认选中第一个已登录平台
+    expect(listCalls[0]).toContain('platform=leetcode')
+  })
+
+  it('falls back to 力扣中国 with a hint when no platform is logged in', async () => {
+    const listCalls: string[] = []
+    handler = withAuthStatus(gateHandler(listCalls), [
+      { platform: 'leetcode', loggedIn: false, userId: null },
+      { platform: 'leetcodecn', loggedIn: false, userId: null },
+      { platform: 'codeforces', loggedIn: false, userId: null },
+    ])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const select = wrapper.findAll('select')[0]
+    expect(select.text()).toContain('力扣')
+    expect(select.text()).not.toContain('LeetCode')
+    expect(select.text()).not.toContain('Codeforces')
+    expect(wrapper.find('.fallback-hint').text()).toContain('当前无已登录平台,默认展示力扣中国')
+    expect(listCalls[0]).toContain('platform=leetcodecn')
+  })
+
+  it('keeps all platforms when the auth status endpoint is unavailable', async () => {
+    handler = gateHandler()
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const select = wrapper.findAll('select')[0]
+    expect(select.text()).toContain('LeetCode')
+    expect(select.text()).toContain('力扣')
+    expect(select.text()).toContain('Codeforces')
+    expect(wrapper.find('.fallback-hint').exists()).toBe(false)
+  })
+
+  it('re-gates platforms after the silent auth refresh restores a login', async () => {
+    const listCalls: string[] = []
+    const refreshed = { value: false }
+    handler = (url) => {
+      if (url.startsWith('/api/auth/status')) {
+        return {
+          status: 200,
+          body: {
+            items: GATE_PLATFORMS.map((entry) => ({
+              platform: entry.id,
+              loggedIn: false,
+              userId: null,
+            })),
+          },
+        }
+      }
+      if (url.startsWith('/api/auth/refresh')) {
+        refreshed.value = true
+        return {
+          status: 200,
+          body: { items: [{ platform: 'leetcode', loggedIn: true, userId: 'restored' }] },
+        }
+      }
+      return gateHandler(listCalls)(url)
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    // 静默恢复后:门控生效,下拉仅剩 LeetCode,默认选中并刷新列表
+    expect(refreshed.value).toBe(true)
+    const select = wrapper.findAll('select')[0]
+    expect(select.text()).toContain('LeetCode')
+    expect(select.text()).not.toContain('力扣')
+    expect(wrapper.find('.fallback-hint').exists()).toBe(false)
+    expect(listCalls[listCalls.length - 1]).toContain('platform=leetcode')
+    expect(wrapper.find('.accounts__item').text()).toContain('restored')
+  })
+
+  it('switches between 平台题库 and 本地搜索 subviews keeping both alive', async () => {
+    const searchItems = [
+      {
+        platform: 'leetcode',
+        remoteId: 'two-sum',
+        title: 'Two Sum',
+        difficulty: 'easy',
+        url: 'u',
+        tags: [],
+        matchedSources: ['title'],
+      },
+    ]
+    handler = (url) => {
+      if (url.startsWith('/api/search')) {
+        return { status: 200, body: { offset: 0, limit: 50, total: 1, items: searchItems, hasMore: false, tags: [] } }
+      }
+      if (url.startsWith('/api/tags')) {
+        return { status: 200, body: { tags: [] } }
+      }
+      return mockListPageHandler(url)
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    // 初始:平台题库子视图;本地搜索惰性未挂载
+    // (jsdom getComputedStyle 不反映 inline display,isVisible 不可用,断 inline style)
+    expect(wrapper.find('.platform-view').attributes('style')).toBeUndefined()
+    expect(wrapper.find('.search-panel').exists()).toBe(false)
+
+    const tabs = wrapper.findAll('.subviews__tab')
+    expect(tabs.map((tab) => tab.text())).toEqual(['平台题库', '本地搜索'])
+    await tabs[1].trigger('click')
+    await flushPromises()
+
+    // 互斥显示:平台视图隐藏,搜索面板出现并渲染结果
+    expect(wrapper.find('.platform-view').attributes('style')).toContain('display: none')
+    expect(wrapper.find('.search-panel').attributes('style')).toBeUndefined()
+    expect(wrapper.findAll('.results__row').length).toBe(1)
+
+    // 切回:平台视图保留原列表(状态本地保持)
+    await wrapper.findAll('.subviews__tab')[0].trigger('click')
+    expect(wrapper.find('.platform-view').attributes('style')).not.toContain('display: none')
+    expect(wrapper.find('.search-panel').attributes('style')).toContain('display: none')
+    expect(wrapper.findAll('.problems__row').length).toBe(2)
   })
 })
 

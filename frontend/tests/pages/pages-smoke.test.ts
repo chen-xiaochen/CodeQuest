@@ -12,10 +12,10 @@ import ProblemViewApp from '../../src/pages/problem-view/App.vue'
 import SubmissionsApp from '../../src/pages/submissions/App.vue'
 
 const CASES = [
-  ['problems', ProblemsApp, 'Problems'],
+  ['problems', ProblemsApp, '题库'],
   ['contest', ContestApp, 'Contest'],
   ['stats', StatsApp, 'Statistics'],
-  ['search', SearchApp, 'Search'],
+  ['search', SearchApp, '本地搜索'],
   ['problem-view', ProblemViewApp, 'Problem View'],
   ['submissions', SubmissionsApp, 'Submissions'],
 ] as const
