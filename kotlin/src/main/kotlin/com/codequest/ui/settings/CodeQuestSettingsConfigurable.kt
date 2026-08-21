@@ -11,6 +11,7 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
+import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.bindItem
@@ -23,18 +24,19 @@ import javax.swing.JComponent
 /**
  * CodeQuest 设置面板(WP15 数据库文件夹 / WP39 模板与自定义 CSS):Kotlin UI DSL。
  *
- * ## Templates 区布局选型(WP39)
+ * ## Templates 区布局选型(WP39;WP46 升级双下拉)
  *
- * 「语言下拉 + 单编辑器 + 恢复默认按钮」而非每语言一个编辑器:WorkspaceLanguage
- * 共 5 门语言,逐语言平铺编辑器会把面板撑到数屏高;tab 形态要多一层容器且 reset
- * 时需逐 tab 同步。下拉切换只动一个编辑器,草稿状态集中管理在
- * [TemplateDraftsState](纯 Kotlin 逻辑核,单测覆盖 isModified/归一化/持久化)。
+ * 「风格下拉 + 语言下拉 + 单编辑器 + 恢复默认/帮助按钮」而非逐组合平铺编辑器:
+ * [TemplateStyle] 2 风格 × [WorkspaceLanguage] 5 语言 = 10 组合,平铺会撑到数屏高。
+ * 下拉切换只动一个编辑器,切换 flush 时序/修改判定/归一化/持久化全部集中在
+ * [TemplateDraftsState](纯 Kotlin 逻辑核,单测覆盖 isModified/归一化/持久化/切换时序)。
  * 两个 UI DSL `group` 折叠区承载,默认展开。
  *
  * ## 修改/生效语义
  *
  * - 模板(WP45 显式启用):**空白 = 未配置,非空白 = 已配置**(与内置默认一致也算);
- *   面板暂固定 [TemplateStyle.LEETCODE] 风格(风格下拉归 WP46);
+ *   (风格,语言) 由两个下拉共同选择(WP46,取代 WP45 过渡期固定 LEETCODE 的
+ *   PANEL_TEMPLATE_STYLE 常量);
  *   修改只对**之后创建**的 challenge 生效(两条创建链路经 createChallengeWithTemplate 读取);
  * - 自定义 CSS:仅文本存储(不校验,YAGNI),题面页**下次加载**时经
  *   `/api/custom.css` 拉取注入(端点按请求现读设置,apply 后无需重启)。
@@ -58,6 +60,7 @@ class CodeQuestSettingsConfigurable(
     private val languages = WorkspaceLanguage.ALL
 
     private var folderField: TextFieldWithBrowseButton? = null
+    private var styleComboValue: TemplateStyle = INITIAL_TEMPLATE_STYLE
     private var languageComboValue: WorkspaceLanguage = languages.first()
     private var templateArea: JBTextArea? = null
     private var cssArea: JBTextArea? = null
@@ -97,9 +100,13 @@ class CodeQuestSettingsConfigurable(
             }
 
             group(PluginBundle.message("settings.templates.group")) {
+                row(PluginBundle.message("settings.templates.style.label")) {
+                    comboBox(TemplateStyle.entries.toList(), styleListRenderer())
+                        .bindItem({ styleComboValue }, { style -> style?.let { switchSelection(it, languageComboValue) } })
+                }
                 row(PluginBundle.message("settings.templates.language.label")) {
                     comboBox(languages)
-                        .bindItem({ languageComboValue }, { language -> language?.let(::switchLanguage) })
+                        .bindItem({ languageComboValue }, { language -> language?.let { switchSelection(styleComboValue, it) } })
                 }
                 row {
                     comment(PluginBundle.message("settings.templates.description"))
@@ -109,6 +116,7 @@ class CodeQuestSettingsConfigurable(
                 }.resizableRow()
                 row {
                     button(PluginBundle.message("settings.templates.restoreDefault")) { restoreDefaultTemplate() }
+                    button(PluginBundle.message("settings.templates.help.button")) { TemplateHelpDialog(project).show() }
                 }
             }
 
@@ -127,9 +135,9 @@ class CodeQuestSettingsConfigurable(
         val state = CodeQuestSettings.getInstance(project).state
         val folderModified = folderField?.text?.trim() != state.databaseFolder
         val cssModified = cssArea?.text.orEmpty() != state.customCss
-        // 当前语言的编辑器文本未 flush,按实时值参与判定(与 apply 的 flush 语义一致)
+        // 当前 (风格,语言) 的编辑器文本未 flush,按实时值参与判定(与 apply 的 flush 语义一致)
         val templatesModified =
-            drafts?.isModified(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty()) ?: false
+            drafts?.isModified(styleComboValue, languageComboValue.id, templateArea?.text.orEmpty()) ?: false
         return folderModified || cssModified || templatesModified
     }
 
@@ -138,9 +146,9 @@ class CodeQuestSettingsConfigurable(
         folderField?.text = state.databaseFolder
         drafts = TemplateDraftsState(initial = state.templates)
         cssArea?.text = state.customCss
-        // 不重置语言选择(combo 与 languageComboValue 始终经 switchLanguage 同步),
-        // 仅按新草稿回填当前语言编辑器文本
-        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
+        // 不重置风格/语言选择(combo 与两个 comboValue 始终经 switchSelection 同步),
+        // 仅按新草稿回填当前 (风格,语言) 编辑器文本
+        templateArea?.text = drafts?.editorText(styleComboValue, languageComboValue.id).orEmpty()
     }
 
     override fun apply() {
@@ -154,8 +162,8 @@ class CodeQuestSettingsConfigurable(
                 throw ConfigurationException(PluginBundle.message("settings.databaseFolder.error.notDirectory"))
             }
         }
-        // flush 当前语言编辑器文本后再归一化持久化
-        drafts?.onEditorText(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty())
+        // flush 当前 (风格,语言) 编辑器文本后再归一化持久化
+        drafts?.onEditorText(styleComboValue, languageComboValue.id, templateArea?.text.orEmpty())
         val settings = CodeQuestSettings.getInstance(project)
         val effectiveFile = settings.updateDatabaseFolder(text)
         settings.updateTemplatesAndCustomCss(
@@ -165,7 +173,7 @@ class CodeQuestSettingsConfigurable(
         // 按新持久化状态刷新草稿基线(否则 apply 后 isModified 仍对旧基线报 true),
         // 并把编辑器回填为规范文本(空覆盖 → 内置默认)
         drafts = TemplateDraftsState(initial = settings.state.templates)
-        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
+        templateArea?.text = drafts?.editorText(styleComboValue, languageComboValue.id).orEmpty()
         // 修复#45 附带加固:切库失败不再判定整个 apply 失败——模板/CSS 已写入 state,
         // 若在此抛异常,设置对话框报"无法保存设置"会让用户误以为**全部**改动未生效;
         // 失败仅记日志(重启后按新路径打开),不阻塞设置保存。
@@ -187,19 +195,44 @@ class CodeQuestSettingsConfigurable(
         drafts = null
     }
 
-    /** 语言切换:旧语言编辑器文本落草稿,新语言回填(覆盖 ?: 内置默认)。 */
-    private fun switchLanguage(newLanguage: WorkspaceLanguage) {
-        if (newLanguage == languageComboValue) return
-        drafts?.onEditorText(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty())
+    /**
+     * 风格/语言切换(WP46):旧 (风格,语言) 编辑器文本落草稿,新组合回填
+     * (覆盖 ?: 内置默认);flush 时序在 [TemplateDraftsState.switchSelection](单测锁定)。
+     */
+    private fun switchSelection(
+        newStyle: TemplateStyle,
+        newLanguage: WorkspaceLanguage,
+    ) {
+        if (newStyle == styleComboValue && newLanguage == languageComboValue) return
+        templateArea?.text =
+            drafts
+                ?.switchSelection(
+                    oldStyle = styleComboValue,
+                    oldLanguageId = languageComboValue.id,
+                    editorText = templateArea?.text.orEmpty(),
+                    newStyle = newStyle,
+                    newLanguageId = newLanguage.id,
+                ).orEmpty()
+        styleComboValue = newStyle
         languageComboValue = newLanguage
-        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, newLanguage.id).orEmpty()
     }
 
     /** 恢复默认(WP45):草稿回填内置默认文本(非空白 = 已配置),编辑器同步;不再清空。 */
     private fun restoreDefaultTemplate() {
-        drafts?.restoreDefault(PANEL_TEMPLATE_STYLE, languageComboValue.id)
-        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
+        drafts?.restoreDefault(styleComboValue, languageComboValue.id)
+        templateArea?.text = drafts?.editorText(styleComboValue, languageComboValue.id).orEmpty()
     }
+
+    /** 风格下拉展示名(bundle 双语;枚举顺序 ACM,LEETCODE)。 */
+    private fun styleLabel(style: TemplateStyle): String =
+        PluginBundle.message(
+            when (style) {
+                TemplateStyle.ACM -> "settings.templates.style.acm"
+                TemplateStyle.LEETCODE -> "settings.templates.style.leetcode"
+            },
+        )
+
+    private fun styleListRenderer() = SimpleListCellRenderer.create<TemplateStyle>("") { style -> styleLabel(style) }
 
     private fun codeTextArea(rows: Int): JBTextArea =
         JBTextArea().apply {
@@ -211,7 +244,7 @@ class CodeQuestSettingsConfigurable(
         const val TEMPLATE_AREA_ROWS = 10
         const val CSS_AREA_ROWS = 5
 
-        /** WP45 编译适配:面板暂固定 LEETCODE 风格(历史默认);风格下拉接入归 WP46。 */
-        val PANEL_TEMPLATE_STYLE = TemplateStyle.LEETCODE
+        /** 面板初始风格 = 历史默认(WP45 过渡期同款;reset 不重置用户选择)。 */
+        val INITIAL_TEMPLATE_STYLE = TemplateStyle.LEETCODE
     }
 }

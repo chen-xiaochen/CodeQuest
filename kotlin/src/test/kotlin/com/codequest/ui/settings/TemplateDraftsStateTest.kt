@@ -153,6 +153,42 @@ class TemplateDraftsStateTest {
     }
 
     @Test
+    fun `switchSelection flushes old editor text and returns new selection text`() {
+        // WP46 面板接线核:风格/语言切换时「先 flush 旧组合实时文本,再回填新组合文本」的时序
+        val state = TemplateDraftsState(initial = mapOf("leetcode:kotlin" to "// my"))
+        // 切风格:(LEETCODE,kotlin) 编辑器实时文本落草稿,返回 (ACM,kotlin) 应展示文本
+        val acmKotlinText =
+            state.switchSelection(
+                oldStyle = TemplateStyle.LEETCODE,
+                oldLanguageId = "kotlin",
+                editorText = "// edited live",
+                newStyle = TemplateStyle.ACM,
+                newLanguageId = "kotlin",
+            )
+        assertEquals(ChallengeTemplates.entryTemplate(TemplateStyle.ACM, "kotlin"), acmKotlinText)
+        assertEquals("// edited live", state.editorText(TemplateStyle.LEETCODE, "kotlin"))
+
+        // 切语言:(ACM,kotlin) 实时文本落草稿,返回 (ACM,java) 应展示文本
+        val acmJavaText =
+            state.switchSelection(TemplateStyle.ACM, "kotlin", "// acm live", TemplateStyle.ACM, "java")
+        assertEquals(ChallengeTemplates.entryTemplate(TemplateStyle.ACM, "java"), acmJavaText)
+        assertEquals("// acm live", state.editorText(TemplateStyle.ACM, "kotlin"))
+        // 第一次切换落的 leetcode:kotlin 草稿不被第二次切换波及(交叉隔离)
+        assertEquals("// edited live", state.editorText(TemplateStyle.LEETCODE, "kotlin"))
+    }
+
+    @Test
+    fun `switchSelection to same combo updates draft and echoes text`() {
+        // 面板 no-op 守卫前的底层语义:同 (风格,语言) 调用 = flush 即回填,文本原样
+        val state = TemplateDraftsState(initial = emptyMap())
+        val echoed =
+            state.switchSelection(TemplateStyle.LEETCODE, "java", "// same sel", TemplateStyle.LEETCODE, "java")
+        assertEquals("// same sel", echoed)
+        assertEquals("// same sel", state.editorText(TemplateStyle.LEETCODE, "java"))
+        assertTrue(state.isModified())
+    }
+
+    @Test
     fun `custom defaults function receives style and language`() {
         val state =
             TemplateDraftsState(

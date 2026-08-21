@@ -85,6 +85,24 @@ class TemplateDraftsState(
     }
 
     /**
+     * 选择切换时序(WP46 面板接线核):风格或语言任一切换时,先把**旧** (风格,语言) 的
+     * 编辑器实时文本落草稿(flush),再返回**新** (风格,语言) 应展示的编辑器文本。
+     *
+     * 抽到本类的原因:面板 Swing 接线无法脱离 IDE 单测,切换 flush 时序在此由
+     * `TemplateDraftsStateTest` 锁定;同 (风格,语言) 调用 = flush 即回填(文本原样)。
+     */
+    fun switchSelection(
+        oldStyle: TemplateStyle,
+        oldLanguageId: String,
+        editorText: String,
+        newStyle: TemplateStyle,
+        newLanguageId: String,
+    ): String {
+        onEditorText(oldStyle, oldLanguageId, editorText)
+        return editorText(newStyle, newLanguageId)
+    }
+
+    /**
      * 草稿的归一化覆盖值:空白 → ""(未配置);非空白 → 原文(与内置默认一致也算已配置,
      * WP45 显式启用语义)。
      *
