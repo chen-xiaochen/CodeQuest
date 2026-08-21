@@ -1,5 +1,6 @@
 package com.codequest.ui.settings
 
+import com.codequest.core.workspace.TemplateStyle
 import com.codequest.core.workspace.WorkspaceLanguage
 import com.codequest.infra.db.DatabaseFolders
 import com.codequest.infra.i18n.PluginBundle
@@ -32,7 +33,8 @@ import javax.swing.JComponent
  *
  * ## 修改/生效语义
  *
- * - 模板:**空白或与内置默认一致 = 无覆盖**(内置来自 ChallengeTemplates);
+ * - 模板(WP45 显式启用):**空白 = 未配置,非空白 = 已配置**(与内置默认一致也算);
+ *   面板暂固定 [TemplateStyle.LEETCODE] 风格(风格下拉归 WP46);
  *   修改只对**之后创建**的 challenge 生效(两条创建链路经 createChallengeWithTemplate 读取);
  * - 自定义 CSS:仅文本存储(不校验,YAGNI),题面页**下次加载**时经
  *   `/api/custom.css` 拉取注入(端点按请求现读设置,apply 后无需重启)。
@@ -127,7 +129,7 @@ class CodeQuestSettingsConfigurable(
         val cssModified = cssArea?.text.orEmpty() != state.customCss
         // 当前语言的编辑器文本未 flush,按实时值参与判定(与 apply 的 flush 语义一致)
         val templatesModified =
-            drafts?.isModified(languageComboValue.id, templateArea?.text.orEmpty()) ?: false
+            drafts?.isModified(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty()) ?: false
         return folderModified || cssModified || templatesModified
     }
 
@@ -138,7 +140,7 @@ class CodeQuestSettingsConfigurable(
         cssArea?.text = state.customCss
         // 不重置语言选择(combo 与 languageComboValue 始终经 switchLanguage 同步),
         // 仅按新草稿回填当前语言编辑器文本
-        templateArea?.text = drafts?.editorText(languageComboValue.id).orEmpty()
+        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
     }
 
     override fun apply() {
@@ -153,7 +155,7 @@ class CodeQuestSettingsConfigurable(
             }
         }
         // flush 当前语言编辑器文本后再归一化持久化
-        drafts?.onEditorText(languageComboValue.id, templateArea?.text.orEmpty())
+        drafts?.onEditorText(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty())
         val settings = CodeQuestSettings.getInstance(project)
         val effectiveFile = settings.updateDatabaseFolder(text)
         settings.updateTemplatesAndCustomCss(
@@ -163,7 +165,7 @@ class CodeQuestSettingsConfigurable(
         // 按新持久化状态刷新草稿基线(否则 apply 后 isModified 仍对旧基线报 true),
         // 并把编辑器回填为规范文本(空覆盖 → 内置默认)
         drafts = TemplateDraftsState(initial = settings.state.templates)
-        templateArea?.text = drafts?.editorText(languageComboValue.id).orEmpty()
+        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
         // 修复#45 附带加固:切库失败不再判定整个 apply 失败——模板/CSS 已写入 state,
         // 若在此抛异常,设置对话框报"无法保存设置"会让用户误以为**全部**改动未生效;
         // 失败仅记日志(重启后按新路径打开),不阻塞设置保存。
@@ -188,15 +190,15 @@ class CodeQuestSettingsConfigurable(
     /** 语言切换:旧语言编辑器文本落草稿,新语言回填(覆盖 ?: 内置默认)。 */
     private fun switchLanguage(newLanguage: WorkspaceLanguage) {
         if (newLanguage == languageComboValue) return
-        drafts?.onEditorText(languageComboValue.id, templateArea?.text.orEmpty())
+        drafts?.onEditorText(PANEL_TEMPLATE_STYLE, languageComboValue.id, templateArea?.text.orEmpty())
         languageComboValue = newLanguage
-        templateArea?.text = drafts?.editorText(newLanguage.id).orEmpty()
+        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, newLanguage.id).orEmpty()
     }
 
-    /** 恢复默认:当前语言草稿清空,编辑器回填内置默认文本(归一化后即无覆盖)。 */
+    /** 恢复默认(WP45):草稿回填内置默认文本(非空白 = 已配置),编辑器同步;不再清空。 */
     private fun restoreDefaultTemplate() {
-        drafts?.restoreDefault(languageComboValue.id)
-        templateArea?.text = drafts?.editorText(languageComboValue.id).orEmpty()
+        drafts?.restoreDefault(PANEL_TEMPLATE_STYLE, languageComboValue.id)
+        templateArea?.text = drafts?.editorText(PANEL_TEMPLATE_STYLE, languageComboValue.id).orEmpty()
     }
 
     private fun codeTextArea(rows: Int): JBTextArea =
@@ -208,5 +210,8 @@ class CodeQuestSettingsConfigurable(
     private companion object {
         const val TEMPLATE_AREA_ROWS = 10
         const val CSS_AREA_ROWS = 5
+
+        /** WP45 编译适配:面板暂固定 LEETCODE 风格(历史默认);风格下拉接入归 WP46。 */
+        val PANEL_TEMPLATE_STYLE = TemplateStyle.LEETCODE
     }
 }

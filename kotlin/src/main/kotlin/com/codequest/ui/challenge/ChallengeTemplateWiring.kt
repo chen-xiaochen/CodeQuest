@@ -15,6 +15,7 @@ import java.nio.file.Path
  * 保证「改设置 → 下次创建生效」行为一致;设置读取在 ui 层(接线点本就在 ui,
  * 经 project 服务读取合法,见分层规则)。
  */
+@Suppress("DEPRECATION") // WP47 迁移:创建链路改按平台风格读双参签名 entryTemplateOverride(style, languageId)
 suspend fun createChallengeWithTemplate(
     service: ChallengeWorkspaceService,
     problem: Problem,

@@ -225,6 +225,7 @@ class ChallengeWorkspacePanel(
     // 动作:多解法
     // ------------------------------------------------------------------
 
+    @Suppress("DEPRECATION") // WP47 迁移:创建链路改按平台风格读双参签名 entryTemplateOverride(style, languageId)
     private fun createNewSolution() {
         val challenge = selectedChallenge() ?: return
         val name =
