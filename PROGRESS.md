@@ -1,6 +1,6 @@
 # Agentic Loop 进度
 
-- **当前**: loop-20260821-ui-revamp(活跃,iter 0)——WP44-52 九单元,面板精简/平台门控/模版风格化/中文化;计划 docs/plan/ui-revamp.md,规格 docs/superpowers/specs/2026-08-21-ui-revamp-design.md
+- **当前**: 无活跃 loop(最近完成 loop-20260821-ui-revamp,achieved @ 2026-08-21,9/9 WP)
 - **上限**: max_iterations=12 / max_round_time_ms=600000 / max_wall_time_ms=7200000 / divergence_threshold=3 / proximity_goal=0.9
 - **lastUpdatedAt**: 2026-08-21
 
@@ -8,6 +8,15 @@
 <!-- 每轮追加 -->
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
+| 1 | WP44 | wp-achieved→continue | 0.111 (1/9) | 0 | SPI 模版风格+会话快照 8/8:TemplateStyle(storageKey 助 WP45)、PlatformInfo.templateStyle 必填+16 fake 补齐、AuthCapable currentSession/restoreSession 默认 null、五 auth 恢复段归一(ensureLoggedIn 改调 restoreSession)、entryTemplate 双风格 LEETCODE 字节不变+ACM 五语言 stdin 骨架/旧单参委托;+25 测共 669,check 全绿;commit eb7002f;loop 前置:遗留 1.1.1 直修批次验证后独立落盘 67bcbc3(Kotlin+前端 145 双绿)+loop 初始化 655c0ae,基线干净 |
+| 2 | WP45 | wp-achieved→continue | 0.222 (2/9) | 0 | 设置层迁移 7/7:storageKey 键+normalizeTemplateKeys(双写/移除/幂等/新键优先)、双签名+@Deprecated 委托、TemplateDraftsState 双键三语义(续做 Teamee 修 stored 基线空白归一 bug+detekt 降嵌套)、TemplateAvailability、Configurable 编译级适配挂 LEETCODE;+15 测共 684,check 全绿;commit 8ec9636;首个 Teamee 429 限流中断,残留 4 文件落盘,续做 Teamee 凭落盘核验+补齐零损失恢复 |
+| 3 | WP48 | wp-achieved→continue | 0.333 (3/9) | 0 | 认证端点 7/7:userId 透传 currentSession(恒 null 契约兑现)、POST /api/auth/refresh 并发 restoreSession(异常吞按未登录)+同构响应+ResourceHttpServer 挂载(与 status 同源实例)、前端 refreshAuthStatus、AuthLoginBridge 三错误串入 bundle 英中(测试 locale 无关);+4 测共 688,check 全绿,前端 145 无回归;commit 5a64b41 |
+| 4 | WP46 | wp-achieved→continue | 0.444 (4/9) | 0 | 设置页 4/4:风格下拉+switchSelection 切换 flush 纯函数(时序抽离可测)、TemplateHelpDialog 四节纯文本(避 html 转义,守 WP22 教训)、bundle 英中(旧 keys 改新语义值)、面板接线测试边界如实声明;+2 测共 690,check 全绿;commit c07dbc3 |
+| 5 | WP47 | wp-achieved→continue | 0.556 (5/9) | 0 | 创建链路 7/7:templateStyleOf 兜底 LEETCODE、Wiring 双参+压制清偿、Dialog 门控(可用语言/默认 Java/空配置拦截+打开设置)、Bridge 三态自动选语言(替代旧弹菜单,规格行为)、createNewSolution 风格化;+6 测共 696,check 全绿;commit fd3abb8;偏差候选:core null 最后防线仍 LEETCODE 单参(正常链路 UI 已拦截) |
+| 6 | WP49 | wp-achieved→continue | 0.667 (6/9) | 0 | 前端题库页 6/6:账号区显式按钮+用户名、平台门控+回落 leetcodecn(真实 id,计划 leetcode-cn 有误已核源码修正)+提示条、status→refresh 静默恢复+status 失败不门控防线、SearchPanel 抽组件+子视图切换、两页中文化;前端 +11 测共 156,build 通过;commit fc9c80e |
+| 7 | WP50 | wp-achieved→continue | 0.778 (7/9) | 0 | 前端其余页 6/6:contest 门控(复用 platformGate+防线,不回落力扣)+五阶段中文、stats/problem-view 全文案、submissions 三件套/双 tab+verdict.ts 中文(与 zh bundle 对齐)、landing+AppShell NAV;前端 +3 测共 159,build 通过;commit c838518 |
+| 9 | WP52 | wp-achieved→loop-achieved | 1.0 (9/9) | 0 | 集成验收 4/4:clean check test buildPlugin 全绿(696 测/27MB zip)+前端 159+build;八条验收三态结论(⑦纯人工 B-6/④重启人工 B-3,余自动化或静态核验);ui-revamp-manual-checklist.md;CHANGELOG 1.1.1 并入 1.2.0(定版留用户);commit 7e66e92 |
+| 8 | WP51 | wp-achieved→continue | 0.889 (8/9) | 0 | Kotlin 面板重组 8/8:PANELS 4→3、挑战面板 45 条 bundle 化、stripeTitle 编程式显示名(2026.2 无 XML displayName,反编译核实)、挑战窗双 tab(JCEF 惰性+challengeId 联动+桥推送随迁)、Navigator 净新增导航、删 Submissions 窗零残留;696 测+check+buildPlugin 三绿,产物 xml 恰 3 toolWindow;commit 146bad6;第二次 429 中断(零残留),重派一次过 |
 
 ## History (loop-20260819-codequest-rewrite-m7,已归档)
 | iter | wp | verdict | proximity | failed | 备注 |
@@ -25,6 +34,7 @@
 
 ## 已完成 loop 归档
 
+### loop-20260821-ui-revamp(achieved):UI 重构——面板精简 4→3/平台登录门控+力扣中国回落/模版 ACM·LeetCode 双风格×语言显式启用+默认Java/全界面中文化(WP44-52,commits eb7002f..7e66e92;人工走查 docs/ui-revamp-manual-checklist.md;1.2.0 待定版)
 ### loop-20260819-codequest-rewrite-m7(achieved):原版设计对齐九项——提交详情/状态列/账号/模板CSS/代码回看/题解排序/缩放/公司题单(WP36-43,commits 6ecbd62..2017c23)
 ### 1.0.x 直修(非 loop):浏览链路登录入口(a42a105)/力扣CN 中文化(eb28532)/一键开刷(db898bd)
 ### loop-20260819-codequest-rewrite-m6(achieved):删旧工程/CI 单轨/文档/1.0.0 发布

@@ -294,74 +294,74 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - 来源计划: `docs/plan/ui-revamp.md`(规格: docs/superpowers/specs/2026-08-21-ui-revamp-design.md)
 - 调度序(依赖+优先级): WP44→{WP45,WP48}→{WP46,WP47,WP49,WP50}+WP51(独立)→WP52
 
-## WP44: SPI 与平台层：模版风格定义与登录会话快照 [pending]
-- [ ] core.workspace 新增 TemplateStyle 枚举(ACM=stdin/stdout 竞赛版 / LEETCODE=Solution 函数版)
-- [ ] spi.PlatformInfo 增加 templateStyle 字段;六平台声明:力扣中国/国际→LEETCODE,CodeForces/AtCoder/洛谷/HackerRank→ACM
-- [ ] spi.AuthCapable 新增 currentSession(): LoginSession?(同步只读快照)与 suspend restoreSession(): LoginSession?(静默启动恢复:只尝试已存凭据注入+校验,绝不弹窗,失败返回 null)
-- [ ] 六平台 auth 实现(LeetCodeAuth[CN/COM 共用]、CodeForcesAuth、AtCoderAuth、LuoguAuth、HackerRankAuth)补两方法:restoreSession 复用各实现的启动恢复段,currentSession 返回 session?.takeIf { verified }
-- [ ] ChallengeTemplates.entryTemplate(style, languageId):ACM Java=BufferedReader stdin 版、ACM Kotlin=readLine 版、LEETCODE=现状 Solution 版;Python/C++/Go 按风格给对应默认;regionMarkers/defaultCode/fileNameRule 与提交区域标记两行文案不动;旧单参 entryTemplate(languageId) 保留并委托 LEETCODE 变体(既有调用方零破坏)
-- [ ] [unit] TemplateStyle 六平台映射测试
-- [ ] [unit] entryTemplate(style, lang) 各风格快照测试(含两风格默认模板必须含 beginRegion/endRegion)
-- [ ] [unit] 各平台 restoreSession 静默性测试(无凭据返回 null 不触发 prompt;有效凭据校验成功后 session/verified 就位)
+## WP44: SPI 与平台层：模版风格定义与登录会话快照 [x] (done @ iter 1, commit eb7002f;TemplateStyle+storageKey;PlatformInfo.templateStyle 必填(16 处测试 fake 同步补);AuthCapable 两方法默认 null 零破坏;五 auth restoreSession=currentSession 复用+凭据注入校验,ensureLoggedIn 头部改调 restoreSession 语义不变;entryTemplate 双风格(LEETCODE 字节不变,ACM 五语言 stdin 骨架),旧单参委托 LEETCODE;+25 测,共 669;check 全绿)
+- [x] core.workspace 新增 TemplateStyle 枚举(ACM=stdin/stdout 竞赛版 / LEETCODE=Solution 函数版)
+- [x] spi.PlatformInfo 增加 templateStyle 字段;六平台声明:力扣中国/国际→LEETCODE,CodeForces/AtCoder/洛谷/HackerRank→ACM
+- [x] spi.AuthCapable 新增 currentSession(): LoginSession?(同步只读快照)与 suspend restoreSession(): LoginSession?(静默启动恢复:只尝试已存凭据注入+校验,绝不弹窗,失败返回 null)
+- [x] 六平台 auth 实现(LeetCodeAuth[CN/COM 共用]、CodeForcesAuth、AtCoderAuth、LuoguAuth、HackerRankAuth)补两方法:restoreSession 复用各实现的启动恢复段,currentSession 返回 session?.takeIf { verified }
+- [x] ChallengeTemplates.entryTemplate(style, languageId):ACM Java=BufferedReader stdin 版、ACM Kotlin=readLine 版、LEETCODE=现状 Solution 版;Python/C++/Go 按风格给对应默认;regionMarkers/defaultCode/fileNameRule 与提交区域标记两行文案不动;旧单参 entryTemplate(languageId) 保留并委托 LEETCODE 变体(既有调用方零破坏)
+- [x] [unit] TemplateStyle 六平台映射测试
+- [x] [unit] entryTemplate(style, lang) 各风格快照测试(含两风格默认模板必须含 beginRegion/endRegion)
+- [x] [unit] 各平台 restoreSession 静默性测试(无凭据返回 null 不触发 prompt;有效凭据校验成功后 session/verified 就位)
 
-## WP45: 设置层：风格×语言模版存储与迁移 [pending] [blocked by WP44]
-- [ ] CodeQuestSettings.State.templates 键升级为 "style:languageId";loadState 检测旧格式键(无冒号=纯语言键)一次性双写到 acm:L 与 leetcode:L 并归一化为新格式
-- [ ] entryTemplateOverride(style, languageId):非空白键=启用返回原文;空白/缺失返回 null(运行时无内置兜底)
-- [ ] TemplateDraftsState 扩展为 (风格,语言) 双键:editorText 预填对应风格内置默认文本;空白=未配置;「恢复默认」=文本回填内置默认(不改启用状态)
-- [ ] 新增纯函数 TemplateAvailability:usableLanguages(style, persisted) 与 defaultLanguage(可用列表)=Java 优先否则第一个
-- [ ] [unit] 旧键迁移双写测试(loadState 归一化、幂等)
-- [ ] [unit] TemplateDraftsState 双键全语义测试(空白/恢复默认/与内置一致=已配置)
-- [ ] [unit] TemplateAvailability 测试(空列表、Java 优先、风格隔离)
+## WP45: 设置层：风格×语言模版存储与迁移 [x] (done @ iter 2, commit 8ec9636;normalizeTemplateKeys 旧键双写/移除/幂等/空白丢弃,新键优先不覆盖;entryTemplateOverride 双签名+@Deprecated 单参委托 LEETCODE(Wiring/Panel 压制注释 WP47 迁移);TemplateDraftsState 双键三语义(修 stored 基线空白归一 bug);TemplateAvailability;Configurable 编译级适配挂 LEETCODE(UI 改造留 WP46);+15 测共 684,check 全绿;429 中断一次,续做 Teamee 凭落盘零损失恢复)
+- [x] CodeQuestSettings.State.templates 键升级为 "style:languageId";loadState 检测旧格式键(无冒号=纯语言键)一次性双写到 acm:L 与 leetcode:L 并归一化为新格式
+- [x] entryTemplateOverride(style, languageId):非空白键=启用返回原文;空白/缺失返回 null(运行时无内置兜底)
+- [x] TemplateDraftsState 扩展为 (风格,语言) 双键:editorText 预填对应风格内置默认文本;空白=未配置;「恢复默认」=文本回填内置默认(不改启用状态)
+- [x] 新增纯函数 TemplateAvailability:usableLanguages(style, persisted) 与 defaultLanguage(可用列表)=Java 优先否则第一个
+- [x] [unit] 旧键迁移双写测试(loadState 归一化、幂等)
+- [x] [unit] TemplateDraftsState 双键全语义测试(空白/恢复默认/与内置一致=已配置)
+- [x] [unit] TemplateAvailability 测试(空列表、Java 优先、风格隔离)
 
-## WP46: 设置页：风格+语言编辑器与模版帮助 [pending] [blocked by WP45]
-- [ ] CodeQuestSettingsConfigurable Templates 区改造:风格下拉(ACM 竞赛版/LeetCode 版)+语言下拉+编辑器+「恢复默认文本」按钮,接线双键 TemplateDraftsState;提示文案(空白=该语言不可用,修改后点「应用」生效)
-- [ ] 「帮助」按钮 → 帮助对话框(DialogWrapper):①变量表(challenge.* 六变量、velocity.* 工具、beginRegion/endRegion)②提交区域标记说明(两行标记必须保留,标记之间代码才会被提交)③文件名规则 ④风格说明(哪些平台用哪个风格)
-- [ ] PluginBundle 英中同步新增 settings.templates.style.* 与 help.* keys
-- [ ] [unit] 设置面板草稿状态接线测试(isModified/apply 往返、风格切换 flush)
+## WP46: 设置页：风格+语言编辑器与模版帮助 [x] (done @ iter 4, commit c07dbc3;风格下拉(ACM 竞赛版/LeetCode 版,面板态 styleComboValue 替 WP45 过渡常量)+switchSelection 切换 flush 纯函数+isModified/apply/reset 双下拉全链路;TemplateHelpDialog 四节(变量/提交区域标记/文件名规则/风格说明)只读 JBTextArea 纯文本避 html 转义;bundle 英中同步(旧 description/restoreDefault 改新语义值);+2 测共 690,check 全绿)
+- [x] CodeQuestSettingsConfigurable Templates 区改造:风格下拉(ACM 竞赛版/LeetCode 版)+语言下拉+编辑器+「恢复默认文本」按钮,接线双键 TemplateDraftsState;提示文案(空白=该语言不可用,修改后点「应用」生效)
+- [x] 「帮助」按钮 → 帮助对话框(DialogWrapper):①变量表(challenge.* 六变量、velocity.* 工具、beginRegion/endRegion)②提交区域标记说明(两行标记必须保留,标记之间代码才会被提交)③文件名规则 ④风格说明(哪些平台用哪个风格)
+- [x] PluginBundle 英中同步新增 settings.templates.style.* 与 help.* keys
+- [x] [unit] 设置面板草稿状态接线测试(isModified/apply 往返、风格切换 flush)
 
-## WP47: 创建链路：模版门控与默认 Java [pending] [blocked by WP45]
-- [ ] ChallengeTemplateWiring.createChallengeWithTemplate 改为按平台风格读 entryTemplateOverride(styleOf(problem.platformId), languageId),非空白必传 template(core 服务签名不动)
-- [ ] NewChallengeDialog:平台选定后语言下拉=usableLanguages(平台风格);默认选中 Java(Java 无模版时选第一个可用);列表为空显示「请先在设置中配置代码模版」+「打开设置」按钮并禁止创建
-- [ ] ChallengeCreateBridge(题面一键开刷):Java 优先→第一个可用语言→全无可用回错误并引导去设置
-- [ ] ChallengeWorkspacePanel.createNewSolution(修复#45 语义):读当前 (styleOf(题目平台), 语言) 覆盖,无则用落库模板
-- [ ] [unit] ChallengeTemplateWiringTest 适配(风格维度覆盖/未配置路径)
-- [ ] [unit] 两条创建路径的可用语言与默认语言接线测试
+## WP47: 创建链路：模版门控与默认 Java [x] (done @ iter 5, commit fd3abb8;templateStyleOf(未知平台兜底 LEETCODE)、Wiring 双参接线+压制清偿、Dialog 语言下拉可用性过滤+默认 Java+空配置拦截(提示+打开设置+OK 禁用+doValidate 双保险)、Bridge 三态自动选语言(Java 优先,替代旧多语言弹菜单——规格行为)、createNewSolution 风格化;+6 测共 696,check 全绿;偏差:core null 最后防线仍 LEETCODE 单参形态(正常链路已被 UI 门控拦截,候选后续风格化))
+- [x] ChallengeTemplateWiring.createChallengeWithTemplate 改为按平台风格读 entryTemplateOverride(styleOf(problem.platformId), languageId),非空白必传 template(core 服务签名不动)
+- [x] NewChallengeDialog:平台选定后语言下拉=usableLanguages(平台风格);默认选中 Java(Java 无模版时选第一个可用);列表为空显示「请先在设置中配置代码模版」+「打开设置」按钮并禁止创建
+- [x] ChallengeCreateBridge(题面一键开刷):Java 优先→第一个可用语言→全无可用回错误并引导去设置
+- [x] ChallengeWorkspacePanel.createNewSolution(修复#45 语义):读当前 (styleOf(题目平台), 语言) 覆盖,无则用落库模板
+- [x] [unit] ChallengeTemplateWiringTest 适配(风格维度覆盖/未配置路径)
+- [x] [unit] 两条创建路径的可用语言与默认语言接线测试
 
-## WP48: 认证端点：用户名透传与静默恢复 [pending] [blocked by WP44]
-- [ ] AuthApi:userId 从恒 null 改为透传 currentSession()?.userId(未登录仍 null)
-- [ ] 新增 POST /api/auth/refresh:经 AuthPlatformSources 并发跑 restoreSession()(网络校验),返回与 /api/auth/status 同构响应
-- [ ] ResourceHttpServer 挂载新端点
-- [ ] frontend/src/lib/api.ts 新增 refreshAuthStatus()
-- [ ] AuthLoginBridge 面向用户展示的错误串中文化(unknown platform/has no login 等入 bundle)
-- [ ] [unit] AuthApi userId 透传测试
-- [ ] [unit] refresh 端点逻辑测试(restoreSession 并发调用、响应同构、失败平台如实 false)
+## WP48: 认证端点：用户名透传与静默恢复 [x] (done @ iter 3, commit 5a64b41;AuthApi userId 透传 currentSession、POST /api/auth/refresh 并发 restoreSession(异常吞按未登录)与 status 同构、ResourceHttpServer 挂载、前端 refreshAuthStatus()、AuthLoginBridge 三错误串入 bundle 英中同步(测试 locale 无关断言);+4 测共 688,check 全绿,前端 145 无回归)
+- [x] AuthApi:userId 从恒 null 改为透传 currentSession()?.userId(未登录仍 null)
+- [x] 新增 POST /api/auth/refresh:经 AuthPlatformSources 并发跑 restoreSession()(网络校验),返回与 /api/auth/status 同构响应
+- [x] ResourceHttpServer 挂载新端点
+- [x] frontend/src/lib/api.ts 新增 refreshAuthStatus()
+- [x] AuthLoginBridge 面向用户展示的错误串中文化(unknown platform/has no login 等入 bundle)
+- [x] [unit] AuthApi userId 透传测试
+- [x] [unit] refresh 端点逻辑测试(restoreSession 并发调用、响应同构、失败平台如实 false)
 
-## WP49: 前端题库页：平台门控+账号区+本地搜索子视图 [pending] [blocked by WP48]
-- [ ] 账号区重设计:全部六平台常驻;已登录=平台名+用户名+显式「退出」按钮;未登录=「登录」按钮(触发既有 auth:login 流程,替代点击整行切换)
-- [ ] 平台下拉过滤:fetchPlatforms ⋈ fetchAuthStatus 仅留 loggedIn=true;全未登录回落 leetcode.cn+提示条(「当前无已登录平台,默认展示力扣中国;在上方账号区登录后即可切换其他平台」)
-- [ ] 加载时序:GET /api/auth/status 瞬时渲染→POST /api/auth/refresh→刷新下拉与账号区;收到 auth:login-result/auth:logout-result 后重拉两接口
-- [ ] search/App.vue 列表逻辑抽为 SearchPanel.vue 组件;problems/App.vue 顶部加子视图切换「平台题库｜本地搜索」(/search/ 路由保留)
-- [ ] 题库页+本地搜索子视图中文化(筛选/按钮/空态/提示条)
-- [ ] [unit] vitest:平台过滤与全未登录回落 leetcode.cn 的纯逻辑测试(抽纯函数或 composable)
+## WP49: 前端题库页：平台门控+账号区+本地搜索子视图 [x] (done @ iter 6, commit fc9c80e;账号区显式登录/退出按钮+用户名、filterPlatformsByAuth 门控+全未登录回落 leetcodecn(真实 id,计划书 leetcode-cn 有误已核源码修正)+提示条、status→refresh 静默恢复时序+失败不门控防线、SearchPanel.vue 抽组件+「平台题库｜本地搜索」子视图(/search/ 路由保留)、两页中文化;前端 +11 测共 156,build 通过)
+- [x] 账号区重设计:全部六平台常驻;已登录=平台名+用户名+显式「退出」按钮;未登录=「登录」按钮(触发既有 auth:login 流程,替代点击整行切换)
+- [x] 平台下拉过滤:fetchPlatforms ⋈ fetchAuthStatus 仅留 loggedIn=true;全未登录回落 leetcode.cn+提示条(「当前无已登录平台,默认展示力扣中国;在上方账号区登录后即可切换其他平台」)
+- [x] 加载时序:GET /api/auth/status 瞬时渲染→POST /api/auth/refresh→刷新下拉与账号区;收到 auth:login-result/auth:logout-result 后重拉两接口
+- [x] search/App.vue 列表逻辑抽为 SearchPanel.vue 组件;problems/App.vue 顶部加子视图切换「平台题库｜本地搜索」(/search/ 路由保留)
+- [x] 题库页+本地搜索子视图中文化(筛选/按钮/空态/提示条)
+- [x] [unit] vitest:平台过滤与全未登录回落 leetcode.cn 的纯逻辑测试(抽纯函数或 composable)
 
-## WP50: 前端其余页面：中文化与竞赛门控 [pending] [blocked by WP48]
-- [ ] contest 页:平台列表过滤已登录+全未登录引导文案;PHASE_LABELS 中文化(未开始/进行中/等待系统测试/系统测试中/已结束)+提醒订阅文案
-- [ ] stats 页中文化:汇总卡片(总提交/通过数/AC 率/当前连续/最长连续)、热力图/趋势标题、空态
-- [ ] problem-view 页中文化:一键开刷/登录/题解排序/缩放工具栏标签
-- [ ] submissions 页中文化:输入/期望输出/实际输出、详情/代码 tab、verdict.ts 判定文案与 Kotlin bundle 中文对齐
-- [ ] landing 页中文化:入口标签对齐新结构(题库/竞赛/统计/题面/提交记录/本地搜索)
+## WP50: 前端其余页面：中文化与竞赛门控 [x] (done @ iter 7, commit c838518;contest 门控(复用 platformGate+authKnown 防线,全未登录引导不回落力扣)+阶段中文(未开始/进行中/等待系统测试/系统测试中/已结束)、stats 卡片/热力图/趋势中文、problem-view 全文案、submissions 三件套/双 tab+verdict.ts 中文(与 PluginBundle_zh 对齐,grep 证仅 submissions 消费)、landing+AppShell NAV 中文;前端 +3 测共 159,build 通过)
+- [x] contest 页:平台列表过滤已登录+全未登录引导文案;PHASE_LABELS 中文化(未开始/进行中/等待系统测试/系统测试中/已结束)+提醒订阅文案
+- [x] stats 页中文化:汇总卡片(总提交/通过数/AC 率/当前连续/最长连续)、热力图/趋势标题、空态
+- [x] problem-view 页中文化:一键开刷/登录/题解排序/缩放工具栏标签
+- [x] submissions 页中文化:输入/期望输出/实际输出、详情/代码 tab、verdict.ts 判定文案与 Kotlin bundle 中文对齐
+- [x] landing 页中文化:入口标签对齐新结构(题库/竞赛/统计/题面/提交记录/本地搜索)
 
-## WP51: Kotlin UI 中文化与面板结构重组 [pending]
-- [ ] CodeQuestToolWindowFactory PANELS 4→3(题库/竞赛/统计),标题/描述/JCEF 降级文案走 PluginBundle
-- [ ] ChallengeWorkspacePanel 全文案 bundle 化(约 25 条:Challenge/刷新/新建挑战/解法/测试用例分组与按钮、对话框文案、运行输出「用例 N：通过/失败」「汇总：x/y 通过」)
-- [ ] NewChallengeDialog/ImportTestCasesDialog 文案 bundle 化
-- [ ] plugin.xml 工具窗 displayName 更新:「CodeQuest」「CodeQuest 题面」「CodeQuest 挑战」
-- [ ] ChallengeWorkspacePanel 外层包 JBTabbedPane:「工作区」tab(现有 Swing 面板)+「提交记录」tab(JCEF 加载 /submissions/?challengeId=当前选中挑战,随选中联动、惰性创建,JCEF 不可用降级中文提示)
-- [ ] SubmissionCoordinator 提交完成导航:从打开提交记录工具窗改为激活挑战工具窗的提交记录 tab(保留 challengeId 定向过滤)
-- [ ] 删除 SubmissionsToolWindowFactory 及 plugin.xml 注册
-- [ ] [acceptance] IDE 工具窗 3 个、主侧栏 tab 3 个;提交后焦点跳挑战窗提交记录 tab 且按 challengeId 过滤
+## WP51: Kotlin UI 中文化与面板结构重组 [x] (done @ iter 8, commit 146bad6;PANELS 4→3 bundle 化、挑战面板约 45 条+对话框 bundle 化、stripeTitle 编程式设显示名(2026.2 无 XML displayName 属性,id 不动)、挑战窗双 tab(工作区+提交记录 JCEF 惰性创建+challengeId 联动+桥推送随迁)、ChallengeToolWindowNavigator 净新增导航(原无激活调用,prompt 假设与实际不符)、删 SubmissionsToolWindowFactory 零残留;696 测+check+buildPlugin 三绿,产物 xml 恰 3 toolWindow;首次派发 429 中断零残留,重派一次过;runIde 沙箱留 WP52)
+- [x] CodeQuestToolWindowFactory PANELS 4→3(题库/竞赛/统计),标题/描述/JCEF 降级文案走 PluginBundle
+- [x] ChallengeWorkspacePanel 全文案 bundle 化(约 25 条:Challenge/刷新/新建挑战/解法/测试用例分组与按钮、对话框文案、运行输出「用例 N：通过/失败」「汇总：x/y 通过」)
+- [x] NewChallengeDialog/ImportTestCasesDialog 文案 bundle 化
+- [x] plugin.xml 工具窗 displayName 更新:「CodeQuest」「CodeQuest 题面」「CodeQuest 挑战」
+- [x] ChallengeWorkspacePanel 外层包 JBTabbedPane:「工作区」tab(现有 Swing 面板)+「提交记录」tab(JCEF 加载 /submissions/?challengeId=当前选中挑战,随选中联动、惰性创建,JCEF 不可用降级中文提示)
+- [x] SubmissionCoordinator 提交完成导航:从打开提交记录工具窗改为激活挑战工具窗的提交记录 tab(保留 challengeId 定向过滤)
+- [x] 删除 SubmissionsToolWindowFactory 及 plugin.xml 注册
+- [x] [acceptance] IDE 工具窗 3 个、主侧栏 tab 3 个;提交后焦点跳挑战窗提交记录 tab 且按 challengeId 过滤
 
-## WP52: 集成验收与收尾 [pending] [blocked by WP44-WP51]
-- [ ] ./gradlew test 全绿;frontend npm run test + npm run build(含 vue-tsc)通过
-- [ ] [acceptance] 规格第 8 节验收清单 8 条逐条手动走查:中文无残留/平台门控与回落/用户名显示与退出/重启静默恢复/模版门控默认 Java/老配置双风格迁移可见/提交导航/本地搜索入口
-- [ ] CHANGELOG.md 按 SemVer 更新(MINOR,1.2.0 候选)
+## WP52: 集成验收与收尾 [x] (done @ iter 9, commit 7e66e92;clean check test buildPlugin 全绿 696/27MB zip,前端 159+build 过;八条验收三态:②③⑤⑥⑧自动化/①静态核验/④端点自动化+重启人工/⑦纯人工;docs/ui-revamp-manual-checklist.md B 节 7 组人工走查;CHANGELOG 1.1.1 并入 1.2.0(定版留用户);零产品代码改动)
+- [x] ./gradlew test 全绿;frontend npm run test + npm run build(含 vue-tsc)通过
+- [x] [acceptance] 规格第 8 节验收清单 8 条逐条手动走查:中文无残留/平台门控与回落/用户名显示与退出/重启静默恢复/模版门控默认 Java/老配置双风格迁移可见/提交导航/本地搜索入口
+- [x] CHANGELOG.md 按 SemVer 更新(MINOR,1.2.0 候选)
