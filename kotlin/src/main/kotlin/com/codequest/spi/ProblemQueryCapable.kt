@@ -63,6 +63,14 @@ data class ProblemSummary(
      * 跨平台语义——LC paidOnly / HR premium)。平台无此概念时恒 false(缺省)。
      */
     val paidOnly: Boolean = false,
+    /**
+     * 平台侧已解状态(1.2.1 修复反馈):登录用户站内做题状态透传——LC 列表 GraphQL
+     * `status` 字段,仅 "ac"/"AC" → true(站内已解)。**实测 CN 登录态下列表对未做
+     * 与提交未过不可区分(均下发非 ac 值),故其余形态一律 null**(不参与合并),
+     * 「已尝试」仅由本地提交记录产生。CF/AtCoder/洛谷/HR 列表 API 无此数据,恒
+     * null(缺省)。与本地提交聚合在端点层取最高(AC > TRIED > UNSOLVED)。
+     */
+    val solvedOnPlatform: Boolean? = null,
 )
 
 /**

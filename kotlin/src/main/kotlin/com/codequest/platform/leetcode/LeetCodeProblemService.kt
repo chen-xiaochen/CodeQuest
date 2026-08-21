@@ -86,5 +86,10 @@ class LeetCodeProblemService(
             url = "https://${variant.domain}/problems/$titleSlug/",
             tags = topicTags,
             paidOnly = paidOnly,
+            // 1.2.1(实测修正):CN 登录态下列表 status **无 null/空串**——「未做」与
+            // 「提交未过」不可区分(均非 "ac"),全量下发非 ac 值。故仅 "ac"/"AC"→
+            // true(站内已解);其余一律 null(未解,不参与合并)。「已尝试」只来自
+            // 本地提交记录,避免全库误标 TRIED。对齐原版状态列语义。
+            solvedOnPlatform = status?.takeIf { it.equals("ac", ignoreCase = true) }?.let { true },
         )
 }

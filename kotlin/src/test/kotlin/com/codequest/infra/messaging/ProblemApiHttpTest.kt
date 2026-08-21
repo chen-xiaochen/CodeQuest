@@ -128,6 +128,12 @@ class ProblemApiHttpTest {
         assertEquals("https://leetcode.com/problems/problem-0/", first["url"]!!.jsonPrimitive.content)
         assertEquals(true, body["hasMore"]!!.jsonPrimitive.content.toBoolean())
 
+        // 1.2.1 修复反馈:平台侧已解状态合并——无本地提交时 ac→AC / notac·null→UNSOLVED
+        // (CN 实测未做/未过不可区分,「已尝试」只来自本地提交记录)
+        assertEquals("AC", items[0].jsonObject["status"]!!.jsonPrimitive.content)
+        assertEquals("UNSOLVED", items[1].jsonObject["status"]!!.jsonPrimitive.content)
+        assertEquals("UNSOLVED", items[2].jsonObject["status"]!!.jsonPrimitive.content)
+
         // 端点侧落库:主档 + 标签关联
         val saved = runBlocking { repo.findByRemoteId(PlatformId("leetcode"), "problem-0") }
         assertNotNull(saved)
@@ -334,8 +340,16 @@ class ProblemApiHttpTest {
                         val total = 250
                         val items =
                             (skip until minOf(skip + limit, total)).joinToString(",") { i ->
+                                // 1.2.1:首题 ac→已解;次题 notac 与其余 null 均→未解
+                                // (实测 CN 站未做/未过不可区分,「已尝试」只来自本地提交)
+                                val status =
+                                    when (i) {
+                                        0 -> "\"ac\""
+                                        1 -> "\"notac\""
+                                        else -> "null"
+                                    }
                                 """{"acRate":50.0,"difficulty":"Easy","questionFrontendId":"$i",
-                                   "titleSlug":"problem-$i","title":"Problem $i","paidOnly":false,"status":null,"frequency":null}"""
+                                   "titleSlug":"problem-$i","title":"Problem $i","paidOnly":false,"status":$status,"frequency":null}"""
                             }
                         """{"data":{"problemsetQuestionListV2":{"totalLength":$total,"questions":[$items]}}}"""
                     }

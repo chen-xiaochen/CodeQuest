@@ -289,7 +289,7 @@ describe('search page', () => {
     expect(rows[0].find('.status-icon').attributes('title')).toBe('已解决')
     expect(rows[1].find('.status-icon--tried').exists()).toBe(true)
     expect(rows[2].find('.status-icon--unsolved').exists()).toBe(true)
-    expect(rows[2].find('.status-icon').attributes('title')).toBe('')
+    expect(rows[2].find('.status-icon').attributes('title')).toBe('未解决')
     expect(rows[3].find('.status-icon--locked').exists()).toBe(true)
     expect(rows[3].find('.status-icon--locked').attributes('title')).toBe('会员题(已锁定)')
   })

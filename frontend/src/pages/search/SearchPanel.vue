@@ -452,6 +452,11 @@ onMounted(async () => {
   border: 2px solid var(--cq-accent);
 }
 
+/* 1.2.1:未解决 = 灰色细空心圆(与 problems 页同步) */
+.status-icon--unsolved {
+  border: 1px solid var(--cq-border);
+}
+
 .status-icon--locked {
   border-radius: 0;
   color: var(--cq-muted);

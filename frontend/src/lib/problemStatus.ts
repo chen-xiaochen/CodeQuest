@@ -49,7 +49,9 @@ export function statusIconOf(item: ProblemStatusFields): StatusIcon {
     case 'TRIED':
       return { kind: 'tried', title: '已尝试' }
     default:
-      return { kind: 'unsolved', title: '' }
+      // 1.2.1 修复反馈:未解决也给可见标识(灰色细空心圆 + title),
+      // 避免「整列表看起来一个样」——四态一眼可辨:✓ 已解 / ● 已尝试 / ○ 未解 / 🔒 会员
+      return { kind: 'unsolved', title: '未解决' }
   }
 }
 

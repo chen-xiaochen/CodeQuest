@@ -1,3 +1,8 @@
+## 1.2.1
+### Fixed
+- Problems list status now reflects the actual solve state from the platform: LeetCode / LeetCode CN pass the logged-in user's per-question GraphQL `status` through and merge it with local submission history (AC > TRIED > UNSOLVED), so problems solved on the website show as solved even when never submitted from the plugin. Field-tested caveat: the CN list API does not distinguish "not attempted" from "attempted but not AC" (both arrive as non-"ac" values), so only "ac" maps to solved — the "tried" state remains driven by local submissions.
+- Unsolved problems now render a visible grey hollow-circle badge with a tooltip, replacing the previous blank marker, so all four states (solved ✓ / tried ● / unsolved ○ / premium 🔒) are distinguishable at a glance on the problems and local-search lists.
+
 ## 1.2.0
 ### Added
 - Panel consolidation: tool windows 4→3 — the submissions window is merged into the challenge window as a "Submissions" tab (JCEF, filtered by the selected challenge and refreshed as the selection changes), and the main sidebar keeps Problems / Contest / Statistics only. Cross-problem search moves into a "Local search" subview of the Problems page (the `/search/` route and landing entry remain).

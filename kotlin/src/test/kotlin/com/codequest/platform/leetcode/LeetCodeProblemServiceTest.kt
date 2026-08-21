@@ -35,7 +35,7 @@ class LeetCodeProblemServiceTest {
                         val items =
                             (skip until minOf(skip + limit, total)).joinToString(",") { i ->
                                 """{"acRate":50.0,"difficulty":"Easy","questionFrontendId":"$i",
-                                   "titleSlug":"problem-$i","title":"Problem $i","paidOnly":false,"status":null,"frequency":null}"""
+                                   "titleSlug":"problem-$i","title":"Problem $i","paidOnly":false,"status":${if (i == 0) "\"ac\"" else if (i == 1) "\"\"" else "null"},"frequency":null}"""
                             }
                         """{"data":{"problemsetQuestionListV2":{"totalLength":$total,"questions":[$items]}}}"""
                     }
@@ -62,7 +62,7 @@ class LeetCodeProblemServiceTest {
                     // WP42:公司题单(total 为 totalLength 别名;首题会员 + translatedTitle 空)
                     "favoriteQuestionList" ->
                         """{"data":{"favoriteQuestionList":{"total":2,"questions":[
-                           {"difficulty":"Medium","id":"1","paidOnly":true,"questionFrontendId":"1","status":null,
+                           {"difficulty":"Medium","id":"1","paidOnly":true,"questionFrontendId":"1","status":"NOT_AC",
                             "title":"Two Sum","titleSlug":"two-sum","translatedTitle":null,"isInMyFavorites":false,
                             "frequency":0.5,"acRate":50.0,"topicTags":[{"name":"Array","slug":"array"}]},
                            {"difficulty":"Easy","id":"2","paidOnly":false,"questionFrontendId":"2","status":"AC",
@@ -105,6 +105,8 @@ class LeetCodeProblemServiceTest {
         assertEquals("https://leetcode.com/problems/problem-0/", problem.url)
         assertEquals(Difficulty("Easy"), problem.difficulty)
         assertEquals(PlatformId("leetcode"), LeetCodeVariant.LEETCODE.id)
+        // 1.2.1:站内状态透传——"ac"(小写)→已解;次题 null→未知
+        assertEquals(true, problem.solvedOnPlatform)
     }
 
     @Test
@@ -115,6 +117,19 @@ class LeetCodeProblemServiceTest {
 
         assertEquals(listOf("DP"), problem.tags)
         assertEquals("https://leetcode.cn/problems/cn-0/", problem.url)
+        // 1.2.1:CN 夹具无 status 字段 → null(未知,不参与合并)
+        assertEquals(null, problem.solvedOnPlatform)
+    }
+
+    @Test
+    fun `blank platform status maps to unknown instead of tried`() = runBlocking {
+        // 1.2.1 实测:CN 站未做题下发空串——必须按未知处理,否则全库误判「已尝试」。
+        // 夹具:第 0 题 "ac"→true;第 1 题 ""→null(空串锁定);第 2 题起 null→null
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transportFor()))
+        val problems = service.queryProblems(ProblemFilter(limit = 3)).toList()
+        assertEquals(true, problems[0].solvedOnPlatform)
+        assertEquals(null, problems[1].solvedOnPlatform)
+        assertEquals(null, problems[2].solvedOnPlatform)
     }
 
     @Test
@@ -229,6 +244,9 @@ class LeetCodeProblemServiceTest {
         assertEquals("https://leetcode.com/problems/two-sum/", first.url)
         assertEquals(listOf("Array"), first.tags)
         assertEquals(true, first.paidOnly)
+        // 1.2.1(实测修正):公司题单站内状态——"NOT_AC" 与未做不可区分→null;"AC"→true
+        assertEquals(null, first.solvedOnPlatform)
+        assertEquals(true, page.questions[1].solvedOnPlatform)
 
         val variables =
             Json

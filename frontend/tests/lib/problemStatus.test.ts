@@ -15,7 +15,7 @@ describe('problemStatus', () => {
     it('maps AC / TRIED / UNSOLVED to distinct icon kinds with titles', () => {
       expect(statusIconOf({ status: 'AC' })).toEqual({ kind: 'ac', title: '已解决' })
       expect(statusIconOf({ status: 'TRIED' })).toEqual({ kind: 'tried', title: '已尝试' })
-      expect(statusIconOf({ status: 'UNSOLVED' })).toEqual({ kind: 'unsolved', title: '' })
+      expect(statusIconOf({ status: 'UNSOLVED' })).toEqual({ kind: 'unsolved', title: '未解决' })
     })
 
     it('falls back to UNSOLVED when status is missing (old payloads)', () => {

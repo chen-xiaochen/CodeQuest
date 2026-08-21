@@ -126,6 +126,8 @@ class LeetCodeApi(
         val difficulty: String,
         val paidOnly: Boolean,
         val topicTags: List<String>,
+        /** 站内做题状态原文("ac"/"AC"/"notac"/"NOT_AC"/null);1.2.1 起透传给 [com.codequest.spi.ProblemSummary.solvedOnPlatform]。 */
+        val status: String? = null,
     )
 
     data class LeetCodeQuestionPage(
@@ -193,6 +195,7 @@ class LeetCodeApi(
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
+                        status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
                         topicTags =
                             q["topicTags"]
                                 ?.jsonArray
@@ -297,6 +300,7 @@ class LeetCodeApi(
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
+                        status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
                         topicTags = emptyList(), // V2 查询不含 topicTags(旧实现同款字段集)
                     )
                 },
@@ -461,6 +465,7 @@ class LeetCodeApi(
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
+                        status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
                         topicTags =
                             q["topicTags"]
                                 ?.jsonArray

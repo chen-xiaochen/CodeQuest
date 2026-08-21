@@ -163,18 +163,36 @@ class ProblemApi(
                 ),
             )
         }
-        // WP37:主档落库后按确定性 problemId 批量聚合刷题状态(未做 → UNSOLVED 兜底)
+        // WP37:主档落库后按确定性 problemId 批量聚合刷题状态(未做 → UNSOLVED 兜底);
+        // 1.2.1 修复反馈:与平台侧已解状态取最高合并(力扣站内已解的题,即便从未在
+        // 插件内提交,也如实显示 AC)
         val statusById = statuses().statuses(items.map { problemId(platform.id, it.remoteId) })
         return ok(
             ProblemListResponseDto(
                 platform = platform.id.value,
                 offset = offset,
                 limit = limit,
-                items = items.map { it.toDto(statusById[problemId(platform.id, it.remoteId)] ?: SolveStatus.UNSOLVED) },
+                items =
+                    items.map {
+                        it.toDto(
+                            mergeSolveStatus(statusById[problemId(platform.id, it.remoteId)], it.solvedOnPlatform),
+                        )
+                    },
                 hasMore = items.size == limit,
             ),
         )
     }
+
+    /** 平台侧已解 ∪ 本地提交聚合,取最高(AC > TRIED > UNSOLVED;平台 null 不参与)。 */
+    private fun mergeSolveStatus(
+        local: SolveStatus?,
+        solvedOnPlatform: Boolean?,
+    ): SolveStatus =
+        when {
+            local == SolveStatus.AC || solvedOnPlatform == true -> SolveStatus.AC
+            local == SolveStatus.TRIED || solvedOnPlatform == false -> SolveStatus.TRIED
+            else -> SolveStatus.UNSOLVED
+        }
 
     /**
      * `/api/problem/{remoteId}`:本地 problem_content 缓存优先;miss 时

@@ -759,7 +759,7 @@ onUnmounted(() => {
 }
 
 /* WP37:状态徽标列——修复反馈后改为实心/空心圆徽标,一眼可辨:
-   AC = 绿底白✓(实心圆) / TRIED = 主题色空心圆 / 🔒 会员 / 空 未做 */
+   AC = 绿底白✓(实心圆) / TRIED = 主题色空心圆 / 🔒 会员 / 1.2.1:UNSOLVED = 灰色细空心圆 */
 .status-icon {
   display: inline-flex;
   align-items: center;
@@ -781,6 +781,11 @@ onUnmounted(() => {
 
 .status-icon--tried {
   border: 2px solid var(--cq-accent);
+}
+
+/* 1.2.1:未解决 = 灰色细空心圆(此前为空,整列表无视觉区分) */
+.status-icon--unsolved {
+  border: 1px solid var(--cq-border);
 }
 
 .status-icon--locked {
