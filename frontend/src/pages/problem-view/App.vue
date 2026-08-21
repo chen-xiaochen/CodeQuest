@@ -13,6 +13,7 @@
  * WP41:题解排序下拉(仅 LeetCode 系平台;值/文案=旧 ArticleOrderByAction
  * 事实,变更即重拉)与 webview 缩放工具栏(−/100%/+,经 `webview:zoom`
  * 桥消息;题面与阅读器同属一个浏览器实例,天然共用;不持久化)。
+ * WP50:文案全面中文化(排序选项 value 不变,仅 label 中文)。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -86,7 +87,7 @@ function startCoding(): void {
 function handleCreateResult(payload: unknown): void {
   const result = payload as { ok?: boolean; error?: string }
   startPending.value = false
-  startMsg.value = result?.ok ? '' : result?.error || 'failed'
+  startMsg.value = result?.ok ? '' : result?.error || '创建失败'
 }
 
 /** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
@@ -110,10 +111,10 @@ const remoteId = params.get('remoteId') ?? ''
 const LEETCODE_PLATFORM_IDS = new Set(['leetcode', 'leetcodecn'])
 const supportsSolutionOrder = LEETCODE_PLATFORM_IDS.has(platform)
 const SOLUTION_ORDER_OPTIONS = [
-  { value: 'mostUpvote', label: 'Most Upvoted' },
-  { value: 'hot', label: 'Hot' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
+  { value: 'mostUpvote', label: '最多点赞' },
+  { value: 'hot', label: '最热' },
+  { value: 'newest', label: '最新' },
+  { value: 'oldest', label: '最早' },
 ]
 const solutionOrder = ref('hot')
 
@@ -301,14 +302,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <AppShell title="Problem View" subtitle="Problem statement with sanitized HTML / markdown rendering.">
+  <AppShell title="题面" subtitle="题目描述渲染(净化后的 HTML / Markdown)。">
     <!-- WP41:整页缩放工具栏(题面与阅读器共用;不持久化,加载即 100%) -->
-    <div v-if="platform && remoteId" class="zoombar" role="toolbar" aria-label="Page zoom">
+    <div v-if="platform && remoteId" class="zoombar" role="toolbar" aria-label="页面缩放">
       <button
         type="button"
         class="zoombar__btn"
-        title="Zoom out"
-        aria-label="Zoom out"
+        title="缩小"
+        aria-label="缩小"
         @click="zoomBy(-1)"
       >
         −
@@ -316,8 +317,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="zoombar__btn zoombar__btn--reset"
-        title="Actual zoom (100%)"
-        aria-label="Reset zoom to 100%"
+        title="恢复 100% 缩放"
+        aria-label="恢复 100% 缩放"
         @click="zoomReset"
       >
         100%
@@ -325,8 +326,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="zoombar__btn"
-        title="Zoom in"
-        aria-label="Zoom in"
+        title="放大"
+        aria-label="放大"
         @click="zoomBy(1)"
       >
         +
@@ -334,7 +335,7 @@ onUnmounted(() => {
     </div>
 
     <p v-if="!platform || !remoteId" class="state">
-      No problem selected. Open one from the Problems list.
+      尚未选择题目,请从题库列表打开。
     </p>
 
     <p v-else-if="error" class="state state--error" role="alert">
@@ -346,12 +347,12 @@ onUnmounted(() => {
         :disabled="loginPending"
         @click="requestLogin"
       >
-        {{ loginPending ? 'Logging in…' : 'Login' }}
+        {{ loginPending ? '登录中…' : '登录' }}
       </button>
-      <button type="button" class="state__retry" @click="load">Retry</button>
+      <button type="button" class="state__retry" @click="load">重试</button>
     </p>
 
-    <p v-else-if="loading" class="state">Loading problem statement…</p>
+    <p v-else-if="loading" class="state">正在加载题面…</p>
 
     <template v-else-if="detail">
       <header class="statement-header">
@@ -368,7 +369,7 @@ onUnmounted(() => {
             :disabled="startPending"
             @click="startCoding"
           >
-            {{ startPending ? 'Preparing…' : 'Start coding' }}
+            {{ startPending ? '准备中…' : '一键开刷' }}
           </button>
           <span v-if="startMsg" class="statement-header__start-msg" role="alert">{{ startMsg }}</span>
           <a
@@ -377,7 +378,7 @@ onUnmounted(() => {
             target="_blank"
             rel="noopener noreferrer"
           >
-            open on site
+            站外打开
           </a>
         </p>
       </header>
@@ -386,16 +387,16 @@ onUnmounted(() => {
       <article class="statement" v-html="renderedHtml"></article>
 
       <!-- WP26/WP31:题解区块——列表 ↔ 应用内正文阅读器切换 + 浏览器风格导航工具栏 -->
-      <section class="solutions" aria-label="Solutions">
+      <section class="solutions" aria-label="题解">
         <div class="solutions__bar">
-          <h3 class="solutions__title">Solutions</h3>
+          <h3 class="solutions__title">题解</h3>
           <div class="solutions__tools">
             <!-- WP41:题解排序(仅 LeetCode 系平台;变更即重拉) -->
             <label v-if="supportsSolutionOrder" class="solutions__order">
-              <span class="solutions__order-label">Sort</span>
+              <span class="solutions__order-label">排序</span>
               <select
                 class="solutions__order-select"
-                aria-label="Sort solutions"
+                aria-label="题解排序"
                 @change="onOrderChange"
               >
                 <option
@@ -408,13 +409,13 @@ onUnmounted(() => {
                 </option>
               </select>
             </label>
-            <div class="solutions__nav" role="toolbar" aria-label="Solution reader navigation">
+            <div class="solutions__nav" role="toolbar" aria-label="题解阅读器导航">
               <button
                 type="button"
                 class="solutions__nav-btn"
                 :disabled="!canBack"
-                title="Back to list / previous article"
-                aria-label="Back"
+                title="返回列表 / 上一篇"
+                aria-label="后退"
                 @click="goBack"
               >
                 ←
@@ -423,8 +424,8 @@ onUnmounted(() => {
                 type="button"
                 class="solutions__nav-btn"
                 :disabled="!canForward"
-                title="Forward to next article"
-                aria-label="Forward"
+                title="前进到下一篇"
+                aria-label="前进"
                 @click="goForward"
               >
                 →
@@ -433,8 +434,8 @@ onUnmounted(() => {
                 type="button"
                 class="solutions__nav-btn"
                 :disabled="contentLoading || solutionsLoading"
-                title="Refresh current view"
-                aria-label="Refresh"
+                title="刷新当前视图"
+                aria-label="刷新"
                 @click="refresh"
               >
                 ⟳
@@ -445,7 +446,7 @@ onUnmounted(() => {
 
         <!-- 列表根视图 -->
         <template v-if="!inReader">
-          <p v-if="solutionsLoading" class="solutions__state">Loading solutions…</p>
+          <p v-if="solutionsLoading" class="solutions__state">正在加载题解…</p>
           <p v-else-if="solutionsError" class="solutions__state solutions__state--error" role="alert">
             {{ solutionsError }}
             <button
@@ -455,10 +456,10 @@ onUnmounted(() => {
               :disabled="loginPending"
               @click="requestLogin"
             >
-              {{ loginPending ? 'Logging in…' : 'Login' }}
+              {{ loginPending ? '登录中…' : '登录' }}
             </button>
           </p>
-          <p v-else-if="solutions.length === 0" class="solutions__state">No solutions available.</p>
+          <p v-else-if="solutions.length === 0" class="solutions__state">暂无题解。</p>
           <ul v-else class="solutions__list">
             <li v-for="article in solutions" :key="article.id" class="solutions__item">
               <button
@@ -468,7 +469,7 @@ onUnmounted(() => {
                 @click="openArticle(article)"
               >
                 <span class="solutions__item-title">{{ article.title }}</span>
-                <span class="solutions__read">read ›</span>
+                <span class="solutions__read">阅读 ›</span>
               </button>
             </li>
           </ul>
@@ -485,10 +486,10 @@ onUnmounted(() => {
               :title="currentArticle.url"
               @click="openSolution(currentArticle.url)"
             >
-              open on site ↗
+              站外打开 ↗
             </button>
           </header>
-          <p v-if="contentLoading" class="reader__state">Loading article…</p>
+          <p v-if="contentLoading" class="reader__state">正在加载正文…</p>
           <p v-else-if="contentError" class="reader__state reader__state--error" role="alert">
             {{ contentError }}
             <button
@@ -497,7 +498,7 @@ onUnmounted(() => {
               class="state__retry"
               @click="showArticle(currentArticle)"
             >
-              Retry
+              重试
             </button>
           </p>
           <!-- eslint-disable-next-line vue/no-v-html — 正文经 renderStatement 白名单清洗 -->

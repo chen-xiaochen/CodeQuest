@@ -87,6 +87,9 @@ describe('submissions page', () => {
     expect(rows[0].text()).toContain('Two Sum')
     expect(rows[0].text()).toContain('Kotlin')
     expect(rows[0].find('.verdict-badge--accepted').exists()).toBe(true)
+    // WP50:判定文案中文(与 PluginBundle_zh 对齐)
+    expect(rows[0].text()).toContain('通过')
+    expect(rows[1].text()).toContain('答案错误')
     expect(rows[0].text()).toContain('12 ms')
     expect(rows[0].text()).toContain('16.0 MB')
     expect(rows[0].text()).toContain('#remote-s-1')
@@ -167,7 +170,7 @@ describe('submissions page', () => {
     const wrapper = mount(SubmissionsApp)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No submissions yet')
+    expect(wrapper.text()).toContain('还没有提交记录')
   })
 })
 
@@ -240,14 +243,14 @@ describe('submissions detail panel (WP36)', () => {
     expect(wrapper.find('.detail-row').exists()).toBe(true)
     expect(wrapper.find('.detail__message').text()).toContain('Wrong Answer')
 
-    // 三件套三段齐全,等宽 pre 承载内容
+    // 三件套三段齐全,等宽 pre 承载内容(WP50 中文标签)
     const cases = wrapper.findAll('.detail__case')
     expect(cases.length).toBe(3)
-    expect(cases[0].find('.detail__case-label').text()).toBe('Input')
+    expect(cases[0].find('.detail__case-label').text()).toBe('输入')
     expect(cases[0].find('.detail__case-value').text()).toContain('nums = [2,7,11,15]')
-    expect(cases[1].find('.detail__case-label').text()).toBe('Expected output')
+    expect(cases[1].find('.detail__case-label').text()).toBe('期望输出')
     expect(cases[1].find('.detail__case-value').text()).toContain('[0,1]')
-    expect(cases[2].find('.detail__case-label').text()).toBe('Actual output')
+    expect(cases[2].find('.detail__case-label').text()).toBe('实际输出')
     expect(cases[2].find('.detail__case-value').text()).toContain('[2,2]')
 
     // extras 键值对 + 平台站外链 + 合并后的指标
@@ -342,7 +345,7 @@ describe('submissions detail panel (WP36)', () => {
     expect(wrapper.find('.detail__extras').exists()).toBe(false)
     expect(wrapper.find('.detail__view-url').exists()).toBe(false)
     const meta = wrapper.find('.detail__meta').text()
-    expect(meta).toContain('Accepted')
+    expect(meta).toContain('通过')
     expect(meta).toContain('Kotlin')
     expect(meta).toContain('—')
   })
@@ -376,7 +379,7 @@ describe('submissions detail panel (WP36)', () => {
 
     await wrapper.find('.submissions__row').trigger('click')
     await flushPromises()
-    expect(wrapper.find('.detail-state').text()).toContain('Loading submission details…')
+    expect(wrapper.find('.detail-state').text()).toContain('正在加载提交详情…')
     expect(wrapper.find('.detail__case').exists()).toBe(false)
 
     release()
@@ -392,7 +395,7 @@ describe('submissions detail panel (WP36)', () => {
 const KOTLIN_SNIPPET = 'fun main() {\n    println(42)\n}'
 
 function codeTabButton(wrapper: ReturnType<typeof mount>) {
-  return wrapper.findAll('.detail__tab').find((button) => button.text() === 'Code')!
+  return wrapper.findAll('.detail__tab').find((button) => button.text() === '代码')!
 }
 
 describe('submissions detail panel code view (WP40)', () => {
@@ -430,7 +433,7 @@ describe('submissions detail panel code view (WP40)', () => {
 
     expect(wrapper.find('.detail__code').exists()).toBe(false)
     expect(wrapper.find('.detail__code-empty').text()).toContain(
-      'No code snapshot stored for this submission',
+      '该提交没有保存代码快照',
     )
   })
 
@@ -497,6 +500,6 @@ describe('submissions detail panel code view (WP40)', () => {
     await flushPromises()
 
     expect(writeText).toHaveBeenCalledWith(KOTLIN_SNIPPET)
-    expect(wrapper.find('.detail__copy').text()).toBe('Copied')
+    expect(wrapper.find('.detail__copy').text()).toBe('已复制')
   })
 })

@@ -9,6 +9,7 @@
  * (hljs 按需高亮,未知语言纯文本降级,空快照提示文案,附 Copy 按钮);
  * Kotlin 侧提交落库后经桥 `submission:updated` 推送本页刷新(桥推送优先,
  * Refresh 按钮兜底)。
+ * WP50:文案全面中文化(判定文案在 lib/verdict.ts,与 PluginBundle_zh 对齐)。
  */
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -128,9 +129,9 @@ function caseEntries(
 ): Array<{ label: string; value: string; missing: boolean }> {
   const case_ = errorCase ?? {}
   return [
-    { label: 'Input', value: case_.input ?? '', missing: case_.input == null },
-    { label: 'Expected output', value: case_.expectedOutput ?? '', missing: case_.expectedOutput == null },
-    { label: 'Actual output', value: case_.actualOutput ?? '', missing: case_.actualOutput == null },
+    { label: '输入', value: case_.input ?? '', missing: case_.input == null },
+    { label: '期望输出', value: case_.expectedOutput ?? '', missing: case_.expectedOutput == null },
+    { label: '实际输出', value: case_.actualOutput ?? '', missing: case_.actualOutput == null },
   ]
 }
 
@@ -204,33 +205,33 @@ onUnmounted(() => {
 
 <template>
   <AppShell
-    title="Submissions"
+    title="提交记录"
     :subtitle="challengeId
-      ? `Submission history for the selected challenge workspace (${challengeId}).`
-      : 'Submission history across all challenge workspaces.'"
+      ? `当前挑战工作区(${challengeId})的提交历史。`
+      : '全部挑战工作区的提交历史。'"
   >
     <p v-if="challengeId" class="scope">
-      Filtered by challenge <code>{{ challengeId }}</code>
+      已按挑战 <code>{{ challengeId }}</code> 过滤
     </p>
 
     <p v-if="error" class="state state--error" role="alert">
       {{ error }}
-      <button type="button" class="state__retry" @click="reload">Retry</button>
+      <button type="button" class="state__retry" @click="reload">重试</button>
     </p>
-    <p v-else-if="loading && items.length === 0" class="state">Loading submissions…</p>
+    <p v-else-if="loading && items.length === 0" class="state">正在加载提交记录…</p>
     <p v-else-if="!loading && items.length === 0" class="state">
-      No submissions yet. Submit from the editor with "Submit to OJ".
+      还没有提交记录。在编辑器中使用「提交到 OJ」后,结果会出现在这里。
     </p>
 
-    <table v-if="items.length > 0" class="submissions" aria-label="submission list">
+    <table v-if="items.length > 0" class="submissions" aria-label="提交记录列表">
       <thead>
         <tr>
-          <th>Problem</th>
-          <th>Language</th>
-          <th>Verdict</th>
-          <th class="submissions__num">Time</th>
-          <th class="submissions__num">Memory</th>
-          <th>Submitted</th>
+          <th>题目</th>
+          <th>语言</th>
+          <th>判定</th>
+          <th class="submissions__num">耗时</th>
+          <th class="submissions__num">内存</th>
+          <th>提交时间</th>
         </tr>
       </thead>
       <tbody>
@@ -257,17 +258,17 @@ onUnmounted(() => {
           </tr>
           <tr v-if="expandedId === item.id" class="detail-row">
             <td colspan="6" class="detail-row__cell" @click.stop>
-              <div v-if="panels[item.id]?.status === 'loading'" class="detail-state">Loading submission details…</div>
+              <div v-if="panels[item.id]?.status === 'loading'" class="detail-state">正在加载提交详情…</div>
               <div
                 v-else-if="panels[item.id]?.status === 'error'"
                 class="detail-state detail-state--error"
                 role="alert"
               >
                 {{ errorOf(item.id) }}
-                <button type="button" class="state__retry" @click="loadDetail(item.id)">Retry</button>
+                <button type="button" class="state__retry" @click="loadDetail(item.id)">重试</button>
               </div>
               <div v-else-if="panels[item.id]?.status === 'ready'" class="detail">
-                <div class="detail__tabs" role="tablist" aria-label="submission detail views">
+                <div class="detail__tabs" role="tablist" aria-label="提交详情视图">
                   <button
                     type="button"
                     role="tab"
@@ -276,7 +277,7 @@ onUnmounted(() => {
                     :aria-selected="tabOf(item.id) === 'details'"
                     @click="setDetailTab(item.id, 'details')"
                   >
-                    Details
+                    详情
                   </button>
                   <button
                     type="button"
@@ -286,7 +287,7 @@ onUnmounted(() => {
                     :aria-selected="tabOf(item.id) === 'code'"
                     @click="setDetailTab(item.id, 'code')"
                   >
-                    Code
+                    代码
                   </button>
                   <button
                     v-if="tabOf(item.id) === 'code' && hasCode(item.id)"
@@ -294,13 +295,13 @@ onUnmounted(() => {
                     class="detail__copy"
                     @click="copyCode(item.id)"
                   >
-                    {{ copiedId === item.id ? 'Copied' : 'Copy' }}
+                    {{ copiedId === item.id ? '已复制' : '复制' }}
                   </button>
                 </div>
 
                 <template v-if="tabOf(item.id) === 'code'">
                   <p v-if="!hasCode(item.id)" class="detail__code-empty">
-                    No code snapshot stored for this submission.
+                    该提交没有保存代码快照。
                   </p>
                   <pre v-else class="detail__code">
                     <!-- eslint-disable-next-line vue/no-v-html — highlight.js 输出已转义,无用户可控标签 -->
@@ -311,7 +312,7 @@ onUnmounted(() => {
                 <template v-else>
                   <dl class="detail__meta">
                     <div class="detail__meta-item">
-                      <dt>Verdict</dt>
+                      <dt>判定</dt>
                       <dd>
                         <span
                           class="verdict-badge"
@@ -322,19 +323,19 @@ onUnmounted(() => {
                       </dd>
                     </div>
                     <div class="detail__meta-item">
-                      <dt>Time</dt>
+                      <dt>耗时</dt>
                       <dd>{{ formatMillis(detailOf(item.id).timeMs) }}</dd>
                     </div>
                     <div class="detail__meta-item">
-                      <dt>Memory</dt>
+                      <dt>内存</dt>
                       <dd>{{ formatMemoryKb(detailOf(item.id).memoryKb) }}</dd>
                     </div>
                     <div class="detail__meta-item">
-                      <dt>Language</dt>
+                      <dt>语言</dt>
                       <dd>{{ detailOf(item.id).language }}</dd>
                     </div>
                     <div class="detail__meta-item">
-                      <dt>Submitted</dt>
+                      <dt>提交时间</dt>
                       <dd>{{ formatTimestamp(detailOf(item.id).submittedAt) }}</dd>
                     </div>
                   </dl>
@@ -369,7 +370,7 @@ onUnmounted(() => {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    View on {{ detailOf(item.id).platformId }} ↗
+                    在 {{ detailOf(item.id).platformId }} 查看 ↗
                   </a>
                 </template>
               </div>
@@ -380,7 +381,7 @@ onUnmounted(() => {
     </table>
 
     <div v-if="items.length > 0" class="pager">
-      <span class="pager__count">{{ items.length }} loaded</span>
+      <span class="pager__count">已加载 {{ items.length }} 条</span>
       <button
         v-if="hasMore"
         type="button"
@@ -388,9 +389,9 @@ onUnmounted(() => {
         :disabled="loading"
         @click="loadPage(true)"
       >
-        {{ loading ? 'Loading…' : 'Load more' }}
+        {{ loading ? '正在加载…' : '加载更多' }}
       </button>
-      <span v-else class="pager__done">end of results</span>
+      <span v-else class="pager__done">已到底部</span>
     </div>
   </AppShell>
 </template>

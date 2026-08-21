@@ -102,7 +102,7 @@ describe('problem-view solutions order (WP41)', () => {
     expect(wrapper.findAll('.solutions__item')).toHaveLength(1)
     expect(wrapper.find('.solutions__item-title').text()).toBe('hot solution')
 
-    // 选项值/文案 = 后端枚举/旧 Show 事实
+    // 选项值 = 后端枚举/旧 Show 事实;文案 WP50 中文(value 不变)
     const select = wrapper.find('.solutions__order-select')
     expect(select.exists()).toBe(true)
     const options = select.findAll('option')
@@ -112,7 +112,7 @@ describe('problem-view solutions order (WP41)', () => {
       'newest',
       'oldest',
     ])
-    expect(options.map((o) => o.text())).toEqual(['Most Upvoted', 'Hot', 'Newest', 'Oldest'])
+    expect(options.map((o) => o.text())).toEqual(['最多点赞', '最热', '最新', '最早'])
 
     // 变更即重拉
     await select.setValue('newest')
@@ -142,7 +142,7 @@ describe('problem-view solutions order (WP41)', () => {
 
     expect(wrapper.find('.solutions__order-select').exists()).toBe(false)
     expect(hitCounts.get('/api/problem/P1001/solutions?platform=luogu')).toBe(1)
-    expect(wrapper.text()).toContain('No solutions')
+    expect(wrapper.text()).toContain('暂无题解')
   })
 })
 

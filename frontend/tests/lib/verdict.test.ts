@@ -1,22 +1,22 @@
 /**
  * WP21:verdict 展示元数据与格式化——tone 映射/PartialScore/Unknown 回退/
- * 耗时/内存/时间戳格式化。
+ * 耗时/内存/时间戳格式化。WP50:标签与 PluginBundle_zh 的 submission.verdict.* 对齐。
  */
 import { describe, expect, it } from 'vitest'
 import { formatMemoryKb, formatMillis, formatTimestamp, verdictMeta } from '../../src/lib/verdict'
 
 describe('verdictMeta', () => {
   it('maps known verdict types to label and tone', () => {
-    expect(verdictMeta({ type: 'Accepted' })).toEqual({ label: 'Accepted', tone: 'accepted' })
-    expect(verdictMeta({ type: 'WrongAnswer' })).toEqual({ label: 'Wrong Answer', tone: 'rejected' })
-    expect(verdictMeta({ type: 'TimeLimitExceeded' })).toEqual({ label: 'TLE', tone: 'limit' })
-    expect(verdictMeta({ type: 'CompileError' })).toEqual({ label: 'Compile Error', tone: 'crash' })
+    expect(verdictMeta({ type: 'Accepted' })).toEqual({ label: '通过', tone: 'accepted' })
+    expect(verdictMeta({ type: 'WrongAnswer' })).toEqual({ label: '答案错误', tone: 'rejected' })
+    expect(verdictMeta({ type: 'TimeLimitExceeded' })).toEqual({ label: '超出时间限制', tone: 'limit' })
+    expect(verdictMeta({ type: 'CompileError' })).toEqual({ label: '编译错误', tone: 'crash' })
     expect(verdictMeta({ type: 'Judging' }).tone).toBe('pending')
   })
 
   it('renders PartialScore with percent', () => {
     expect(verdictMeta({ type: 'PartialScore', score: 0.456 })).toEqual({
-      label: 'Partial 46%',
+      label: '部分通过 46%',
       tone: 'partial',
     })
   })

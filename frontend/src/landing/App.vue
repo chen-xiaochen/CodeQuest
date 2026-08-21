@@ -1,26 +1,27 @@
 <script setup lang="ts">
 /**
- * 落地页(/index.html,ResourceHttpServer 的默认入口):
+ * 落地页(/index.html,ResourceHttpServer 的默认入口;WP50 中文化):
  * 列出六页面入口,并提供两个沙箱验收探针——
  * - /api/health 探活(ResourceHttpServer REST 端点)
  * - 桥 echo 自测(IDE 内真实往返;纯浏览器走 mock 回环)
+ * API 术语(GET /api/health、bridge:echo 等)保留原文。
  */
 import { onUnmounted, ref } from 'vue'
 import { TOPIC_ECHO, TOPIC_ECHO_REPLY, cqBridge } from '../bridge/cq-bridge'
 
 const PAGES = [
-  { href: '/problems/', label: 'Problems', desc: 'Problem list (platform filters / keywords / tags)' },
-  { href: '/contest/', label: 'Contest', desc: 'CodeForces contests with reminders' },
-  { href: '/stats/', label: 'Statistics', desc: 'Heatmap and trends' },
-  { href: '/search/', label: 'Search', desc: 'Cross-problem full-text search (FTS)' },
-  { href: '/problem-view/', label: 'Problem View', desc: 'Statement rendering (editor side)' },
-  { href: '/submissions/', label: 'Submissions', desc: 'Submission results / history (editor side)' },
+  { href: '/problems/', label: '题库', desc: '按平台浏览与筛选题目(平台/关键字/难度)' },
+  { href: '/contest/', label: '竞赛', desc: 'CodeForces 竞赛列表与开始提醒' },
+  { href: '/stats/', label: '统计', desc: '提交热力图与趋势' },
+  { href: '/search/', label: '本地搜索', desc: '跨题目全文检索(FTS)' },
+  { href: '/problem-view/', label: '题面', desc: '题目描述渲染(编辑器侧)' },
+  { href: '/submissions/', label: '提交记录', desc: '提交结果与历史(编辑器侧)' },
 ]
 
 const bridge = cqBridge()
 const echoState = ref<'idle' | 'waiting' | 'ok'>('idle')
 const echoDetail = ref('')
-const health = ref('not probed')
+const health = ref('未探测')
 
 const offReply = bridge.on(TOPIC_ECHO_REPLY, (payload) => {
   echoState.value = 'ok'
@@ -40,7 +41,7 @@ async function probeHealth(): Promise<void> {
     const response = await fetch('/api/health')
     health.value = `${response.status} ${await response.text()}`
   } catch (error) {
-    health.value = `failed: ${String(error)}`
+    health.value = `失败: ${String(error)}`
   }
 }
 </script>
@@ -49,7 +50,7 @@ async function probeHealth(): Promise<void> {
   <main class="landing">
     <h1>CodeQuest Webview</h1>
     <p class="landing__sub">
-      WP12 scaffolding · per-page entries · theme-aware · highlight.js + KaTeX (local)
+      六页面入口 · 主题自适应 · highlight.js + KaTeX(本地)
     </p>
 
     <ul class="landing__pages">
@@ -61,18 +62,18 @@ async function probeHealth(): Promise<void> {
 
     <section class="landing__probes">
       <div>
-        <button type="button" @click="probeHealth">GET /api/health</button>
+        <button type="button" @click="probeHealth">GET /api/health 探活</button>
         <span class="landing__result">{{ health }}</span>
       </div>
       <div>
-        <button type="button" @click="runEchoTest">Bridge self-test (bridge:echo)</button>
+        <button type="button" @click="runEchoTest">桥自测(bridge:echo)</button>
         <span class="landing__result" :data-ok="echoState === 'ok'">
-          <template v-if="echoState === 'idle'">not run</template>
-          <template v-else-if="echoState === 'waiting'">waiting for bridge:echo:reply…</template>
-          <template v-else>reply {{ echoDetail }}</template>
+          <template v-if="echoState === 'idle'">未运行</template>
+          <template v-else-if="echoState === 'waiting'">等待 bridge:echo:reply 回复…</template>
+          <template v-else>回复 {{ echoDetail }}</template>
         </span>
         <span class="landing__mode">
-          {{ bridge.isRealBridge() ? 'real bridge' : 'mock loopback' }}
+          {{ bridge.isRealBridge() ? '真实桥' : '模拟回环' }}
         </span>
       </div>
     </section>

@@ -1,6 +1,7 @@
 /**
  * WP23:contest 页真实渲染(端点 mock)——平台标签/列表行(时间、阶段徽标、
  * 参加外链)/提醒开关回显与订阅-取消交互/空态与错误态。
+ * WP50:平台标签登录门控(已登录过滤/全未登录引导/auth 失败不门控)+文案中文断言。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -104,7 +105,7 @@ describe('contest page', () => {
     const wrapper = mount(ContestApp)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No contest-capable platform')
+    expect(wrapper.text()).toContain('尚未接入支持竞赛的平台')
   })
 
   it('renders contest rows with time, phase badge, join link and reminder toggles', async () => {
@@ -116,12 +117,15 @@ describe('contest page', () => {
     expect(rows.length).toBe(2)
     expect(rows[0].text()).toContain('1900')
     expect(rows[0].text()).toContain('Codeforces Round 950')
-    expect(rows[0].text()).toContain('2h')
+    expect(rows[0].text()).toContain('2 小时')
     expect(rows[0].find('.phase-badge--BEFORE').exists()).toBe(true)
-    expect(rows[1].find('.phase-badge--CODING').exists()).toBe(true)
+    expect(rows[0].find('.phase-badge--BEFORE').text()).toBe('未开始')
+    expect(rows[1].find('.phase-badge--CODING').text()).toBe('进行中')
 
     const link = rows[0].find('a.contests__join')
     expect(link.attributes('href')).toBe('https://codeforces.com/contests/1900')
+    expect(link.text()).toBe('打开')
+    expect(rows[0].text()).toContain('提前 24 小时提醒')
 
     // 1900 已订阅(回显 checked),1899 未订阅
     const toggles = wrapper.findAll('input.contests__remind')
@@ -163,5 +167,75 @@ describe('contest page', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('rate-limited')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// WP50:平台标签登录门控(join /api/auth/status,照题库页模式)
+// ---------------------------------------------------------------------------
+
+const TWO_PLATFORMS = [
+  { id: 'codeforces', displayName: 'CodeForces' },
+  { id: 'atcoder', displayName: 'AtCoder' },
+]
+
+function authHandler(items: unknown[]): FetchHandler {
+  const base = happyHandler()
+  return (url, init) => {
+    if (url === '/api/auth/status') {
+      return { status: 200, body: { items } }
+    }
+    if (url === '/api/contests') {
+      return { status: 200, body: { platforms: TWO_PLATFORMS } }
+    }
+    return base(url, init)
+  }
+}
+
+describe('contest page platform gate (WP50)', () => {
+  it('keeps only logged-in platforms in tabs and defaults to the first one', async () => {
+    handler = authHandler([
+      { platform: 'codeforces', loggedIn: true, userId: 'cf_user' },
+      { platform: 'atcoder', loggedIn: false, userId: null },
+    ])
+    const wrapper = mount(ContestApp)
+    await flushPromises()
+
+    const tabs = wrapper.findAll('.tabs__item')
+    expect(tabs.length).toBe(1)
+    expect(tabs[0].text()).toBe('CodeForces')
+    // 默认选中已登录平台并加载其竞赛
+    expect(wrapper.findAll('.contests__row').length).toBe(2)
+  })
+
+  it('shows guidance instead of tabs when no platform is logged in (no leetcode fallback)', async () => {
+    handler = authHandler([
+      { platform: 'codeforces', loggedIn: false, userId: null },
+      { platform: 'atcoder', loggedIn: false, userId: null },
+    ])
+    const wrapper = mount(ContestApp)
+    await flushPromises()
+
+    expect(wrapper.find('.tabs').exists()).toBe(false)
+    expect(wrapper.find('.contests__row').exists()).toBe(false)
+    expect(wrapper.text()).toContain('当前无已登录平台')
+    expect(wrapper.text()).toContain('题库页账号区登录')
+  })
+
+  it('does not gate when the auth status endpoint fails', async () => {
+    // /api/auth/status 未 mock → 404 not-mocked → authKnown=false,展示全部平台
+    handler = (url, init) => {
+      if (url === '/api/auth/status') {
+        return { status: 500, body: { error: 'server-error' } }
+      }
+      if (url === '/api/contests') {
+        return { status: 200, body: { platforms: TWO_PLATFORMS } }
+      }
+      return happyHandler()(url, init)
+    }
+    const wrapper = mount(ContestApp)
+    await flushPromises()
+
+    expect(wrapper.findAll('.tabs__item').length).toBe(2)
   })
 })

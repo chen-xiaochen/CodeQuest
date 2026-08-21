@@ -95,11 +95,15 @@ describe('stats page', () => {
 
     const cards = wrapper.findAll('.card')
     expect(cards.length).toBe(4)
+    expect(cards[0].text()).toContain('总提交')
     expect(cards[0].text()).toContain('42')
+    expect(cards[1].text()).toContain('通过数')
     expect(cards[1].text()).toContain('21')
+    expect(cards[2].text()).toContain('AC 率')
     expect(cards[2].text()).toContain('50.0%')
-    expect(cards[3].text()).toContain('3 days')
-    expect(cards[3].text()).toContain('longest 9 days')
+    expect(cards[3].text()).toContain('当前连续')
+    expect(cards[3].text()).toContain('3 天')
+    expect(cards[3].text()).toContain('最长连续 9 天')
   })
 
   it('renders one heatmap cell per day plus monday alignment pads with level classes', async () => {
@@ -118,8 +122,8 @@ describe('stats page', () => {
     expect(cells[13].classes()).toContain('heat-cell--l4')
     expect(cells[2].classes()).toContain('heat-cell--l1')
 
-    // title 原生提示带日期与数量
-    expect(cells[13].attributes('title')).toBe('2026-08-18: 10 submissions')
+    // title 原生提示带日期与数量(WP50 中文)
+    expect(cells[13].attributes('title')).toBe('2026-08-18：10 次提交')
 
     // 月份标签:首列必有(首周月份)
     const monthLabels = wrapper.findAll('.heatmap__month')
@@ -138,7 +142,7 @@ describe('stats page', () => {
     expect(bars[6].attributes('style')).toContain('height: 100%')
     expect(bars[0].attributes('style')).toContain('height: 20%')
     expect(bars[1].attributes('style')).toContain('height: 0%')
-    expect(wrapper.text()).toContain('max 5 / day')
+    expect(wrapper.text()).toContain('单日最高 5')
   })
 
   it('shows friendly placeholder when the submission history is empty', async () => {
@@ -157,7 +161,7 @@ describe('stats page', () => {
     await flushPromises()
 
     expect(wrapper.find('.placeholder').exists()).toBe(true)
-    expect(wrapper.text()).toContain('No submissions yet')
+    expect(wrapper.text()).toContain('还没有提交记录')
     expect(wrapper.find('.cards').exists()).toBe(false)
   })
 

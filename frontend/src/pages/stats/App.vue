@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * 刷题统计页(WP29 真实数据):`GET /api/stats` → 汇总卡片(总提交/AC/AC 率/
- * 当前 streak)+ GitHub 风格日历热力图(纯 CSS grid,亮/暗主题变量)+ 近 30 天
- * 趋势条形;空库友好占位。提交落库后经桥 `submission:updated` 推送本页刷新。
+ * 刷题统计页(WP29 真实数据;WP50 中文化):`GET /api/stats` → 汇总卡片(总提交/
+ * 通过数/AC 率/当前连续)+ GitHub 风格日历热力图(纯 CSS grid,亮/暗主题变量)+
+ * 近 30 天趋势条形;空库友好占位。提交落库后经桥 `submission:updated` 推送本页刷新。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -93,14 +93,14 @@ interface MonthLabel {
   label: string
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
 const heatCells = computed<HeatCell[]>(() =>
   (stats.value?.heatmap ?? []).map((day) => ({
     date: day.date,
     count: day.count,
     level: heatLevel(day.count),
-    title: `${day.date}: ${day.count} submission${day.count === 1 ? '' : 's'}`,
+    title: `${day.date}：${day.count} 次提交`,
   })),
 )
 
@@ -142,61 +142,56 @@ const trendHeight = (count: number): string => `${Math.round((count / trendMax.v
 </script>
 
 <template>
-  <AppShell title="Statistics" subtitle="Solving statistics with heatmap and trends.">
+  <AppShell title="统计" subtitle="本地提交历史的刷题统计、热力图与趋势。">
     <p v-if="error" class="state state--error" role="alert">
       {{ error }}
-      <button type="button" class="state__retry" @click="reload">Retry</button>
+      <button type="button" class="state__retry" @click="reload">重试</button>
     </p>
-    <p v-else-if="loading && !stats" class="state">Loading statistics…</p>
+    <p v-else-if="loading && !stats" class="state">正在加载统计…</p>
 
-    <section v-else-if="stats && isEmpty" class="placeholder" aria-label="empty statistics">
-      <p class="placeholder__mark">No submissions yet</p>
+    <section v-else-if="stats && isEmpty" class="placeholder" aria-label="空统计">
+      <p class="placeholder__mark">还没有提交记录</p>
       <p>
-        Submit from the editor with "Submit to OJ"; solved counts, streaks and the
-        heatmap will build up here from your local submission history.
+        在编辑器中使用「提交到 OJ」后,通过数、连续天数与热力图会随本地提交历史在此累积。
       </p>
     </section>
 
     <template v-else-if="stats && summary">
       <!-- 汇总卡片 -->
-      <section class="cards" aria-label="summary cards">
+      <section class="cards" aria-label="汇总卡片">
         <div class="card">
-          <span class="card__label">Total submissions</span>
+          <span class="card__label">总提交</span>
           <span class="card__value">{{ summary.totalSubmissions }}</span>
         </div>
         <div class="card">
-          <span class="card__label">Accepted</span>
+          <span class="card__label">通过数</span>
           <span class="card__value">{{ summary.acceptedSubmissions }}</span>
         </div>
         <div class="card">
-          <span class="card__label">Acceptance rate</span>
+          <span class="card__label">AC 率</span>
           <span class="card__value">{{ acceptancePercent }}</span>
         </div>
         <div class="card">
-          <span class="card__label">Current streak</span>
-          <span class="card__value">
-            {{ summary.currentStreakDays }} day{{ summary.currentStreakDays === 1 ? '' : 's' }}
-          </span>
-          <span class="card__hint">
-            longest {{ summary.longestStreakDays }} day{{ summary.longestStreakDays === 1 ? '' : 's' }}
-          </span>
+          <span class="card__label">当前连续</span>
+          <span class="card__value">{{ summary.currentStreakDays }} 天</span>
+          <span class="card__hint">最长连续 {{ summary.longestStreakDays }} 天</span>
         </div>
       </section>
 
       <!-- 日历热力图 -->
-      <section class="block" aria-label="submission heatmap">
+      <section class="block" aria-label="提交热力图">
         <div class="block__head">
-          <h2 class="block__title">Submissions heatmap</h2>
+          <h2 class="block__title">提交热力图</h2>
           <span class="block__meta">{{ heatRange }}</span>
         </div>
         <div class="heatmap__scroll">
-          <div class="heatmap" :aria-label="`Submission heatmap from ${heatRange}`" role="img">
+          <div class="heatmap" :aria-label="`提交热力图 ${heatRange}`" role="img">
             <div class="heatmap__weekdays" aria-hidden="true">
-              <span>Mon</span>
+              <span>一</span>
               <span></span>
-              <span>Wed</span>
+              <span>三</span>
               <span></span>
-              <span>Fri</span>
+              <span>五</span>
               <span></span>
               <span></span>
             </div>
@@ -225,21 +220,21 @@ const trendHeight = (count: number): string => `${Math.round((count / trendMax.v
           </div>
         </div>
         <div class="heatmap__legend heat-palette">
-          <span class="heatmap__legend-label">Less</span>
+          <span class="heatmap__legend-label">少</span>
           <span class="heat-cell heat-cell--l0" />
           <span class="heat-cell heat-cell--l1" />
           <span class="heat-cell heat-cell--l2" />
           <span class="heat-cell heat-cell--l3" />
           <span class="heat-cell heat-cell--l4" />
-          <span class="heatmap__legend-label">More</span>
+          <span class="heatmap__legend-label">多</span>
         </div>
       </section>
 
       <!-- 近 30 天趋势 -->
-      <section class="block" aria-label="recent trend">
+      <section class="block" aria-label="近期趋势">
         <div class="block__head">
-          <h2 class="block__title">Last {{ trendBars.length }} days</h2>
-          <span class="block__meta">max {{ trendMax }} / day</span>
+          <h2 class="block__title">近 {{ trendBars.length }} 天</h2>
+          <span class="block__meta">单日最高 {{ trendMax }}</span>
         </div>
         <div class="trend__bars">
           <span
@@ -247,7 +242,7 @@ const trendHeight = (count: number): string => `${Math.round((count / trendMax.v
             :key="day.date"
             class="trend__bar"
             :style="{ height: trendHeight(day.count) }"
-            :title="`${day.date}: ${day.count}`"
+            :title="`${day.date}：${day.count} 次`"
           />
         </div>
         <div class="trend__axis">

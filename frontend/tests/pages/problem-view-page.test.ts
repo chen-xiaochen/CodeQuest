@@ -51,7 +51,7 @@ describe('problem-view page', () => {
     const wrapper = mount(ProblemViewApp)
     await flushPromises()
 
-    expect(wrapper.text()).toContain('No problem selected')
+    expect(wrapper.text()).toContain('尚未选择题目')
   })
 
   it('shows error state and retry on endpoint failure', async () => {

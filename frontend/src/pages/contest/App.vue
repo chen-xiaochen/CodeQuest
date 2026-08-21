@@ -6,30 +6,36 @@
  *
  * 如实选型(M4 前置):「参加」为竞赛页外链直开——CF 参加需登录 POST,
  * 平台内交互留 WP24;届时可换桥消息。
+ * WP50:平台标签门控(join /api/auth/status,照 WP49 题库页模式)——仅展示
+ * 已登录平台;status 失败不门控(防线);全未登录给引导文案,不回落力扣
+ * (力扣无竞赛能力)。文案全面中文化。
  */
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import {
   ApiError,
+  fetchAuthStatus,
   fetchContestPlatforms,
   fetchContestReminders,
   fetchContests,
   subscribeContestReminder,
   unsubscribeContestReminder,
+  type AuthStatusItem,
   type ContestPhase,
   type ContestSummary,
   type PlatformSummary,
 } from '../../lib/api'
+import { filterPlatformsByAuth } from '../problems/platformGate'
 
 /** 默认提醒提前量(分钟),与后端 ContestReminderService.DEFAULT_LEAD_TIME_MINUTES 一致。 */
 const DEFAULT_LEAD_TIME_MINUTES = 1440
 
 const PHASE_LABELS: Record<ContestPhase, string> = {
-  BEFORE: 'Before',
-  CODING: 'Coding',
-  PENDING_SYSTEM_TEST: 'Pending system test',
-  SYSTEM_TEST: 'System test',
-  FINISHED: 'Finished',
+  BEFORE: '未开始',
+  CODING: '进行中',
+  PENDING_SYSTEM_TEST: '等待系统测试',
+  SYSTEM_TEST: '系统测试中',
+  FINISHED: '已结束',
 }
 
 const platforms = ref<PlatformSummary[]>([])
@@ -39,7 +45,22 @@ const subscribedIds = ref<Set<string>>(new Set())
 const loading = ref(false)
 const error = ref('')
 
-const hasPlatform = computed(() => platforms.value.length > 0)
+// WP50:登录快照门控(照题库页模式;auth 端点失败不门控)
+const authItems = ref<AuthStatusItem[]>([])
+/** GET /api/auth/status 是否成功过——失败/未装配时展示全部平台(不门控防线)。 */
+const authKnown = ref(false)
+
+/** 门控后的可见平台:已登录内连接;authKnown=false 时原样全量。 */
+const visiblePlatforms = computed(() =>
+  authKnown.value ? filterPlatformsByAuth(platforms.value, authItems.value) : platforms.value,
+)
+
+/** 全未登录(快照可用且过滤后为空)——竞赛页不回落力扣(力扣无竞赛能力)。 */
+const noneLoggedIn = computed(
+  () => authKnown.value && visiblePlatforms.value.length === 0,
+)
+
+const hasPlatform = computed(() => visiblePlatforms.value.length > 0)
 
 function describeError(cause: unknown): string {
   if (cause instanceof ApiError) {
@@ -49,7 +70,7 @@ function describeError(cause: unknown): string {
 }
 
 function formatStartTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+  return new Date(iso).toLocaleString('zh-CN', {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
@@ -61,9 +82,9 @@ function formatStartTime(iso: string): string {
 function formatDuration(minutes: number): string {
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
-  if (hours === 0) return `${rest}m`
-  if (rest === 0) return `${hours}h`
-  return `${hours}h ${rest}m`
+  if (hours === 0) return `${rest} 分钟`
+  if (rest === 0) return `${hours} 小时`
+  return `${hours} 小时 ${rest} 分钟`
 }
 
 async function loadPlatform(): Promise<void> {
@@ -115,26 +136,40 @@ async function toggleReminder(contest: ContestSummary, enabled: boolean | string
 }
 
 onMounted(async () => {
-  try {
-    platforms.value = await fetchContestPlatforms()
-    platform.value = platforms.value[0]?.id ?? ''
-    await loadPlatform()
-  } catch (cause) {
-    error.value = describeError(cause)
+  // WP50:平台清单 ⋈ 登录快照并行拉取——快照失败不门控(authKnown=false),
+  // 平台清单失败进错误态;默认选中门控后第一项(全未登录为空,展示引导)
+  const [contestsResult, authResult] = await Promise.allSettled([
+    fetchContestPlatforms(),
+    fetchAuthStatus(),
+  ])
+  if (contestsResult.status === 'rejected') {
+    error.value = describeError(contestsResult.reason)
+    return
   }
+  platforms.value = contestsResult.value
+  if (authResult.status === 'fulfilled') {
+    authItems.value = authResult.value
+    authKnown.value = true
+  }
+  platform.value = visiblePlatforms.value[0]?.id ?? ''
+  await loadPlatform()
 })
 </script>
 
 <template>
-  <AppShell title="Contest" subtitle="Contests with start times, phases and reminders.">
-    <p v-if="!loading && !hasPlatform && !error" class="state">
-      No contest-capable platform is registered yet. CodeForces arrives with the next
-      platform integration; contests for it will appear here automatically.
+  <AppShell title="竞赛" subtitle="竞赛开始时间、阶段与提醒订阅;平台需登录后可选。">
+    <!-- WP50:全未登录引导(不回落力扣——力扣无竞赛能力) -->
+    <p v-if="!error && noneLoggedIn" class="state">
+      当前无已登录平台,请在题库页账号区登录;登录 CodeForces 后,竞赛会出现在这里。
     </p>
 
-    <div v-if="hasPlatform" class="tabs" role="tablist" aria-label="contest platforms">
+    <p v-else-if="!loading && !hasPlatform && !error" class="state">
+      尚未接入支持竞赛的平台。CodeForces 集成就绪后,竞赛会自动出现在这里。
+    </p>
+
+    <div v-if="hasPlatform" class="tabs" role="tablist" aria-label="竞赛平台">
       <button
-        v-for="entry in platforms"
+        v-for="entry in visiblePlatforms"
         :key="entry.id"
         type="button"
         role="tab"
@@ -148,10 +183,10 @@ onMounted(async () => {
     </div>
 
     <p v-if="error" class="state state--error" role="alert">{{ error }}</p>
-    <p v-else-if="loading" class="state">Loading contests…</p>
-    <p v-else-if="hasPlatform && items.length === 0" class="state">No upcoming contests on this platform.</p>
+    <p v-else-if="loading" class="state">正在加载竞赛…</p>
+    <p v-else-if="hasPlatform && items.length === 0" class="state">该平台暂无即将开始的竞赛。</p>
 
-    <ul v-if="items.length > 0" class="contests" aria-label="contest list">
+    <ul v-if="items.length > 0" class="contests" aria-label="竞赛列表">
       <li v-for="contest in items" :key="contest.remoteId" class="contests__row">
         <div class="contests__main">
           <span class="contests__title">
@@ -172,7 +207,7 @@ onMounted(async () => {
             :href="contest.url"
             target="_blank"
             rel="noopener noreferrer"
-          >Open</a>
+          >打开</a>
           <label class="contests__remind-label">
             <input
               class="contests__remind"
@@ -181,7 +216,7 @@ onMounted(async () => {
               :data-remote="contest.remoteId"
               @change="toggleReminder(contest, ($event.target as HTMLInputElement).checked)"
             />
-            <span>Remind 24h before</span>
+            <span>提前 24 小时提醒</span>
           </label>
         </div>
       </li>

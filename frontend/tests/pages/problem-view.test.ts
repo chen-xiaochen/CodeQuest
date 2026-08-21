@@ -153,7 +153,7 @@ describe('problem-view solutions block', () => {
     const wrapper = mount(ProblemViewApp)
     await flushPromises()
 
-    expect(wrapper.find('.solutions__state').text()).toContain('No solutions')
+    expect(wrapper.find('.solutions__state').text()).toContain('暂无题解')
   })
 })
 

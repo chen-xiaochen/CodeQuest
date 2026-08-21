@@ -9,12 +9,12 @@ defineProps<{
 }>()
 
 const NAV = [
-  { href: '/problems/', label: 'Problems' },
-  { href: '/contest/', label: 'Contest' },
-  { href: '/stats/', label: 'Statistics' },
-  { href: '/search/', label: 'Search' },
-  { href: '/problem-view/', label: 'Problem View' },
-  { href: '/submissions/', label: 'Submissions' },
+  { href: '/problems/', label: '题库' },
+  { href: '/contest/', label: '竞赛' },
+  { href: '/stats/', label: '统计' },
+  { href: '/search/', label: '本地搜索' },
+  { href: '/problem-view/', label: '题面' },
+  { href: '/submissions/', label: '提交记录' },
 ]
 </script>
 
@@ -23,7 +23,7 @@ const NAV = [
     <header class="cq-shell__header">
       <h1 class="cq-shell__title">{{ title }}</h1>
       <p v-if="subtitle" class="cq-shell__subtitle">{{ subtitle }}</p>
-      <nav class="cq-shell__nav" aria-label="CodeQuest pages">
+      <nav class="cq-shell__nav" aria-label="CodeQuest 页面">
         <a
           v-for="item in NAV"
           :key="item.href"

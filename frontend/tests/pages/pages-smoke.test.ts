@@ -13,11 +13,11 @@ import SubmissionsApp from '../../src/pages/submissions/App.vue'
 
 const CASES = [
   ['problems', ProblemsApp, '题库'],
-  ['contest', ContestApp, 'Contest'],
-  ['stats', StatsApp, 'Statistics'],
+  ['contest', ContestApp, '竞赛'],
+  ['stats', StatsApp, '统计'],
   ['search', SearchApp, '本地搜索'],
-  ['problem-view', ProblemViewApp, 'Problem View'],
-  ['submissions', SubmissionsApp, 'Submissions'],
+  ['problem-view', ProblemViewApp, '题面'],
+  ['submissions', SubmissionsApp, '提交记录'],
 ] as const
 
 describe('页面渲染冒烟', () => {
