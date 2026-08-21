@@ -15,8 +15,8 @@
 | 5 | WP47 | wp-achieved→continue | 0.556 (5/9) | 0 | 创建链路 7/7:templateStyleOf 兜底 LEETCODE、Wiring 双参+压制清偿、Dialog 门控(可用语言/默认 Java/空配置拦截+打开设置)、Bridge 三态自动选语言(替代旧弹菜单,规格行为)、createNewSolution 风格化;+6 测共 696,check 全绿;commit fd3abb8;偏差候选:core null 最后防线仍 LEETCODE 单参(正常链路 UI 已拦截) |
 | 6 | WP49 | wp-achieved→continue | 0.667 (6/9) | 0 | 前端题库页 6/6:账号区显式按钮+用户名、平台门控+回落 leetcodecn(真实 id,计划 leetcode-cn 有误已核源码修正)+提示条、status→refresh 静默恢复+status 失败不门控防线、SearchPanel 抽组件+子视图切换、两页中文化;前端 +11 测共 156,build 通过;commit fc9c80e |
 | 7 | WP50 | wp-achieved→continue | 0.778 (7/9) | 0 | 前端其余页 6/6:contest 门控(复用 platformGate+防线,不回落力扣)+五阶段中文、stats/problem-view 全文案、submissions 三件套/双 tab+verdict.ts 中文(与 zh bundle 对齐)、landing+AppShell NAV;前端 +3 测共 159,build 通过;commit c838518 |
-| 9 | WP52 | wp-achieved→loop-achieved | 1.0 (9/9) | 0 | 集成验收 4/4:clean check test buildPlugin 全绿(696 测/27MB zip)+前端 159+build;八条验收三态结论(⑦纯人工 B-6/④重启人工 B-3,余自动化或静态核验);ui-revamp-manual-checklist.md;CHANGELOG 1.1.1 并入 1.2.0(定版留用户);commit 7e66e92 |
 | 8 | WP51 | wp-achieved→continue | 0.889 (8/9) | 0 | Kotlin 面板重组 8/8:PANELS 4→3、挑战面板 45 条 bundle 化、stripeTitle 编程式显示名(2026.2 无 XML displayName,反编译核实)、挑战窗双 tab(JCEF 惰性+challengeId 联动+桥推送随迁)、Navigator 净新增导航、删 Submissions 窗零残留;696 测+check+buildPlugin 三绿,产物 xml 恰 3 toolWindow;commit 146bad6;第二次 429 中断(零残留),重派一次过 |
+| 9 | WP52 | wp-achieved→loop-achieved | 1.0 (9/9) | 0 | 集成验收 4/4:clean check test buildPlugin 全绿(696 测/27MB zip)+前端 159+build;八条验收三态结论(⑦纯人工 B-6/④重启人工 B-3,余自动化或静态核验);ui-revamp-manual-checklist.md;CHANGELOG 1.1.1 并入 1.2.0(定版留用户);commit 7e66e92 |
 
 ## History (loop-20260819-codequest-rewrite-m7,已归档)
 | iter | wp | verdict | proximity | failed | 备注 |
