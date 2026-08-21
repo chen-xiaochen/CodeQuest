@@ -1,3 +1,8 @@
+## 1.2.2
+### Fixed
+- Settings template browsing no longer implicitly enables a language: switching the style/language dropdown away from an untouched built-in default (never configured, text unchanged) keeps it unconfigured, instead of silently persisting the default text as "configured" and enabling that language. Explicitly clicking OK/Apply on a tab still enables it as before. This also fixes the confusing flow where configuring Java (from the default Kotlin tab) accidentally enabled Kotlin too.
+- The settings page now opens on a configured language for the initial style (Java preferred, per template availability) instead of always landing on the first language (Kotlin), so returning to settings after saving a Java template shows the Java tab.
+
 ## 1.2.1
 ### Fixed
 - Problems list status now reflects the actual solve state from the platform: LeetCode / LeetCode CN pass the logged-in user's per-question GraphQL `status` through and merge it with local submission history (AC > TRIED > UNSOLVED), so problems solved on the website show as solved even when never submitted from the plugin. Field-tested caveat: the CN list API does not distinguish "not attempted" from "attempted but not AC" (both arrive as non-"ac" values), so only "ac" maps to solved — the "tried" state remains driven by local submissions.

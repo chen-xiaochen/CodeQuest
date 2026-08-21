@@ -178,6 +178,30 @@ class TemplateDraftsStateTest {
     }
 
     @Test
+    fun `switching away from untouched default keeps it unconfigured`() {
+        // 1.2.2 修复浏览污染:基线未配置且编辑器文本与内置默认逐字一致(只是切页签看了
+        // 一眼)→ 切走不落草稿,不把内置默认隐式持久化为「已配置」
+        val state = TemplateDraftsState(initial = emptyMap())
+        val defaultKotlin = ChallengeTemplates.entryTemplate(TemplateStyle.LEETCODE, "kotlin")
+        val javaText =
+            state.switchSelection(
+                oldStyle = TemplateStyle.LEETCODE,
+                oldLanguageId = "kotlin",
+                editorText = defaultKotlin, // 未改默认文本
+                newStyle = TemplateStyle.LEETCODE,
+                newLanguageId = "java",
+            )
+        assertEquals(ChallengeTemplates.entryTemplate(TemplateStyle.LEETCODE, "java"), javaText)
+        assertFalse(state.isModified())
+        assertEquals(emptyMap<String, String>(), state.toPersisted())
+
+        // 反向锁定:真实编辑(哪怕加一行)→ 切走照常 flush,浏览保护不影响
+        val state2 = TemplateDraftsState(initial = emptyMap())
+        state2.switchSelection(TemplateStyle.LEETCODE, "kotlin", defaultKotlin + "\n// touched", TemplateStyle.LEETCODE, "java")
+        assertTrue(state2.toPersisted().containsKey("leetcode:kotlin"))
+    }
+
+    @Test
     fun `switchSelection to same combo updates draft and echoes text`() {
         // 面板 no-op 守卫前的底层语义:同 (风格,语言) 调用 = flush 即回填,文本原样
         val state = TemplateDraftsState(initial = emptyMap())

@@ -1,5 +1,6 @@
 package com.codequest.ui.settings
 
+import com.codequest.core.workspace.TemplateAvailability
 import com.codequest.core.workspace.TemplateStyle
 import com.codequest.core.workspace.WorkspaceLanguage
 import com.codequest.infra.db.DatabaseFolders
@@ -71,6 +72,12 @@ class CodeQuestSettingsConfigurable(
     override fun createComponent(): JComponent {
         val settings = CodeQuestSettings.getInstance(project)
         drafts = TemplateDraftsState(initial = settings.state.templates)
+        // 1.2.2 修复:初始语言定位到「当前风格下已配置的语言」(Java 优先),而非固定
+        // 第一项 Kotlin——否则配完 Java 重开设置停在 Kotlin 页,观感「模版变成 Kotlin」
+        languageComboValue =
+            TemplateAvailability.defaultLanguage(
+                TemplateAvailability.usableLanguages(INITIAL_TEMPLATE_STYLE, settings.state.templates),
+            ) ?: languages.first()
 
         val field = TextFieldWithBrowseButton()
         field.addBrowseFolderListener(

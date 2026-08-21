@@ -85,11 +85,18 @@ class TemplateDraftsState(
     }
 
     /**
-     * 选择切换时序(WP46 面板接线核):风格或语言任一切换时,先把**旧** (风格,语言) 的
-     * 编辑器实时文本落草稿(flush),再返回**新** (风格,语言) 应展示的编辑器文本。
+     * 选择切换时序(WP46 面板接线核;1.2.2 修复浏览污染):风格或语言任一切换时,先把
+     * **旧** (风格,语言) 的编辑器实时文本落草稿(flush),再返回**新** (风格,语言) 应
+     * 展示的编辑器文本。
+     *
+     * 1.2.2:**浏览未改不启用**——旧组合「基线未配置(stored 空)且编辑器文本与内置默认
+     * 逐字一致」(用户只是切页签看了一眼默认文本)时**不落草稿**,避免把内置默认隐式
+     * 持久化为「已配置」(否则默认停在首语言页,切去配置别的语言会把首语言连带启用)。
+     * 显式启用语义不变:在当前页签点 OK/Apply 即启用(WP45)。
      *
      * 抽到本类的原因:面板 Swing 接线无法脱离 IDE 单测,切换 flush 时序在此由
-     * `TemplateDraftsStateTest` 锁定;同 (风格,语言) 调用 = flush 即回填(文本原样)。
+     * `TemplateDraftsStateTest` 锁定;同 (风格,语言) 调用 = flush 即回填(文本原样,
+     * 同样受浏览未改保护)。
      */
     fun switchSelection(
         oldStyle: TemplateStyle,
@@ -98,7 +105,12 @@ class TemplateDraftsState(
         newStyle: TemplateStyle,
         newLanguageId: String,
     ): String {
-        onEditorText(oldStyle, oldLanguageId, editorText)
+        val untouched =
+            stored.getValue(DraftKey(oldStyle, oldLanguageId)).isBlank() &&
+                editorText.trim() == defaults(oldStyle, oldLanguageId).trim()
+        if (!untouched) {
+            onEditorText(oldStyle, oldLanguageId, editorText)
+        }
         return editorText(newStyle, newLanguageId)
     }
 
