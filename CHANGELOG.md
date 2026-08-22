@@ -1,3 +1,7 @@
+## 1.2.5
+### Fixed
+- Challenge workspace folders no longer trigger the IDE "missing package statement / invalid package name" inspection: the workspace base directory (`<project>/codequest/`, or `codequest/` under the configured database folder) is now automatically marked as Excluded when it sits inside a module content root — on challenge-panel open and after one-click creation (idempotent). Editing challenge files, local javac/java runs and submit-region extraction are unaffected; directories outside the project are left untouched.
+
 ## 1.2.4
 ### Fixed
 - Challenge entry files now carry the platform's per-language starter code: LeetCode / LeetCode CN detail queries fetch `codeSnippets`, and the one-click "start coding" flow injects the selected language's snippet into the template's `${challenge.code}` — e.g. the real `public int[] twoSum(int[] nums, int target)` signature instead of the bare `class Solution {}` stub. Fetch failures (premium problems, network) fall back to the language default stub; stdin-style (ACM) platforms are unaffected. The manual New Challenge dialog still uses the default stub (start from the problem view for real starter code).

@@ -169,6 +169,8 @@ class ChallengeWorkspacePanel(
                 }
             }
         }
+        // 1.2.5:挑战窗打开即确保工作区基目录 Excluded(幂等,覆盖旧目录与手填路径创建的文件)
+        WorkspaceExclusions.ensureBaseExcluded(project)
         refreshChallenges()
     }
 

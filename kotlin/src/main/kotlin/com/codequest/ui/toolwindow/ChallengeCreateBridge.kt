@@ -14,6 +14,7 @@ import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
+import com.codequest.ui.challenge.WorkspaceExclusions
 import com.codequest.ui.challenge.createEntryFileWithTemplate
 import com.codequest.ui.jcef.CQBridge
 import com.intellij.openapi.application.ApplicationManager
@@ -176,6 +177,8 @@ private suspend fun performCreate(
             }
     return runCatching {
         val entryFile = createOrOpenInProject(project, request, languageId, platform)
+        // 1.2.5:工作区基目录标记 Excluded,消除项目内挑战文件的 package 检查告警(幂等)
+        WorkspaceExclusions.ensureBaseExcluded(project)
         openInEditor(project, entryFile)
         ChallengeCreateResult(ok = true)
     }.getOrElse { error ->
