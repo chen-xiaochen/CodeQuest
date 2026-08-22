@@ -9,6 +9,7 @@
 <!-- 每轮追加 -->
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
+| 1 | WP53 | wp-achieved→continue | 0.167 (1/6) | 0 | SPI 云端测试 6/6:TestEvaluationCapable+三模型、interpret_solution(轮询复用 PollConfig 参数自持循环)、full_* 归一、双变体平台实现;+9 测共 708 全绿,check 过;loop 层独立核验;待 commit |
 
 
 ## History (loop-20260821-ui-revamp)

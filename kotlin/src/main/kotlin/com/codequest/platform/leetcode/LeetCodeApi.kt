@@ -35,7 +35,11 @@ import kotlinx.serialization.json.put
  *   (content 为 Markdown 原文,COM 站点为二次转义形态);
  * - 公司题单(WP42):公司列表 `questionCompanyTagsV2`(CN 走 companyTagsV2.
  *   companyTagInfoNodes / COM 走 companyTags)、公司题单 `favoriteQuestionList`
- *   (favoriteSlug = 公司 slug[-期间后缀],filtersV2 完整骨架同 problemsetQuestionListV2)。
+ *   (favoriteSlug = 公司 slug[-期间后缀],filtersV2 完整骨架同 problemsetQuestionListV2);
+ * - 云端测试(WP53):REST `POST /problems/{slug}/interpret_solution/`
+ *   (`{lang, data_input, question_id, typed_code}`)→ `{interpret_id}`,轮询同族
+ *   `GET /submissions/detail/{interpretId}/check/` 到 state == SUCCESS
+ *   (字段全集 = 旧 LeetCodeRunResult.Success)。
  *
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
@@ -772,6 +776,88 @@ class LeetCodeApi(
         )
     }
 
+    // -------------------------------------------------------------------
+    // 云端测试(interpret,WP53;旧 runAnswer/getRunCodeResult 事实)
+    // -------------------------------------------------------------------
+
+    /**
+     * 发起云端测试(POST /problems/{slug}/interpret_solution/,snake_case 信封
+     * `{lang, data_input, question_id, typed_code}` + CSRF),返回 interpret_id
+     * 供 [fetchInterpretCheck] 轮询(响应字段全集 = 旧 LeetCodeRunResponse,
+     * 其余字段无消费方不解析)。
+     */
+    suspend fun interpretSolution(
+        questionId: String,
+        problemSlug: String,
+        langSlug: String,
+        code: String,
+        dataInput: String,
+    ): String {
+        val body =
+            buildJsonObject {
+                put("lang", langSlug)
+                put("data_input", dataInput)
+                put("question_id", questionId)
+                put("typed_code", code)
+            }.toString()
+        val raw = transport.postJson(variant.id, variant.interpretSolutionUrl(problemSlug), body, csrfHeaders())
+        val interpretId =
+            json
+                .parseToJsonElement(raw)
+                .jsonObject["interpret_id"]
+                ?.jsonPrimitive
+                ?.contentOrNullIfNull()
+        return interpretId ?: throw OJException("LeetCode interpret_solution 响应缺少 interpret_id: $raw")
+    }
+
+    /** interpret /check/ 快照(字段名 = 旧 LeetCodeRunResult.Success 事实,snake_case)。 */
+    data class LeetCodeInterpretCheck(
+        /** STARTED / PENDING / SUCCESS(SUCCESS = 终态)。 */
+        val state: String,
+        val statusMsg: String?,
+        val codeAnswer: List<String>,
+        val expectedCodeAnswer: List<String>,
+        val compareResult: String?,
+        val totalCorrect: Int?,
+        val totalTestcases: Int?,
+        val fullCompileError: String?,
+        val compileError: String?,
+        val fullRuntimeError: String?,
+        val runtimeError: String?,
+        val statusRuntime: String?,
+        val statusMemory: String?,
+    )
+
+    /**
+     * 轮询 interpret 结果(GET /submissions/detail/{interpretId}/check/,与提交
+     * check 同族端点)。非终态(PENDING/STARTED)响应仅有 state,其余字段宽容为
+     * null/空;缺 state 视为协议异常快速失败。
+     */
+    suspend fun fetchInterpretCheck(interpretId: String): LeetCodeInterpretCheck {
+        val raw = transport.get(variant.id, variant.submissionCheckUrl(interpretId), csrfHeaders())
+        val check =
+            json
+                .parseToJsonElement(raw)
+                .jsonObject
+                .takeIf { it["state"] != null }
+                ?: throw OJException("LeetCode interpret check 响应缺少 state 字段: ${raw.take(SNIPPET)}")
+        return LeetCodeInterpretCheck(
+            state = check["state"]?.jsonPrimitive?.content.orEmpty(),
+            statusMsg = check["status_msg"]?.jsonPrimitive?.contentOrNullIfNull(),
+            codeAnswer = check["code_answer"].stringListOrEmpty(),
+            expectedCodeAnswer = check["expected_code_answer"].stringListOrEmpty(),
+            compareResult = check["compare_result"]?.jsonPrimitive?.contentOrNullIfNull(),
+            totalCorrect = check["total_correct"]?.jsonPrimitive?.flexibleIntOrNull(),
+            totalTestcases = check["total_testcases"]?.jsonPrimitive?.flexibleIntOrNull(),
+            fullCompileError = check["full_compile_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            compileError = check["compile_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            fullRuntimeError = check["full_runtime_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            runtimeError = check["runtime_error"]?.jsonPrimitive?.contentOrNullIfNull(),
+            statusRuntime = check["status_runtime"]?.jsonPrimitive?.contentOrNullIfNull(),
+            statusMemory = check["status_memory"]?.jsonPrimitive?.contentOrNullIfNull(),
+        )
+    }
+
     companion object {
         /** 单次题解列表拉取条数(旧实现列表页默认量级)。 */
         const val DEFAULT_SOLUTION_LIMIT: Int = 20
@@ -801,3 +887,14 @@ private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullIfNull(): Stri
 private fun kotlinx.serialization.json.JsonPrimitive.numberOrNullPercentile(): Double? = contentOrNullIfNull()?.toDoubleOrNull()
 
 private fun kotlinx.serialization.json.JsonPrimitive.flexibleIntOrNull(): Int? = intOrNull ?: contentOrNullIfNull()?.toIntOrNull()
+
+/** 字符串数组字段宽容解析(WP53):null/JsonNull/非数组/含 null 元素一律降级为空或跳过。 */
+private fun kotlinx.serialization.json.JsonElement?.stringListOrEmpty(): List<String> =
+    (
+        (this as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { el ->
+                (el as? kotlinx.serialization.json.JsonPrimitive)
+                    ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+                    ?.content
+            }
+    ).orEmpty()

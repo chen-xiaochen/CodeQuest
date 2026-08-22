@@ -366,13 +366,13 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] [acceptance] 规格第 8 节验收清单 8 条逐条手动走查:中文无残留/平台门控与回落/用户名显示与退出/重启静默恢复/模版门控默认 Java/老配置双风格迁移可见/提交导航/本地搜索入口
 - [x] CHANGELOG.md 按 SemVer 更新(MINOR,1.2.0 候选)
 
-## WP53: SPI：TestEvaluationCapable 与力扣 interpret 云端测试 [pending]
-- [ ] spi 新增 `TestEvaluationCapable` 接口：`watchTestRun(request: TestRunRequest): Flow<TestRunStatus>`；模型 `TestRunRequest(problemRemoteId, questionId, languageId, code, dataInput)`、`TestRunStatus`（Pending / Finished(TestRunResult)）、`TestRunResult(correctCount, totalCount, codeAnswers, expectedCodeAnswers, compareResult, statusRuntime, statusMemory, compileError, runtimeError, state)`
-- [ ] 力扣实现 `LeetCodeTestEvaluationService`：POST `/problems/{slug}/interpret_solution/`（snake_case body + 复用现有 LeetCodeApi csrf 通道）→ interpretId → 轮询 `/submissions/detail/{interpretId}/check/`（轮询节奏对齐 BaseSubmissionFlow 语义：1s 起步指数退避封顶，state != SUCCESS 继续，非终态字段宽容解析）
-- [ ] check 响应映射：code_answer[]/expected_code_answer[]/compare_result/total_correct/total_testcases/full_compile_error（优先全文）/full_runtime_error/status_runtime/status_memory/state；CE 时 message 取 full_compile_error 全文
-- [ ] LeetCodePlatform 实现该能力接口（leetcode + leetcodecn 两变体共用，域名走 variant）
-- [ ] [unit] FakeOJTransport 单测：interpret_solution 请求体（snake_case/字段值透传）与 interpret_id 解析；check 轮询→终态字段全集映射；CE/RE 全文优先级；非终态（PENDING）继续轮询
-- [ ] [unit] 平台能力归属测试（service is TestEvaluationCapable）
+## WP53: SPI：TestEvaluationCapable 与力扣 interpret 云端测试 [x] (done @ iter 1;接口+三模型/TestRunStatus(Pending|Finished);LeetCodeTestEvaluationService POST interpret_solution(snake_case+CSRF)→轮询 check(state==SUCCESS 终态,复用 BaseSubmissionFlow.PollConfig 退避参数但自持循环——isTerminal/发射类型不匹配故不套用状态机本体);full_*/短文归一;PENDING 宽容/缺 state 快速失败;语言守卫同 submit;LeetCodePlatform 双变体实现;+9 测共 708 全绿,check 过;loop 层独立核验 BUILD SUCCESSFUL)
+- [x] spi 新增 `TestEvaluationCapable` 接口：`watchTestRun(request: TestRunRequest): Flow<TestRunStatus>`；模型 `TestRunRequest(problemRemoteId, questionId, languageId, code, dataInput)`、`TestRunStatus`（Pending / Finished(TestRunResult)）、`TestRunResult(correctCount, totalCount, codeAnswers, expectedCodeAnswers, compareResult, statusRuntime, statusMemory, compileError, runtimeError, state)`
+- [x] 力扣实现 `LeetCodeTestEvaluationService`：POST `/problems/{slug}/interpret_solution/`（snake_case body + 复用现有 LeetCodeApi csrf 通道）→ interpretId → 轮询 `/submissions/detail/{interpretId}/check/`（轮询节奏对齐 BaseSubmissionFlow 语义：1s 起步指数退避封顶，state != SUCCESS 继续，非终态字段宽容解析）
+- [x] check 响应映射：code_answer[]/expected_code_answer[]/compare_result/total_correct/total_testcases/full_compile_error（优先全文）/full_runtime_error/status_runtime/status_memory/state；CE 时 message 取 full_compile_error 全文
+- [x] LeetCodePlatform 实现该能力接口（leetcode + leetcodecn 两变体共用，域名走 variant）
+- [x] [unit] FakeOJTransport 单测：interpret_solution 请求体（snake_case/字段值透传）与 interpret_id 解析；check 轮询→终态字段全集映射；CE/RE 全文优先级；非终态（PENDING）继续轮询
+- [x] [unit] 平台能力归属测试（service is TestEvaluationCapable）
 
 ## WP54: 对话框：测试用例编辑与云端测试结果 [pending]
 依赖 WP53

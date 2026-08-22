@@ -27,12 +27,16 @@ import com.codequest.spi.SubmissionDetail
 import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
 import com.codequest.spi.SubmitRequest
+import com.codequest.spi.TestEvaluationCapable
+import com.codequest.spi.TestRunRequest
+import com.codequest.spi.TestRunStatus
 import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现六个能力接口并按服务拆分委托:
- * auth / problem / company(WP42)/ submission / solutions / submission detail(WP36)。
+ * (身份差异见 [LeetCodeVariant]),组合实现七个能力接口并按服务拆分委托:
+ * auth / problem / company(WP42)/ submission / solutions / submission detail(WP36)/
+ * test evaluation(WP53)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -45,12 +49,14 @@ class LeetCodePlatform(
     CompanyQueryCapable,
     SubmissionCapable,
     SolutionViewCapable,
-    SubmissionDetailCapable {
+    SubmissionDetailCapable,
+    TestEvaluationCapable {
     private val api = LeetCodeApi(variant, transport)
     private val auth = LeetCodeAuth(variant, api, transport, credentialStore, cookiePrompt)
     private val problemService = LeetCodeProblemService(variant, api)
     private val submissionService = LeetCodeSubmissionService(variant, api)
     private val solutions = LeetCodeSolutions(variant, api)
+    private val testEvaluationService = LeetCodeTestEvaluationService(variant, api)
 
     override val id: PlatformId = variant.id
     override val domain: String = variant.domain
@@ -105,6 +111,8 @@ class LeetCodePlatform(
         remoteSubmissionId: String,
         problemRemoteId: String,
     ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
+
+    override fun watchTestRun(request: TestRunRequest): Flow<TestRunStatus> = testEvaluationService.watchTestRun(request)
 }
 
 /** leetcode.com 注册(plugin.xml `<ojPlatformProvider implementation=.../>`)。 */

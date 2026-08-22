@@ -42,6 +42,9 @@ enum class LeetCodeVariant(
     /** 提交端点(REST POST,question_id + typed_code)。 */
     fun submitUrl(problemSlug: String): String = "https://$domain/problems/$problemSlug/submit/"
 
+    /** 云端测试端点(WP53,REST POST,lang + data_input + question_id + typed_code)。 */
+    fun interpretSolutionUrl(problemSlug: String): String = "https://$domain/problems/$problemSlug/interpret_solution/"
+
     /** 提交结果轮询端点(REST GET)。 */
     fun submissionCheckUrl(submissionId: String): String = "https://$domain/submissions/detail/$submissionId/check/"
 }

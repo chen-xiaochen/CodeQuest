@@ -7,6 +7,7 @@ import com.codequest.spi.OJRuntime
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.SolutionViewCapable
 import com.codequest.spi.SubmissionCapable
+import com.codequest.spi.TestEvaluationCapable
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +41,7 @@ class LeetCodePlatformTest {
     }
 
     @Test
-    fun `platforms implement all four capability interfaces`() {
+    fun `platforms implement all capability interfaces`() {
         val platforms = withFakeRuntime()
 
         platforms.forEach { platform ->
@@ -48,6 +49,7 @@ class LeetCodePlatformTest {
             assertTrue(platform is ProblemQueryCapable, "${platform.id} 缺少 ProblemQueryCapable")
             assertTrue(platform is SubmissionCapable, "${platform.id} 缺少 SubmissionCapable")
             assertTrue(platform is SolutionViewCapable, "${platform.id} 缺少 SolutionViewCapable")
+            assertTrue(platform is TestEvaluationCapable, "${platform.id} 缺少 TestEvaluationCapable")
             assertTrue(platform.info.supportedLanguages.isNotEmpty())
         }
     }
