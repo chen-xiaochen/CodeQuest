@@ -374,13 +374,13 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] [unit] FakeOJTransport 单测：interpret_solution 请求体（snake_case/字段值透传）与 interpret_id 解析；check 轮询→终态字段全集映射；CE/RE 全文优先级；非终态（PENDING）继续轮询
 - [x] [unit] 平台能力归属测试（service is TestEvaluationCapable）
 
-## WP54: 对话框：测试用例编辑与云端测试结果 [pending]
+## WP54: 对话框：测试用例编辑与云端测试结果 [x] (done @ iter 3;TestCasesEditState(按 id diff/纯调序零写入/全空白新行噪音丢弃)+TestCasesDialog(装载→diff→ChallengeWorkspaceService 写库同源,onSaved 回调);TestRunResultState(compare_result 位图逐位优先,缺失回退 answers 逐项相等,任一侧缺失 null 显 -;correctCount/totalCount 优先逐行兜底;CE 优先 RE 全文替代)+TestRunResultDialog(首行截断 60+tooltip);bundle +17 键英中;+17 测共 737 全绿,check 过,loop 层独立核验;对话框壳薄接线未接面板(接线属 WP55))
 依赖 WP53
-- [ ] `TestCasesDialog`（DialogWrapper + JBTable 两列「输入/期望输出」）：工具条增行/删行/清空；打开时装载当前挑战用例（testCaseRepository.findByChallenge），「确定」逐行 upsert + 缺席行删除（写库与挑战工具窗测试用例区同源互通）
-- [ ] 行编辑纯函数抽离（列表↔表格模型转换、diff 出增/删/改），可脱离 Swing 单测
-- [ ] `TestRunResultDialog`（DialogWrapper）：汇总行「X/Y 用例通过」+ JBTable 每用例（输入摘要/期望/实际/通过标记，通过判定取 compare_result 逐位或 codeAnswers 与 expectedCodeAnswers 逐项比较）+ compileError/runtimeError 非空时全文区替代表格
-- [ ] [unit] 表格模型转换与增删改 diff 纯函数测试
-- [ ] [unit] 结果对话框数据组装纯函数测试（compare_result 逐位对错、CE 替代表格分支）
+- [x] `TestCasesDialog`（DialogWrapper + JBTable 两列「输入/期望输出」）：工具条增行/删行/清空；打开时装载当前挑战用例（testCaseRepository.findByChallenge），「确定」逐行 upsert + 缺席行删除（写库与挑战工具窗测试用例区同源互通）
+- [x] 行编辑纯函数抽离（列表↔表格模型转换、diff 出增/删/改），可脱离 Swing 单测
+- [x] `TestRunResultDialog`（DialogWrapper）：汇总行「X/Y 用例通过」+ JBTable 每用例（输入摘要/期望/实际/通过标记，通过判定取 compare_result 逐位或 codeAnswers 与 expectedCodeAnswers 逐项比较）+ compileError/runtimeError 非空时全文区替代表格
+- [x] [unit] 表格模型转换与增删改 diff 纯函数测试
+- [x] [unit] 结果对话框数据组装纯函数测试（compare_result 逐位对错、CE 替代表格分支）
 
 ## WP55: 编辑器浮动工具栏三键接线 [pending]
 依赖 WP54
