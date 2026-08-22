@@ -1,8 +1,15 @@
 # Agentic Loop 进度
 
-- **当前**: 无活跃 loop(最近完成 loop-20260821-ui-revamp,achieved @ 2026-08-21,9/9 WP)
-- **上限**: max_iterations=12 / max_round_time_ms=600000 / max_wall_time_ms=7200000 / divergence_threshold=3 / proximity_goal=0.9
-- **lastUpdatedAt**: 2026-08-21
+- **当前**: loop-20260822-editor-actions-favorites 迭代中(iteration=0)——编辑器三键+题库页题单(WP53-58,计划 docs/plan/editor-actions-and-favorites.md@2e87093,spec@1ad0361,目标定版 1.3.0)
+- **上限**: max_iterations=10 / max_round_time_ms=600000 / max_wall_time_ms=7200000 / divergence_threshold=3 / proximity_goal=0.9
+- **调度顺序**: WP53 → WP56 → WP54 → WP57 → WP55 → WP58(53/56 双根链,58 恒末)
+- **lastUpdatedAt**: 2026-08-22
+
+## History (loop-20260822-editor-actions-favorites)
+<!-- 每轮追加 -->
+| iter | wp | verdict | proximity | failed | 备注 |
+|---|---|---|---|---|---|
+
 
 ## History (loop-20260821-ui-revamp)
 <!-- 每轮追加 -->
