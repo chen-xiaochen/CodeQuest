@@ -22,7 +22,8 @@ import java.util.logging.Logger
  * - 静态资源:从插件 classpath 下 [resourceRoot](默认 `webview/`,WP12 前端产物落点)读取
  * - REST 数据端点:`/api/` 前缀——`GET /api/health`;题目数据端点(WP20,经 [problemApi]
  *   注入后启用):`GET /api/platforms`、`GET /api/problems`(WP42 起支持 `company=`
- *   公司题单参数)、`GET /api/companies`、`GET /api/problem/{remoteId}`;
+ *   公司题单参数、WP56 起支持 `favorite=` 题单参数)、`GET /api/companies`、
+ *   `GET /api/favorites`(WP56,题单清单)、`GET /api/problem/{remoteId}`;
  *   账号状态端点(WP38,经 [authApi] 注入后启用):`GET /api/auth/status`、
  *   静默恢复 `POST /api/auth/refresh`(WP48);
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
@@ -161,11 +162,6 @@ class ResourceHttpServer(
                 runProblemApi(exchange) { api -> api.listProblems(query) }
             }
 
-            // WP42:公司标签清单(公司下拉数据源;company 参数的公司题单走 /api/problems)
-            path == "/api/companies" && exchange.isGet() -> {
-                runProblemApi(exchange) { api -> api.listCompanies(query) }
-            }
-
             // WP39:题面自定义 CSS(text/css 透传;未设置回 200 空体——样式是附属能力,
             // 非数据 API,不回 503;每次请求现读设置,settings apply 后无需重启)
             path == "/api/custom.css" && exchange.isGet() -> {
@@ -182,6 +178,7 @@ class ResourceHttpServer(
                         { handleContestRoutes(exchange, path, query) },
                         { handleSubmissionRoutes(exchange, path, query) },
                         { handleLocalDataRoutes(exchange, path, query) },
+                        { handleCatalogRoutes(exchange, path, query) },
                     )
                 if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
@@ -273,6 +270,30 @@ class ResourceHttpServer(
                 } else {
                     runSubmissionsApi(exchange) { api -> api.submissionDetail(urlDecode(id)) }
                 }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 目录清单端点路由(WP42 companies / WP56 favorites;下拉数据源,均走 ProblemApi)。 */
+    private fun handleCatalogRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        when {
+            // WP42:公司标签清单(公司下拉数据源;company 参数的公司题单走 /api/problems)
+            path == "/api/companies" && exchange.isGet() -> {
+                runProblemApi(exchange) { api -> api.listCompanies(query) }
+            }
+
+            // WP56:题单清单(学习计划组 + 我的题单组;favorite 参数的题单查询走 /api/problems)
+            path == "/api/favorites" && exchange.isGet() -> {
+                runProblemApi(exchange) { api -> api.listFavorites(query) }
             }
 
             else -> {

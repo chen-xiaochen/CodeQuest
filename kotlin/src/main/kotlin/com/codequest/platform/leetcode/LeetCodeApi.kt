@@ -5,6 +5,7 @@ import com.codequest.spi.CodeSnippet
 import com.codequest.spi.OJTransport
 import com.codequest.spi.ProblemFilter
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -36,6 +37,10 @@ import kotlinx.serialization.json.put
  * - 公司题单(WP42):公司列表 `questionCompanyTagsV2`(CN 走 companyTagsV2.
  *   companyTagInfoNodes / COM 走 companyTags)、公司题单 `favoriteQuestionList`
  *   (favoriteSlug = 公司 slug[-期间后缀],filtersV2 完整骨架同 problemsetQuestionListV2);
+ * - 题单/收藏夹(WP56):题单分页泛化为任意 favoriteSlug(公司/学习计划/收藏夹
+ *   共用 [fetchFavoriteQuestionPage]);我的收藏夹清单 GraphQL `favoritesLists`
+ *   (spec 预估的 favoriteFolders 两站点 schema 均不存在,实测改用真实查询)+
+ *   REST `GET /api/list_favorites/` 备选;
  * - 云端测试(WP53):REST `POST /problems/{slug}/interpret_solution/`
  *   (`{lang, data_input, question_id, typed_code}`)→ `{interpret_id}`,轮询同族
  *   `GET /submissions/detail/{interpretId}/check/` 到 state == SUCCESS
@@ -44,7 +49,12 @@ import kotlinx.serialization.json.put
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
  * GraphQL `errors` 信封与结构缺失抛 [OJException]。
+ *
+ * LargeClass 豁免:目录式端点聚合(WP19 起逐 WP 追加、共享 graphql/csrf 收口,
+ * 无状态),拆分只会复制请求底座——同 config/detekt.yml 对 TooManyFunctions
+ * 的豁免口径,交由 review 把关。
  */
+@Suppress("LargeClass")
 class LeetCodeApi(
     private val variant: LeetCodeVariant,
     private val transport: OJTransport,
@@ -352,17 +362,12 @@ class LeetCodeApi(
     }
 
     /**
-     * 公司题单分页查询(`favoriteQuestionList`,旧 searchCompanyChallenges 逐字事实):
+     * 公司题单分页查询(`favoriteQuestionList`,旧 searchCompanyChallenges 逐字事实;
+     * WP56 起委托泛化查询 [fetchFavoriteQuestionPage],线协议不变):
      *
      * - `favoriteSlug` = [companySlugs] 首项 +(`-$interviewPeriodSlug` 后缀,非 null 时);
      * - 其余公司进 `filtersV2.companyFilter.companySlugs`;
-     * - [filter] 的 difficulty → difficultyFilter、tags → topicFilter;keyword 无对应
-     *   输入(旧实现恒发空串 `searchKeyword: ""`,公司查询面板无关键字入口);
-     * - `sortBy` 恒 `{CUSTOM, ASCENDING}`(旧实现无排序输入时的兜底值);
-     * - `filtersV2` 为完整骨架(空子过滤结构为服务端要求的旧实现逐字事实)。
-     *
-     * [companySlugs] 为空时直接返回空页、不发请求(旧 Presenter 同款守卫)。
-     * 响应项 `translatedTitle` 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义)。
+     * - [companySlugs] 为空时直接返回空页、不发请求(旧 Presenter 同款守卫)。
      */
     suspend fun fetchCompanyQuestionPage(
         companySlugs: List<String>,
@@ -374,6 +379,30 @@ class LeetCodeApi(
         if (companySlugs.isEmpty()) return LeetCodeQuestionPage(total = 0, questions = emptyList())
         val favorite = companySlugs.first()
         val favoriteSlug = interviewPeriodSlug?.let { "$favorite-$it" } ?: favorite
+        return fetchFavoriteQuestionPage(favoriteSlug, companySlugs.drop(1), filter, skip, limit)
+    }
+
+    /**
+     * 题单分页查询泛化(WP56,`favoriteQuestionList`):任意收藏夹/学习计划 slug 的
+     * 单页查询,公司题单([fetchCompanyQuestionPage])与其他题单共用。
+     *
+     * - [favoriteSlug] 原样进查询变量(公司题单 = 首公司 + 期间后缀);
+     * - [extraCompanySlugs] 进 `filtersV2.companyFilter.companySlugs`(公司题单多公司
+     *   交集;纯收藏夹/学习计划查询传空);
+     * - [filter] 的 difficulty → difficultyFilter、tags → topicFilter;keyword 无对应
+     *   输入(旧实现恒发空串 `searchKeyword: ""`,题单查询面板无关键字入口);
+     * - `sortBy` 恒 `{CUSTOM, ASCENDING}`(旧实现无排序输入时的兜底值);
+     * - `filtersV2` 为完整骨架(空子过滤结构为服务端要求的旧实现逐字事实)。
+     *
+     * 响应项 `translatedTitle` 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义)。
+     */
+    suspend fun fetchFavoriteQuestionPage(
+        favoriteSlug: String,
+        extraCompanySlugs: List<String>,
+        filter: ProblemFilter,
+        skip: Int,
+        limit: Int,
+    ): LeetCodeQuestionPage {
         val variables =
             buildJsonObject {
                 put("skip", skip)
@@ -385,7 +414,7 @@ class LeetCodeApi(
                         put(
                             "companyFilter",
                             buildJsonObject {
-                                put("companySlugs", stringArray(companySlugs.drop(1)))
+                                put("companySlugs", stringArray(extraCompanySlugs))
                                 put("operator", "IS")
                             },
                         )
@@ -480,6 +509,69 @@ class LeetCodeApi(
                     )
                 },
         )
+    }
+
+    // -------------------------------------------------------------------
+    // 我的收藏题单(WP56)
+    // -------------------------------------------------------------------
+
+    /** 收藏夹条目(slug 即 [fetchFavoriteQuestionPage] 的 favoriteSlug 输入)。 */
+    data class LeetCodeFavorite(
+        val slug: String,
+        val name: String,
+        val questionCount: Int,
+    )
+
+    /**
+     * 我的收藏夹清单——GraphQL `favoritesLists`(WP56 实测探测):spec 预估的
+     * `favoriteFolders` 在两站点 schema 均不存在,真实查询为
+     * `favoritesLists.allFavorites`;COM FavoriteNode 直出 slug/questionCount,
+     * CN 无此二字段(slug 回退 id、题数按 questions 长度计,字段宽容解析)。
+     * 匿名请求合法返回空数组;异常交由调用方降级 REST。
+     */
+    suspend fun fetchFavoriteFolders(): List<LeetCodeFavorite> {
+        val data =
+            graphql(
+                "favoritesLists",
+                if (variant.isCn) LeetCodeGraphQL.FAVORITES_LISTS_CN else LeetCodeGraphQL.FAVORITES_LISTS,
+                buildJsonObject { },
+            )
+        val favorites = data.child("favoritesLists")["allFavorites"]?.jsonArray
+        return favorites.orEmpty().mapNotNull { element ->
+            val node = element.jsonObject
+            val name = node.pickString("name") ?: return@mapNotNull null
+            val slug = node.pickString("slug", "id") ?: return@mapNotNull null
+            LeetCodeFavorite(
+                slug = slug,
+                name = name,
+                questionCount =
+                    node.pickInt("questionCount")
+                        ?: node["questions"]?.jsonArray?.size ?: 0,
+            )
+        }
+    }
+
+    /**
+     * 我的收藏夹清单备选——REST `GET /api/list_favorites/`(旧插件端点事实,
+     * WP56):顶层 `favorites` 数组(裸数组亦可),条目字段宽容解析
+     * (key/slug/id → slug,questions_count/questionCount → 题数)。
+     */
+    suspend fun fetchFavoritesViaRest(): List<LeetCodeFavorite> {
+        val raw = transport.get(variant.id, variant.listFavoritesUrl, csrfHeaders())
+        val favorites =
+            json.parseToJsonElement(raw).let { element ->
+                (element as? JsonArray) ?: element.jsonObject["favorites"] as? JsonArray
+            } ?: return emptyList()
+        return favorites.mapNotNull { element ->
+            val node = element.jsonObject
+            val name = node.pickString("name") ?: return@mapNotNull null
+            val slug = node.pickString("key", "slug", "id") ?: return@mapNotNull null
+            LeetCodeFavorite(
+                slug = slug,
+                name = name,
+                questionCount = node.pickInt("questions_count", "questionCount", "questionsCount") ?: 0,
+            )
+        }
     }
 
     // -------------------------------------------------------------------
@@ -879,6 +971,23 @@ private fun stringArray(values: List<String>): kotlinx.serialization.json.JsonAr
 /** JSON null 字段 → Kotlin null(content 访问对 JsonNull 会抛异常,先判空)。 */
 private fun kotlinx.serialization.json.JsonPrimitive.contentOrNullIfNull(): String? =
     if (this is kotlinx.serialization.json.JsonNull) null else content
+
+/** 多候选字段名宽容取首个非空字符串值(WP56 收藏夹条目:站点/接口形态不一)。 */
+private fun kotlinx.serialization.json.JsonObject.pickString(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name ->
+        (this[name] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+            ?.content
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+/** 多候选字段名宽容取首个整数值(数字/字符串两种承载形态)。 */
+private fun kotlinx.serialization.json.JsonObject.pickInt(vararg names: String): Int? =
+    names.firstNotNullOfOrNull { name ->
+        (this[name] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+            ?.let { it.intOrNull ?: it.content.toIntOrNull() }
+    }
 
 /**
  * 数字字段兼容解析(WP36):LC /check/ 响应的百分位/计数有时以字符串承载

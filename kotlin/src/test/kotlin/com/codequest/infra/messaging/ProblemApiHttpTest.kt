@@ -239,6 +239,91 @@ class ProblemApiHttpTest {
     }
 
     // ------------------------------------------------------------------
+    // /api/favorites 与题单(WP56)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `favorites endpoint returns study plans and my favorites for capable platform`() {
+        val body = getJson("/api/favorites?platform=leetcode")
+
+        assertEquals("leetcode", body["platform"]!!.jsonPrimitive.content)
+        val studyPlans = body.getAsJsonArray("studyPlans")
+        assertEquals("top-100-liked", studyPlans[0].jsonObject["slug"]!!.jsonPrimitive.content)
+        assertEquals("热题 100", studyPlans[0].jsonObject["name"]!!.jsonPrimitive.content)
+        // 契约:学习计划组仅 {slug,name}(无 questionCount 字段)
+        assertTrue(!studyPlans[0].jsonObject.containsKey("questionCount"))
+        val myFavorites = body.getAsJsonArray("myFavorites")
+        assertEquals(1, myFavorites.size)
+        assertEquals("my-favorites", myFavorites[0].jsonObject["slug"]!!.jsonPrimitive.content)
+        assertEquals("12", myFavorites[0].jsonObject["questionCount"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `favorites endpoint degrades my favorites to empty when probes fail`() {
+        // 两路探测失败(GraphQL 响应缺 data 抛错 → REST 无 favorites 键空表)→
+        // myFavorites 空、学习计划组照常(降级不阻塞)
+        transport.handler = { _ -> "{}" }
+        val body = getJson("/api/favorites?platform=leetcode")
+
+        assertEquals(0, body.getAsJsonArray("myFavorites").size)
+        assertTrue(body.getAsJsonArray("studyPlans").isNotEmpty())
+    }
+
+    @Test
+    fun `favorites endpoint maps non-capable platform to 404`() {
+        val (status, body) = get("/api/favorites?platform=failing")
+
+        assertEquals(404, status)
+        assertEquals("unknown-platform", body.jsonObject["error"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `problems endpoint with favorite param queries study plan list and persists items`() {
+        val body = getJson("/api/problems?platform=leetcode&favorite=top-100-liked&difficulty=medium&limit=2")
+
+        assertEquals("leetcode", body["platform"]!!.jsonPrimitive.content)
+        val items = body.getAsJsonArray("items")
+        assertEquals(2, items.size)
+        assertEquals("company-0", items[0].jsonObject["remoteId"]!!.jsonPrimitive.content)
+
+        // favoriteQuestionList 变量:favoriteSlug 原样透传(无期间后缀),难度透传
+        val request =
+            transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("top-100-liked", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals(
+            "[\"MEDIUM\"]",
+            variables["filtersV2"]!!.jsonObject["difficultyFilter"]!!.jsonObject["difficulties"].toString(),
+        )
+        // keyword 与公司模式同规则忽略(恒发空串)
+        assertEquals("\"\"", variables["searchKeyword"].toString())
+
+        // 题单同路径落库(状态列/状态筛选兼容)
+        val saved = runBlocking { repo.findByRemoteId(PlatformId("leetcode"), "company-0") }
+        assertNotNull(saved)
+        assertEquals("leetcode:company-0", saved.id.value)
+    }
+
+    @Test
+    fun `problems endpoint favorite takes precedence over company`() {
+        // favorite 与 company 同给 → favorite 优先、company/period 忽略(后端宽松兜底)
+        getJson("/api/problems?platform=leetcode&favorite=leetcode-75&company=amazon&period=thirty-days&limit=1")
+
+        val request =
+            transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("leetcode-75", variables["favoriteSlug"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `problems endpoint maps non-capable platform with favorite param to 404`() {
+        val (status, body) = get("/api/problems?platform=failing&favorite=top-100-liked")
+
+        assertEquals(404, status)
+        assertEquals("unknown-platform", body.jsonObject["error"]!!.jsonPrimitive.content)
+    }
+
+    // ------------------------------------------------------------------
     // /api/problem/{remoteId}
     // ------------------------------------------------------------------
 
@@ -376,6 +461,10 @@ class ProblemApiHttpTest {
                             }
                         """{"data":{"favoriteQuestionList":{"total":$total,"questions":[$items]}}}"""
                     }
+                    // WP56:收藏夹清单(favoritesLists,COM 形态:slug/questionCount 直出)
+                    "favoritesLists" ->
+                        """{"data":{"favoritesLists":{"allFavorites":[
+                           {"id":"1","name":"My Favorites","slug":"my-favorites","questionCount":12}]}}}"""
                     else -> "{}"
                 }
             } else {

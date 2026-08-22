@@ -394,15 +394,15 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [ ] [unit] canShow 判定纯函数测试（工作区内/外、多基目录）
 - [ ] [unit] 提交测试链路纯函数部分（dataInput 拼装、错误分支文案选择）
 
-## WP56: 后端题单：favorite 泛化+学习计划+我的题单+端点 [pending]
-- [ ] SPI 泛化：`queryFavoriteProblems(favoriteSlug, filters, offset, limit)`（favoriteQuestionList 查询抽出；`queryCompanyProblems` 委托之，参数协议不变防回归）
-- [ ] 学习计划内置清单常量（slug + 中文名，约 20 个：热题 100 top-100-liked、面试经典 75 题、LeetCode 75、数据结构入门/计划、初级/中级/高级算法、二分查找/哈希/动规/图论系列、SQL 50 等）——对照 leetcode.cn/studyplan/ 官方核对 slug
-- [ ] `fetchMyFavorites()` 能力方法：接口探测（优先 GraphQL `favoriteFolders`，备选 REST `GET /api/list_favorites/`）；两路都失败返回空表（降级不抛错）
-- [ ] `GET /api/favorites?platform=` 端点：`{studyPlans:[{slug,name}], myFavorites:[{slug,name,questionCount}]}`；无能力平台 404（同 /api/companies 探测语义）
-- [ ] `/api/problems` 挂 `favorite=<slug>` 分支：走 queryFavoriteProblems；favorite 与 company 同给时 favorite 优先、company 忽略
-- [ ] [unit] queryCompanyProblems 委托泛化后回归测试（请求参数快照不变）
-- [ ] [unit] fetchMyFavorites 两种接口形态解析测试（favoriteFolders GraphQL / list_favorites REST）与双失败降级
-- [ ] [unit] /api/favorites 端点 HTTP 测试（结构/404 语义）；favorite 分支与互斥兜底测试
+## WP56: 后端题单：favorite 泛化+学习计划+我的题单+端点 [x] (done @ iter 2;FavoriteQueryCapable(studyPlans/fetchMyFavorites/queryFavoriteProblems)+LeetCodeStudyPlans 18 计划(官方索引页 firecrawl 实证 slug);我的题单 GraphQL 实测修正 favoritesLists.allFavorites(spec 预估 favoriteFolders 不存在,CN 变体 slug 回退 id)+REST list_favorites 备选+双失败降级空表;fetchFavoriteQuestionPage 泛化(fetchCompanyQuestionPage 委托,线协议逐字不变);/api/favorites 端点(studyPlans 独立 DTO/404 探测同 companies)+/api/problems favorite 分支(优先于 company);+12 测共 720 全绿,check 过,loop 层独立核验;偏差:interview-75/data-structure 等 spec 例举 slug 不在 /studyplan/ 域未收录)
+- [x] SPI 泛化：`queryFavoriteProblems(favoriteSlug, filters, offset, limit)`（favoriteQuestionList 查询抽出；`queryCompanyProblems` 委托之，参数协议不变防回归）
+- [x] 学习计划内置清单常量（slug + 中文名，约 20 个：热题 100 top-100-liked、面试经典 75 题、LeetCode 75、数据结构入门/计划、初级/中级/高级算法、二分查找/哈希/动规/图论系列、SQL 50 等）——对照 leetcode.cn/studyplan/ 官方核对 slug
+- [x] `fetchMyFavorites()` 能力方法：接口探测（优先 GraphQL `favoriteFolders`，备选 REST `GET /api/list_favorites/`）；两路都失败返回空表（降级不抛错）
+- [x] `GET /api/favorites?platform=` 端点：`{studyPlans:[{slug,name}], myFavorites:[{slug,name,questionCount}]}`；无能力平台 404（同 /api/companies 探测语义）
+- [x] `/api/problems` 挂 `favorite=<slug>` 分支：走 queryFavoriteProblems；favorite 与 company 同给时 favorite 优先、company 忽略
+- [x] [unit] queryCompanyProblems 委托泛化后回归测试（请求参数快照不变）
+- [x] [unit] fetchMyFavorites 两种接口形态解析测试（favoriteFolders GraphQL / list_favorites REST）与双失败降级
+- [x] [unit] /api/favorites 端点 HTTP 测试（结构/404 语义）；favorite 分支与互斥兜底测试
 
 ## WP57: 前端题库页题单下拉 [pending]
 依赖 WP56

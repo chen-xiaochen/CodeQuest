@@ -260,6 +260,46 @@ internal object LeetCodeGraphQL {
         }
         """.trimIndent()
 
+    // ------------------------------------------------------------------
+    // 题单/收藏夹(WP56):我的收藏夹清单,查询名与字段为匿名 schema 探测实证
+    // ------------------------------------------------------------------
+
+    /**
+     * 收藏夹清单(favoritesLists,COM 站点)。spec 预估的 `favoriteFolders` 在
+     * 两站点 schema 均不存在(2026-08-22 匿名探测「Cannot query field」);
+     * 真实查询 `favoritesLists.allFavorites`,COM FavoriteNode 直出
+     * slug/questionCount。匿名请求合法返回空数组(登录态才有数据)。
+     */
+    val FAVORITES_LISTS: String =
+        """
+        query favoritesLists {
+          favoritesLists {
+            allFavorites {
+              id
+              name
+              slug
+              questionCount
+            }
+          }
+        }
+        """.trimIndent()
+
+    /** 收藏夹清单(favoritesLists,CN 站点;FavoriteNode 无 slug/questionCount,题数按 questions 长度计、slug 回退 id)。 */
+    val FAVORITES_LISTS_CN: String =
+        """
+        query favoritesLists {
+          favoritesLists {
+            allFavorites {
+              id
+              name
+              questions {
+                titleSlug
+              }
+            }
+          }
+        }
+        """.trimIndent()
+
     /** 公司题单(favoriteQuestionList_cn.graphql,CN 站点;topicTags 多 nameTranslated、多 hasMore)。 */
     val FAVORITE_QUESTION_LIST_CN: String =
         """

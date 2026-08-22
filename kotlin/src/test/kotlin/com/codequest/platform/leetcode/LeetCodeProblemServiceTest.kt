@@ -69,6 +69,11 @@ class LeetCodeProblemServiceTest {
                            {"difficulty":"Easy","id":"2","paidOnly":false,"questionFrontendId":"2","status":"AC",
                             "title":"Other","titleSlug":"other","translatedTitle":null,"isInMyFavorites":false,
                             "frequency":null,"acRate":40.0,"topicTags":[]}]}}}"""
+                    // WP56:收藏夹清单(favoritesLists,COM 形态:slug/questionCount 直出)
+                    "favoritesLists" ->
+                        """{"data":{"favoritesLists":{"allFavorites":[
+                           {"id":"1","name":"My Favorites","slug":"my-favorites","questionCount":12},
+                           {"id":"2","name":"周赛补题","slug":"weekly-review","questionCount":3}]}}}"""
                     else -> error("unexpected operation")
                 }
             } else {
@@ -301,5 +306,161 @@ class LeetCodeProblemServiceTest {
         assertEquals(0, page.total)
         assertTrue(page.questions.isEmpty())
         assertTrue(transport.recorded.isEmpty())
+    }
+
+    // ------------------------------------------------------------------
+    // 题单/学习计划与我的题单(WP56)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `favorite query passes slug and filters, maps page to summaries`() = runBlocking {
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val page =
+            service.queryFavoriteProblems(
+                favoriteSlug = "top-100-liked",
+                filters = ProblemFilter(difficulty = Difficulty("medium"), tags = listOf("Array")),
+                offset = 0,
+                limit = 20,
+            )
+
+        assertEquals(2, page.total)
+        assertEquals("two-sum", page.questions.first().remoteId)
+        assertEquals("https://leetcode.com/problems/two-sum/", page.questions.first().url)
+
+        val variables =
+            Json
+                .parseToJsonElement(transport.recorded.single { it.method == "POST_GRAPHQL" }.body!!)
+                .jsonObject["variables"]!!
+                .jsonObject
+        // 泛化查询:favoriteSlug 原样透传(无期间后缀);companyFilter 空(纯题单查询)
+        assertEquals("top-100-liked", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals(
+            "[]",
+            variables["filtersV2"]!!.jsonObject["companyFilter"]!!.jsonObject["companySlugs"].toString(),
+        )
+        assertEquals(
+            "[\"MEDIUM\"]",
+            variables["filtersV2"]!!.jsonObject["difficultyFilter"]!!.jsonObject["difficulties"].toString(),
+        )
+        assertEquals(
+            "[\"Array\"]",
+            variables["filtersV2"]!!.jsonObject["topicFilter"]!!.jsonObject["topicSlugs"].toString(),
+        )
+        // keyword 与公司模式同规则忽略(恒发空串)
+        assertEquals("\"\"", variables["searchKeyword"].toString())
+    }
+
+    @Test
+    fun `company query keeps wire protocol after favorite generalization`() = runBlocking {
+        // WP56 回归锁:委托泛化查询后公司题单线协议不变——首公司(+期间后缀)进
+        // favoriteSlug、其余公司进 companyFilter、skip/limit 原样(请求参数快照)
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        service.queryCompanyProblems(
+            com.codequest.spi.CompanyProblemQuery(
+                companySlugs = listOf("amazon", "google", "meta"),
+                interviewPeriodSlug = "three-months",
+                offset = 10,
+                limit = 5,
+            ),
+        )
+
+        val variables =
+            Json
+                .parseToJsonElement(transport.recorded.single { it.method == "POST_GRAPHQL" }.body!!)
+                .jsonObject["variables"]!!
+                .jsonObject
+        assertEquals("amazon-three-months", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals(
+            "[\"google\",\"meta\"]",
+            variables["filtersV2"]!!.jsonObject["companyFilter"]!!.jsonObject["companySlugs"].toString(),
+        )
+        assertEquals(10, variables["skip"]!!.jsonPrimitive.content.toInt())
+        assertEquals(5, variables["limit"]!!.jsonPrimitive.content.toInt())
+        assertEquals("\"\"", variables["searchKeyword"].toString())
+    }
+
+    @Test
+    fun `fetchMyFavorites parses favoritesLists graphql shape without rest fallback`() = runBlocking {
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val favorites = service.fetchMyFavorites()
+
+        assertEquals(
+            listOf(
+                com.codequest.spi.FavoriteList(slug = "my-favorites", name = "My Favorites", questionCount = 12),
+                com.codequest.spi.FavoriteList(slug = "weekly-review", name = "周赛补题", questionCount = 3),
+            ),
+            favorites,
+        )
+        // GraphQL 直达成功:不发 REST 备选
+        assertTrue(transport.recorded.none { it.method == "GET" && it.url.endsWith("/api/list_favorites/") })
+    }
+
+    @Test
+    fun `fetchMyFavorites cn variant derives count from questions and slug from id`() = runBlocking {
+        // CN FavoriteNode 无 slug/questionCount(实测 schema):slug 回退 id、题数按 questions 长度计
+        val transport = FakeOJTransport()
+        transport.handler = { request ->
+            if (request.method == "POST_GRAPHQL") {
+                """{"data":{"favoritesLists":{"allFavorites":[
+                   {"id":"111","name":"我的收藏","questions":[{"titleSlug":"two-sum"},{"titleSlug":"three-sum"}]}]}}}"""
+            } else {
+                "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE_CN, LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transport))
+
+        val favorites = service.fetchMyFavorites()
+
+        assertEquals(listOf(com.codequest.spi.FavoriteList(slug = "111", name = "我的收藏", questionCount = 2)), favorites)
+    }
+
+    @Test
+    fun `fetchMyFavorites falls back to rest list_favorites when graphql fails`() = runBlocking {
+        val transport = FakeOJTransport()
+        transport.handler = { request ->
+            when {
+                // GraphQL 失败形态:errors 信封(graphql() 收口抛 OJException)
+                request.method == "POST_GRAPHQL" ->
+                    """{"errors":[{"message":"favoritesLists unavailable"}]}"""
+
+                request.method == "GET" && request.url.endsWith("/api/list_favorites/") ->
+                    """{"favorites":[{"key":"rest-folder","name":"REST 夹","questions_count":7}]}"""
+
+                else -> "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE_CN, LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transport))
+
+        val favorites = service.fetchMyFavorites()
+
+        assertEquals(listOf(com.codequest.spi.FavoriteList(slug = "rest-folder", name = "REST 夹", questionCount = 7)), favorites)
+        // 探测顺序:先 GraphQL 后 REST
+        assertTrue(transport.recorded.any { it.method == "POST_GRAPHQL" })
+        assertTrue(transport.recorded.any { it.method == "GET" && it.url.endsWith("/api/list_favorites/") })
+    }
+
+    @Test
+    fun `fetchMyFavorites degrades to empty list when both probes fail`() = runBlocking {
+        val transport = FakeOJTransport()
+        transport.handler = { request ->
+            when {
+                request.method == "POST_GRAPHQL" ->
+                    """{"errors":[{"message":"down"}]}"""
+
+                request.url.endsWith("/api/list_favorites/") -> throw OJException("rest down too")
+
+                else -> "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        // 双失败降级空表,不抛错(「我的题单」组隐藏,不阻塞学习计划组)
+        assertEquals(emptyList<com.codequest.spi.FavoriteList>(), service.fetchMyFavorites())
     }
 }

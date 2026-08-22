@@ -9,6 +9,7 @@
 <!-- 每轮追加 -->
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
+| 2 | WP56 | wp-achieved→continue | 0.333 (2/6) | 0 | 后端题单 8/8:FavoriteQueryCapable 三方法+18 学习计划(官方索引页实证)+我的题单(实测 favoritesLists 查询,REST 备选,双失败降级)+/api/favorites+favorite 分支(优先 company);+12 测共 720 全绿;429 中断一次零残留,重派注入匿名 API 教训一次过 |
 | 1 | WP53 | wp-achieved→continue | 0.167 (1/6) | 0 | SPI 云端测试 6/6:TestEvaluationCapable+三模型、interpret_solution(轮询复用 PollConfig 参数自持循环)、full_* 归一、双变体平台实现;+9 测共 708 全绿,check 过;loop 层独立核验;待 commit |
 
 

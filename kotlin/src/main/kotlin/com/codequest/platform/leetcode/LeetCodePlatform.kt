@@ -8,6 +8,9 @@ import com.codequest.spi.CompanyProblemPage
 import com.codequest.spi.CompanyProblemQuery
 import com.codequest.spi.CompanyQueryCapable
 import com.codequest.spi.CompanyTag
+import com.codequest.spi.FavoriteList
+import com.codequest.spi.FavoriteProblemPage
+import com.codequest.spi.FavoriteQueryCapable
 import com.codequest.spi.LoginSession
 import com.codequest.spi.OJCredentialStore
 import com.codequest.spi.OJPlatform
@@ -34,9 +37,9 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现七个能力接口并按服务拆分委托:
- * auth / problem / company(WP42)/ submission / solutions / submission detail(WP36)/
- * test evaluation(WP53)。
+ * (身份差异见 [LeetCodeVariant]),组合实现八个能力接口并按服务拆分委托:
+ * auth / problem / company(WP42)/ favorite(WP56)/ submission / solutions /
+ * submission detail(WP36)/ test evaluation(WP53)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -47,6 +50,7 @@ class LeetCodePlatform(
     AuthCapable,
     ProblemQueryCapable,
     CompanyQueryCapable,
+    FavoriteQueryCapable,
     SubmissionCapable,
     SolutionViewCapable,
     SubmissionDetailCapable,
@@ -87,6 +91,17 @@ class LeetCodePlatform(
     override suspend fun fetchCompanies(): List<CompanyTag> = problemService.fetchCompanies()
 
     override suspend fun queryCompanyProblems(query: CompanyProblemQuery): CompanyProblemPage = problemService.queryCompanyProblems(query)
+
+    override fun studyPlans(): List<FavoriteList> = problemService.studyPlans()
+
+    override suspend fun fetchMyFavorites(): List<FavoriteList> = problemService.fetchMyFavorites()
+
+    override suspend fun queryFavoriteProblems(
+        favoriteSlug: String,
+        filters: ProblemFilter,
+        offset: Int,
+        limit: Int,
+    ): FavoriteProblemPage = problemService.queryFavoriteProblems(favoriteSlug, filters, offset, limit)
 
     override suspend fun submit(request: SubmitRequest): SubmissionHandle = submissionService.submit(request)
 

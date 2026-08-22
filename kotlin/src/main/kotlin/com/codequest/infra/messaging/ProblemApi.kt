@@ -16,6 +16,7 @@ import com.codequest.infra.db.ProblemStatusStore
 import com.codequest.infra.db.ProblemStore
 import com.codequest.infra.db.SolveStatus
 import com.codequest.spi.CompanyQueryCapable
+import com.codequest.spi.FavoriteQueryCapable
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemFilter
@@ -37,9 +38,14 @@ import java.util.logging.Logger
  * - `GET /api/platforms`:支持题目查询的平台(id + displayName)
  * - `GET /api/problems?platform=&keyword=&difficulty=&tags=&limit=&offset=`:列表 + 落库
  * - `GET /api/companies?platform=`:公司标签清单(WP42,CompanyQueryCapable 平台)
+ * - `GET /api/favorites?platform=`:题单清单(WP56,FavoriteQueryCapable 平台)——
+ *   内置学习计划组 + 我的题单组(接口探测失败降级空表,不阻塞学习计划组)
  * - `GET /api/problems?platform=&company=&period=&difficulty=&tags=&limit=&offset=`:
  *   公司题单(WP42)——company 非空时走公司查询路径;**keyword 在公司模式下被忽略**
  *   (旧实现事实:公司查询恒发空 searchKeyword,公司面板无关键字入口)
+ * - `GET /api/problems?platform=&favorite=&difficulty=&tags=&limit=&offset=`:
+ *   题单查询(WP56)——favorite 非空时走题单查询路径;**与 company 同给时 favorite
+ *   优先、company 忽略**(前端已互斥,后端宽松兜底);keyword 同公司模式被忽略
  * - `GET /api/problem/{remoteId}?platform=`:题面,本地缓存优先,miss 时平台拉取并落库
  * - 领域异常 → HTTP 状态 + JSON 错误体(AuthExpired 401 / RateLimited 429 / AntiBot 403 /
  *   其余 OJException 502 / 参数问题 400 / 未知平台 404)
@@ -69,9 +75,11 @@ class ProblemApi(
     /**
      * `/api/problems`:SPI queryProblems 流式收集 → 逐条落库(主档 + 标签)→ 返回本页数据。
      * [hasMore] = 返回条数等于请求 limit(平台侧总数不经 SPI 暴露,由「满页」语义推断)。
+     * `favorite` 参数非空时改走题单路径([listFavoriteProblems],WP56,优先于 company);
      * `company` 参数非空时改走公司题单路径([listCompanyProblems],WP42)。
      */
     suspend fun listProblems(query: Map<String, String>): ProblemApiResponse {
+        if (!query["favorite"].isNullOrBlank()) return listFavoriteProblems(query)
         if (!query["company"].isNullOrBlank()) return listCompanyProblems(query)
         val (platform, capable) = resolvePlatform(query) ?: return unknownPlatform(query)
         val filter =
@@ -122,6 +130,32 @@ class ProblemApi(
         return persistAndRespond(platform, filter.offset, filter.limit, page.questions)
     }
 
+    /**
+     * `/api/problems?favorite=`:题单查询(WP56)——SPI queryFavoriteProblems 单页查询,
+     * 落库与状态聚合与普通/公司列表同路径(状态列/状态筛选语义一致)。
+     * favorite 为学习计划/收藏夹 slug(透传平台侧 favoriteSlug);**keyword 被忽略**
+     * (与公司模式同规则,题单面板无关键字入口)。
+     */
+    private suspend fun listFavoriteProblems(query: Map<String, String>): ProblemApiResponse {
+        val (platform, capable) = resolveFavoritePlatform(query) ?: return unknownFavoritePlatform(query)
+        val filter =
+            parseFilter(query)
+                ?: return badRequest("limit/offset must be integers; limit in 1..$MAX_LIMIT; offset >= 0")
+        val favoriteSlug = query["favorite"].orEmpty().trim()
+        val page =
+            try {
+                capable.queryFavoriteProblems(
+                    favoriteSlug = favoriteSlug,
+                    filters = ProblemFilter(difficulty = filter.difficulty, tags = filter.tags),
+                    offset = filter.offset,
+                    limit = filter.limit,
+                )
+            } catch (error: Throwable) {
+                return error.toErrorResponse()
+            }
+        return persistAndRespond(platform, filter.offset, filter.limit, page.questions)
+    }
+
     /** `/api/companies`:公司标签清单(公司下拉数据源;无该能力的平台按 404 如实回)。 */
     suspend fun listCompanies(query: Map<String, String>): ProblemApiResponse {
         val id = query["platform"]?.trim().orEmpty()
@@ -138,6 +172,30 @@ class ProblemApi(
             CompaniesResponseDto(
                 platform = platform.id.value,
                 items = companies.map { CompanyItemDto(slug = it.slug, name = it.name, questionCount = it.questionCount) },
+            ),
+        )
+    }
+
+    /**
+     * `/api/favorites`:题单清单(WP56)——内置学习计划组(平台常量,零平台请求)
+     * + 我的题单组(登录态收藏夹;实现侧双路探测失败降级空表,本层兜异常按错误映射回)。
+     */
+    suspend fun listFavorites(query: Map<String, String>): ProblemApiResponse {
+        val id = query["platform"]?.trim().orEmpty()
+        if (id.isEmpty()) return badRequest("missing required query param: platform")
+        val platform = favoriteCapablePlatform(id) ?: return unknownFavoritePlatform(query)
+        val capable = platform as FavoriteQueryCapable
+        val myFavorites =
+            try {
+                capable.fetchMyFavorites()
+            } catch (error: Throwable) {
+                return error.toErrorResponse()
+            }
+        return ok(
+            FavoritesResponseDto(
+                platform = platform.id.value,
+                studyPlans = capable.studyPlans().map { StudyPlanItemDto(slug = it.slug, name = it.name) },
+                myFavorites = myFavorites.map { MyFavoriteItemDto(slug = it.slug, name = it.name, questionCount = it.questionCount) },
             ),
         )
     }
@@ -259,6 +317,18 @@ class ProblemApi(
     private fun companyCapablePlatform(id: String): OJPlatform? =
         platforms().firstOrNull { candidate -> candidate.id.value == id && candidate is CompanyQueryCapable }
 
+    /** 题单平台解析(WP56):平台需实现 FavoriteQueryCapable(如 LC 双站点)。 */
+    private fun resolveFavoritePlatform(query: Map<String, String>): Pair<OJPlatform, FavoriteQueryCapable>? {
+        val id = query["platform"]?.trim().orEmpty()
+        if (id.isEmpty()) return null
+        val platform = favoriteCapablePlatform(id) ?: return null
+        return platform to (platform as FavoriteQueryCapable)
+    }
+
+    /** 按 id 找已注册且具备题单能力的平台(题单清单/题单查询端点共用)。 */
+    private fun favoriteCapablePlatform(id: String): OJPlatform? =
+        platforms().firstOrNull { candidate -> candidate.id.value == id && candidate is FavoriteQueryCapable }
+
     private fun unknownPlatform(query: Map<String, String>): ProblemApiResponse =
         if (query["platform"].isNullOrBlank()) {
             badRequest("missing required query param: platform")
@@ -279,6 +349,20 @@ class ProblemApi(
                 ErrorResponseDto(
                     error = CODE_UNKNOWN_PLATFORM,
                     message = "no company-capable platform registered for id '${query["platform"]}'",
+                ),
+            )
+        }
+
+    /** 题单端点专用 404(WP56):未注册或平台无 FavoriteQueryCapable 均如实回,形态同公司端点。 */
+    private fun unknownFavoritePlatform(query: Map<String, String>): ProblemApiResponse =
+        if (query["platform"].isNullOrBlank()) {
+            badRequest("missing required query param: platform")
+        } else {
+            errorResponse(
+                STATUS_NOT_FOUND,
+                ErrorResponseDto(
+                    error = CODE_UNKNOWN_PLATFORM,
+                    message = "no favorite-capable platform registered for id '${query["platform"]}'",
                 ),
             )
         }
@@ -354,6 +438,7 @@ class ProblemApi(
             is ProblemListResponseDto -> encodeToString(ProblemListResponseDto.serializer(), dto)
             is ProblemDetailResponseDto -> encodeToString(ProblemDetailResponseDto.serializer(), dto)
             is CompaniesResponseDto -> encodeToString(CompaniesResponseDto.serializer(), dto)
+            is FavoritesResponseDto -> encodeToString(FavoritesResponseDto.serializer(), dto)
             is ErrorResponseDto -> encodeToString(ErrorResponseDto.serializer(), dto)
             else -> throw IllegalArgumentException("unsupported dto: $dto")
         }
@@ -499,6 +584,29 @@ private data class CompanyItemDto(
     val slug: String,
     val name: String,
     /** 公司题量(下拉展示;period 维度的精确数以题单 total 为准)。 */
+    val questionCount: Int,
+)
+
+/** 题单清单响应(WP56,`/api/favorites`):两组条目形态不同故拆两个 item DTO。 */
+@Serializable
+private data class FavoritesResponseDto(
+    val platform: String,
+    val studyPlans: List<StudyPlanItemDto>,
+    val myFavorites: List<MyFavoriteItemDto>,
+)
+
+/** 学习计划条目(内置常量,无题数概念)。 */
+@Serializable
+private data class StudyPlanItemDto(
+    val slug: String,
+    val name: String,
+)
+
+/** 我的题单条目(登录态收藏夹;题数为下拉展示,精确数以题单 total 为准)。 */
+@Serializable
+private data class MyFavoriteItemDto(
+    val slug: String,
+    val name: String,
     val questionCount: Int,
 )
 

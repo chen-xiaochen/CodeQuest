@@ -47,4 +47,8 @@ enum class LeetCodeVariant(
 
     /** 提交结果轮询端点(REST GET)。 */
     fun submissionCheckUrl(submissionId: String): String = "https://$domain/submissions/detail/$submissionId/check/"
+
+    /** 我的收藏夹清单端点(WP56,REST 备选,旧插件端点事实;匿名 404,登录态探测)。 */
+    val listFavoritesUrl: String
+        get() = "https://$domain/api/list_favorites/"
 }
