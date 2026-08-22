@@ -44,6 +44,11 @@ internal object LeetCodeGraphQL {
                     translatedName
                 }
                 status
+                codeSnippets {
+                    lang
+                    langSlug
+                    code
+                }
             }
         }
         """.trimIndent()

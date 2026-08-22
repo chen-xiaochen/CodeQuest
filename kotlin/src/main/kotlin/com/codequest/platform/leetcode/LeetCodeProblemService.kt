@@ -57,7 +57,13 @@ class LeetCodeProblemService(
                     "LeetCode 题面不可获取(疑似会员题或站点返回空): ${variant.domain}/problems/$remoteId/",
                 )
         // LeetCode 题面为 HTML(content / translatedContent 均是),与旧实现渲染路径一致
-        return ProblemStatement(remoteId = remoteId, content = content, contentFormat = ContentFormat.HTML)
+        // 1.2.4:附各语言起始代码(codeSnippets),开刷创建工作区时注入 ${challenge.code}
+        return ProblemStatement(
+            remoteId = remoteId,
+            content = content,
+            contentFormat = ContentFormat.HTML,
+            codeSnippets = question.codeSnippets,
+        )
     }
 
     override suspend fun fetchCompanies(): List<CompanyTag> =

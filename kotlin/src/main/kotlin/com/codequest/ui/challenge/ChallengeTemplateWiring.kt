@@ -43,10 +43,11 @@ suspend fun createChallengeWithTemplate(
         template = settings.entryTemplateOverride(templateStyleOf(problem.platformId), languageId),
     )
 
-/** [createChallengeWithTemplate] 的入口文件路径形态(调用方直接拿 entryFile 打开编辑器)。 */
+/** [createChallengeWithTemplate] 的入口文件路径形态(调用方直接拿 entryFile 打开编辑器);1.2.4 起透传平台起始代码。 */
 suspend fun createEntryFileWithTemplate(
     service: ChallengeWorkspaceService,
     problem: Problem,
     languageId: String,
     settings: CodeQuestSettings,
-): Path = createChallengeWithTemplate(service, problem, languageId, settings).entryFile
+    code: String? = null,
+): Path = createChallengeWithTemplate(service, problem, languageId, settings, code).entryFile

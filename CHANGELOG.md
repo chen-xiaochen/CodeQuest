@@ -1,3 +1,7 @@
+## 1.2.4
+### Fixed
+- Challenge entry files now carry the platform's per-language starter code: LeetCode / LeetCode CN detail queries fetch `codeSnippets`, and the one-click "start coding" flow injects the selected language's snippet into the template's `${challenge.code}` — e.g. the real `public int[] twoSum(int[] nums, int target)` signature instead of the bare `class Solution {}` stub. Fetch failures (premium problems, network) fall back to the language default stub; stdin-style (ACM) platforms are unaffected. The manual New Challenge dialog still uses the default stub (start from the problem view for real starter code).
+
 ## 1.2.3
 ### Fixed
 - Settings template editor rewired to eliminate cross-key text leaks: the style/language dropdowns no longer use the UI DSL two-way `bindItem` binding, whose programmatic selection events during init/reset could fire the switch handler while the internal style/language state was still stale — flushing the editor text into the wrong `(style, language)` key. This was the root cause of "configuring Java makes every language show the same Java template" and "start-coding creates a .kt file": the saved text landed on the wrong keys while `leetcode:java` stayed empty, letting the leftover polluted `leetcode:kotlin` entry win the default-language pick.

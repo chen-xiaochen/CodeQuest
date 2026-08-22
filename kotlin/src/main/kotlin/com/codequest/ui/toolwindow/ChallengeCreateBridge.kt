@@ -9,8 +9,10 @@ import com.codequest.core.workspace.TemplateAvailability
 import com.codequest.infra.db.DatabaseManager
 import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.settings.CodeQuestSettings
+import com.codequest.spi.CodeSnippet
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
+import com.codequest.spi.ProblemQueryCapable
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
 import com.codequest.ui.challenge.createEntryFileWithTemplate
 import com.codequest.ui.jcef.CQBridge
@@ -122,6 +124,16 @@ fun languageIdForCreate(
     return Result.success(language.id)
 }
 
+/**
+ * 起始代码选取(1.2.4,纯函数):langSlug 与 WorkspaceLanguage.id 同名约定
+ * (java/python3/cpp/kotlin/go),首匹配非空白者;无匹配/空白 → null(调用方回退
+ * 语言默认桩)。单测锁定协议。
+ */
+fun startCodeFor(
+    codeSnippets: List<CodeSnippet>,
+    languageId: String,
+): String? = codeSnippets.firstOrNull { it.langSlug == languageId }?.code?.takeIf { it.isNotBlank() }
+
 /** challenge:create-result 的载荷。 */
 data class ChallengeCreateResult(
     val ok: Boolean,
@@ -163,7 +175,7 @@ private suspend fun performCreate(
                 return ChallengeCreateResult(ok = false, error = message)
             }
     return runCatching {
-        val entryFile = createOrOpenInProject(project, request, languageId)
+        val entryFile = createOrOpenInProject(project, request, languageId, platform)
         openInEditor(project, entryFile)
         ChallengeCreateResult(ok = true)
     }.getOrElse { error ->
@@ -171,11 +183,12 @@ private suspend fun performCreate(
     }
 }
 
-/** 项目侧 createOrOpen 实现:主档复用/补建 → 幂等查找 → 创建。 */
+/** 项目侧 createOrOpen 实现:主档复用/补建 → 幂等查找 → 创建(1.2.4 起注入平台起始代码)。 */
 private suspend fun createOrOpenInProject(
     project: Project,
     request: ChallengeCreateRequest,
     languageId: String,
+    platform: OJPlatform?,
 ): Path {
     val manager = project.getService(DatabaseManager::class.java)
     val platformId = PlatformId(request.platform)
@@ -196,13 +209,23 @@ private suspend fun createOrOpenInProject(
     return createOrOpen(
         languageId = languageId,
         findExisting = { lang -> findExistingEntryFile(project, manager, problem.id, lang) },
-        // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null=内置)
+        // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null=内置);
+        // 1.2.4:拉平台起始代码注入模版 ${challenge.code}——拉取失败(会员题/网络/
+        // 平台无 ProblemQueryCapable)按无起始代码处理,回退语言默认桩继续创建
         doCreate = { lang ->
+            val startCode =
+                runCatching {
+                    (platform as? ProblemQueryCapable)
+                        ?.fetchProblemDetail(request.remoteId)
+                        ?.codeSnippets
+                        ?.let { startCodeFor(it, lang) }
+                }.getOrNull()
             createEntryFileWithTemplate(
                 service = workspaceService(project, manager),
                 problem = problem,
                 languageId = lang,
                 settings = CodeQuestSettings.getInstance(project),
+                code = startCode,
             )
         },
     )

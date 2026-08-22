@@ -4,6 +4,7 @@ import com.codequest.core.model.ContentFormat
 import com.codequest.core.model.Difficulty
 import com.codequest.core.model.OJException
 import com.codequest.core.model.PlatformId
+import com.codequest.spi.CodeSnippet
 import com.codequest.spi.ProblemFilter
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.toList
@@ -141,6 +142,36 @@ class LeetCodeProblemServiceTest {
         assertEquals("two-sum", statement.remoteId)
         assertEquals("<p>中文题面</p>", statement.content)
         assertEquals(ContentFormat.HTML, statement.contentFormat)
+        // 夹具 questionData 无 codeSnippets → 空表(缺省兼容)
+        assertEquals(emptyList<CodeSnippet>(), statement.codeSnippets)
+    }
+
+    @Test
+    fun `detail carries per-language start code snippets`() = runBlocking {
+        // 1.2.4:codeSnippets 透传(langSlug 同名约定),开刷注入模版 ${challenge.code}
+        val transport = transportFor()
+        transport.handler = { request ->
+            if (request.method == "POST_GRAPHQL") {
+                """{"data":{"question":{"questionId":"1","titleSlug":"two-sum","title":"Two Sum",
+                   "content":"<p>Given an array...</p>","translatedContent":null,"isPaidOnly":false,
+                   "difficulty":"Easy","topicTags":[],
+                   "codeSnippets":[
+                     {"lang":"Java","langSlug":"java","code":"class Solution {\n    public int[] twoSum(int[] nums, int target) {}\n}"},
+                     {"lang":"Python3","langSlug":"python3","code":"class Solution:\n    pass"},
+                     {"lang":"C++","langSlug":"cpp","code":null}
+                   ]}}}"""
+            } else {
+                "{}"
+            }
+        }
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transport))
+
+        val statement = service.fetchProblemDetail("two-sum")
+
+        assertEquals(2, statement.codeSnippets.size) // code=null 的条目如实丢弃
+        assertEquals("java", statement.codeSnippets[0].langSlug)
+        assertTrue("twoSum(int[] nums" in statement.codeSnippets[0].code)
+        assertEquals("python3", statement.codeSnippets[1].langSlug)
     }
 
     @Test

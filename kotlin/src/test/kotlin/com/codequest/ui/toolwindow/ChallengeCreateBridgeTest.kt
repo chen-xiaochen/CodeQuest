@@ -2,6 +2,7 @@ package com.codequest.ui.toolwindow
 
 import com.codequest.core.model.PlatformId
 import com.codequest.core.workspace.TemplateStyle
+import com.codequest.spi.CodeSnippet
 import com.codequest.spi.OJPlatform
 import com.codequest.spi.PlatformInfo
 import kotlinx.coroutines.runBlocking
@@ -144,6 +145,18 @@ class ChallengeCreateBridgeTest {
             assertTrue(createCalled)
             assertEquals(created, result)
         }
+
+    @Test
+    fun `startCodeFor picks snippet by language slug with blank fallback to null`() {
+        // 1.2.4:langSlug 同名约定匹配;无匹配/空白代码 → null(回退语言默认桩)
+        val java = CodeSnippet(lang = "Java", langSlug = "java", code = "class Solution { /*twoSum*/ }")
+        val python = CodeSnippet(lang = "Python3", langSlug = "python3", code = "class Solution: pass")
+        assertEquals("class Solution { /*twoSum*/ }", startCodeFor(listOf(java, python), "java"))
+        assertEquals("class Solution: pass", startCodeFor(listOf(java, python), "python3"))
+        assertEquals(null, startCodeFor(listOf(java, python), "kotlin"))
+        assertEquals(null, startCodeFor(listOf(CodeSnippet("Java", "java", "  ")), "java"))
+        assertEquals(null, startCodeFor(emptyList(), "java"))
+    }
 
     @Test
     fun `result json is stable`() {

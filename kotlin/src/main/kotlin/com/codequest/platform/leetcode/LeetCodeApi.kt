@@ -1,6 +1,7 @@
 package com.codequest.platform.leetcode
 
 import com.codequest.core.model.OJException
+import com.codequest.spi.CodeSnippet
 import com.codequest.spi.OJTransport
 import com.codequest.spi.ProblemFilter
 import kotlinx.serialization.json.Json
@@ -493,6 +494,8 @@ class LeetCodeApi(
         /** 中文题面(HTML,CN 站点);缺失为 null。 */
         val translatedContent: String?,
         val topicTags: List<String>,
+        /** 各语言起始代码(1.2.4);langSlug 与 WorkspaceLanguage.id 同名约定。 */
+        val codeSnippets: List<CodeSnippet> = emptyList(),
     )
 
     suspend fun fetchQuestionDetail(slug: String): LeetCodeQuestionDetail {
@@ -518,6 +521,19 @@ class LeetCodeApi(
                     .orEmpty()
                     .map { it.jsonObject["name"]?.jsonPrimitive?.content }
                     .filterNotNull(),
+            codeSnippets =
+                question["codeSnippets"]
+                    ?.jsonArray
+                    .orEmpty()
+                    .mapNotNull { element ->
+                        val snippet = element.jsonObject
+                        val code = snippet["code"]?.jsonPrimitive?.contentOrNullIfNull() ?: return@mapNotNull null
+                        CodeSnippet(
+                            lang = snippet["lang"]?.jsonPrimitive?.content.orEmpty(),
+                            langSlug = snippet["langSlug"]?.jsonPrimitive?.content.orEmpty(),
+                            code = code,
+                        )
+                    },
         )
     }
 

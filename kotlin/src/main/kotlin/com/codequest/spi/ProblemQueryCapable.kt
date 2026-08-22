@@ -74,7 +74,7 @@ data class ProblemSummary(
 )
 
 /**
- * 平台侧题面原文(WP17)。
+ * 平台侧题面原文(WP17;1.2.4 起附各语言起始代码)。
  *
  * 与 core 的 ProblemDetail(本地缓存记录)区分:本类型以 remoteId 为键、只有内容;
  * 用例层负责补充本地 ProblemId 后转 ProblemDetail 落库。
@@ -85,4 +85,19 @@ data class ProblemStatement(
     /** 题面原文;内容形态由 [contentFormat] 决定(Markdown 或 HTML)。 */
     val content: String,
     val contentFormat: ContentFormat,
+    /**
+     * 各语言起始代码(1.2.4):LC `codeSnippets`(langSlug 与 [com.codequest.core.workspace.WorkspaceLanguage]
+     * 的 id 同名约定:java/python3/cpp/kotlin/go,直接按 langSlug 匹配)。挑战创建时注入
+     * 模版 `${challenge.code}`;平台不提供(CF/AtCoder stdin 风格、洛谷/HR 无对应字段)为空,
+     * 调用方回退语言默认桩。
+     */
+    val codeSnippets: List<CodeSnippet> = emptyList(),
+)
+
+/** 平台起始代码片段(lang=展示名,langSlug=语言标识,code=原文)。 */
+@Serializable
+data class CodeSnippet(
+    val lang: String,
+    val langSlug: String,
+    val code: String,
 )
