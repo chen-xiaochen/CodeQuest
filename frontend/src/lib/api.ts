@@ -126,6 +126,8 @@ export interface ProblemListQuery {
    * UI 单选。keyword 在公司模式下被后端忽略(旧实现事实)。
    */
   company?: string
+  /** WP57:题单 slug(学习计划/我的题单;favorite 优先于 company,同给时后端忽略 company)。 */
+  favorite?: string
   /** WP42:面试期间 slug(thirty-days/three-months/six-months/more-than-six-months/all)。 */
   period?: string
   limit?: number
@@ -146,6 +148,9 @@ export function fetchProblems(query: ProblemListQuery): Promise<ProblemListResul
   }
   if (query.company && query.company.trim().length > 0) {
     params.set('company', query.company.trim())
+  }
+  if (query.favorite && query.favorite.trim().length > 0) {
+    params.set('favorite', query.favorite.trim())
   }
   if (query.period) {
     params.set('period', query.period)
@@ -172,6 +177,29 @@ export function fetchCompanies(platform: string): Promise<CompanySummary[]> {
   return getJson<{ platform: string; items: CompanySummary[] }>(
     `/api/companies?${params.toString()}`,
   ).then((body) => body.items)
+}
+
+/**
+ * WP57:题单条目(学习计划组仅 slug/name;我的题单组带 questionCount,
+ * 后端同构下发故 questionCount 可选)。
+ */
+export interface FavoriteSummary {
+  slug: string
+  name: string
+  questionCount?: number
+}
+
+/** WP57:题单清单(/api/favorites)——学习计划(平台常量)+ 我的题单(登录态收藏夹)。 */
+export interface FavoritesResult {
+  platform: string
+  studyPlans: FavoriteSummary[]
+  myFavorites: FavoriteSummary[]
+}
+
+/** WP57:题单清单;力扣系以外平台不具备该能力时抛 ApiError(404 unknown-platform)。 */
+export function fetchFavorites(platform: string): Promise<FavoritesResult> {
+  const params = new URLSearchParams({ platform })
+  return getJson<FavoritesResult>(`/api/favorites?${params.toString()}`)
 }
 
 export function fetchProblemDetail(

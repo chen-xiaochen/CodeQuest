@@ -7,6 +7,9 @@
  * WP42:公司下拉(仅 /api/companies 有数据的 LC 系平台渲染)+ 期间下拉——选中后
  * 列表改走公司题单查询(company/period 参数);keyword 在公司模式下被后端忽略
  * (旧实现事实,激活时 UI 注明)。
+ * WP57:题单下拉(力扣系平台;/api/favorites 学习计划+我的题单两组 optgroup;
+ * 与公司下拉互斥——选题单清公司+期间,选公司清题单)——选中后列表改走
+ * favorite 题单查询(favorite 优先于 company);keyword 同被忽略(UI 注明)。
  * WP49:①账号区重设计——全部平台常驻,已登录=平台名+用户名+显式「退出」按钮,
  * 未登录=「登录」按钮(替代点击整行切换);②平台下拉门控——仅保留已登录平台,
  * 全未登录回落力扣中国并提示;③加载时序——先 GET status 瞬时渲染,再异步 POST
@@ -28,11 +31,13 @@ import {
   ApiError,
   fetchAuthStatus,
   fetchCompanies,
+  fetchFavorites,
   fetchPlatforms,
   fetchProblems,
   refreshAuthStatus as requestAuthRefresh,
   type AuthStatusItem,
   type CompanySummary,
+  type FavoritesResult,
   type PlatformSummary,
   type ProblemListItem,
 } from '../../lib/api'
@@ -77,6 +82,10 @@ const companies = ref<CompanySummary[]>([])
 const company = ref('')
 /** WP42:面试期间(仅公司模式生效)。 */
 const period = ref<string>(DEFAULT_PERIOD)
+/** WP57:题单下拉('' = 全部题库);null = 平台无该能力(/api/favorites 404/失败),不渲染。 */
+const favorites = ref<FavoritesResult | null>(null)
+/** WP57:选中题单 slug(与公司下拉互斥)。 */
+const favorite = ref('')
 const items = ref<(ProblemListItem & ProblemStatusFields)[]>([])
 const offset = ref(0)
 const hasMore = ref(false)
@@ -153,6 +162,8 @@ function revalidatePlatformSelection(): void {
     company.value = ''
     period.value = DEFAULT_PERIOD
     companies.value = []
+    favorites.value = null
+    favorite.value = ''
     reload()
     return
   }
@@ -247,8 +258,9 @@ async function loadPage(append: boolean): Promise<void> {
       platform: platform.value,
       keyword: keyword.value,
       difficulty: difficulty.value || undefined,
-      company: company.value || undefined,
-      period: company.value !== '' ? period.value : undefined,
+      favorite: favorite.value || undefined,
+      company: favorite.value === '' ? company.value || undefined : undefined,
+      period: favorite.value === '' && company.value !== '' ? period.value : undefined,
       limit: PAGE_SIZE,
       offset: offset.value,
     })
@@ -279,11 +291,42 @@ async function refreshCompanies(): Promise<void> {
   }
 }
 
-/** 平台切换:公司选择与期间归位(公司集合随平台变),再刷新清单与列表。 */
+/**
+ * WP57:按平台拉题单清单(能力探测式渲染)——/api/favorites 404(力扣系以外)
+ * 或失败时置 null 隐藏下拉,静默降级不打扰(同公司下拉,附属能力非关键路径);
+ * 我的题单组后端已降级为空数组(未登录/拉取失败),前端空组不渲染 optgroup。
+ */
+async function refreshFavorites(): Promise<void> {
+  if (!platform.value) {
+    favorites.value = null
+    return
+  }
+  try {
+    favorites.value = await fetchFavorites(platform.value)
+  } catch {
+    favorites.value = null
+  }
+}
+
+/** 平台切换:公司/题单选择与期间归位(两组集合随平台变),再刷新清单与列表。 */
 async function handlePlatformChange(): Promise<void> {
   company.value = ''
   period.value = DEFAULT_PERIOD
-  await refreshCompanies()
+  favorite.value = ''
+  await Promise.all([refreshCompanies(), refreshFavorites()])
+  reload()
+}
+
+/** WP57:选题单 → 清公司与期间(互斥),favorite 优先于 company。 */
+function handleFavoriteChange(): void {
+  company.value = ''
+  period.value = DEFAULT_PERIOD
+  reload()
+}
+
+/** WP57:选公司 → 清题单(互斥双向)。 */
+function handleCompanyChange(): void {
+  favorite.value = ''
   reload()
 }
 
@@ -299,6 +342,7 @@ function resetFilters(): void {
   difficulty.value = ''
   statusFilter.value = ''
   company.value = ''
+  favorite.value = ''
   reload()
 }
 
@@ -330,7 +374,7 @@ onMounted(async () => {
   }
   if (visiblePlatforms.value.length > 0) {
     platform.value = pickDefaultPlatform(visiblePlatforms.value)
-    await refreshCompanies()
+    await Promise.all([refreshCompanies(), refreshFavorites()])
     reload()
   }
 
@@ -435,10 +479,31 @@ onUnmounted(() => {
             <option value="UNSOLVED">未解决</option>
           </select>
         </label>
+        <!-- WP57:题单下拉(力扣系平台渲染;学习计划+我的题单两组;与公司下拉互斥) -->
+        <label
+          v-if="favorites !== null && (favorites.studyPlans.length > 0 || favorites.myFavorites.length > 0)"
+          class="filters__field filters__field--favorite"
+        >
+          <span>题单</span>
+          <select v-model="favorite" @change="handleFavoriteChange">
+            <option value="">全部题库</option>
+            <optgroup label="学习计划">
+              <option v-for="entry in favorites.studyPlans" :key="entry.slug" :value="entry.slug">
+                {{ entry.name }}
+              </option>
+            </optgroup>
+            <!-- 我的题单:未登录/拉取失败后端降级为空数组,空组不渲染 -->
+            <optgroup v-if="favorites.myFavorites.length > 0" label="我的题单">
+              <option v-for="entry in favorites.myFavorites" :key="entry.slug" :value="entry.slug">
+                {{ entry.name }} ({{ entry.questionCount }})
+              </option>
+            </optgroup>
+          </select>
+        </label>
         <!-- WP42:公司下拉(仅 CompanyQueryCapable 平台渲染;选中后走公司题单查询) -->
-        <label v-if="companies.length > 0" class="filters__field">
+        <label v-if="companies.length > 0" class="filters__field filters__field--company">
           <span>公司</span>
-          <select v-model="company" @change="reload">
+          <select v-model="company" @change="handleCompanyChange">
             <option value="">全部公司</option>
             <option v-for="entry in companies" :key="entry.slug" :value="entry.slug">
               {{ entry.name }} ({{ entry.questionCount }})
@@ -466,6 +531,10 @@ onUnmounted(() => {
 
       <p v-if="company !== '' && keyword.trim() !== ''" class="filter-note">
         公司题单模式下关键字被忽略(平台限制)。
+      </p>
+
+      <p v-if="favorite !== '' && keyword.trim() !== ''" class="filter-note">
+        题单模式下关键字被忽略(平台限制)。
       </p>
 
       <p v-if="error" class="state state--error" role="alert">

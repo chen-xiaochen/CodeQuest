@@ -589,6 +589,160 @@ describe('problems page', () => {
   })
 
   // -----------------------------------------------------------------
+  // WP57:题单下拉(力扣系平台;学习计划+我的题单两组;与公司下拉互斥)
+  // -----------------------------------------------------------------
+
+  const STUDY_PLANS = [
+    { slug: 'top-100-liked', name: '热题 100' },
+    { slug: 'leetcode-75', name: 'LeetCode 75' },
+  ]
+  const MY_FAVORITES = [{ slug: 'my-favorites', name: '我的收藏', questionCount: 12 }]
+
+  /**
+   * WP57:题单/公司/列表 handler——力扣系平台(leetcode/leetcodecn)回题单与公司,
+   * codeforces 404(能力探测);listCalls 记录列表请求。
+   */
+  function favoriteAwareHandler(
+    listCalls?: string[],
+    myFavorites: Array<Record<string, unknown>> = MY_FAVORITES,
+  ): FetchHandler {
+    return (url) => {
+      if (url.startsWith('/api/platforms')) {
+        return {
+          status: 200,
+          body: {
+            platforms: [
+              { id: 'leetcode', displayName: 'LeetCode' },
+              { id: 'leetcodecn', displayName: '力扣' },
+              { id: 'codeforces', displayName: 'Codeforces' },
+            ],
+          },
+        }
+      }
+      if (url.startsWith('/api/favorites')) {
+        const platform = new URLSearchParams(url.split('?')[1] ?? '').get('platform')
+        if (platform === 'leetcode' || platform === 'leetcodecn') {
+          return { status: 200, body: { platform, studyPlans: STUDY_PLANS, myFavorites } }
+        }
+        return { status: 404, body: { error: 'unknown-platform' } }
+      }
+      if (url.startsWith('/api/companies')) {
+        const platform = new URLSearchParams(url.split('?')[1] ?? '').get('platform')
+        if (platform === 'leetcode' || platform === 'leetcodecn') {
+          return { status: 200, body: { platform, items: COMPANIES } }
+        }
+        return { status: 404, body: { error: 'unknown-platform' } }
+      }
+      if (url.startsWith('/api/problems')) {
+        listCalls?.push(url)
+        const platform = new URLSearchParams(url.split('?')[1] ?? '').get('platform') ?? 'leetcode'
+        return { status: 200, body: { platform, offset: 0, limit: 50, items: ROWS, hasMore: false } }
+      }
+      return undefined
+    }
+  }
+
+  it('renders the favorite dropdown with two optgroups on leetcode platforms only', async () => {
+    handler = favoriteAwareHandler()
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const field = wrapper.find('.filters__field--favorite')
+    expect(field.exists()).toBe(true)
+    expect(field.find('select').text()).toContain('全部题库')
+    const groups = field.findAll('optgroup')
+    expect(groups.map((group) => group.attributes('label'))).toEqual(['学习计划', '我的题单'])
+    expect(groups[0].text()).toContain('热题 100')
+    expect(groups[1].text()).toContain('我的收藏 (12)')
+
+    // 切到无题单能力的平台:下拉隐藏
+    await wrapper.findAll('select')[0].setValue('codeforces')
+    await flushPromises()
+    expect(wrapper.find('.filters__field--favorite').exists()).toBe(false)
+  })
+
+  it('hides the my-favorites optgroup when myFavorites degrades to empty', async () => {
+    handler = favoriteAwareHandler(undefined, [])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const groups = wrapper.findAll('.filters__field--favorite optgroup')
+    expect(groups.map((group) => group.attributes('label'))).toEqual(['学习计划'])
+    expect(groups[0].text()).toContain('热题 100')
+  })
+
+  it('queries with favorite slug and clears company and period when a favorite is selected', async () => {
+    const listCalls: string[] = []
+    handler = favoriteAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    // 先选公司(带默认期间),再选题单 → favorite 传参,company/period 被清空
+    await wrapper.find('.filters__field--company select').setValue('amazon')
+    await flushPromises()
+    expect(listCalls[listCalls.length - 1]).toContain('company=amazon')
+    expect(listCalls[listCalls.length - 1]).toContain('period=thirty-days')
+
+    await wrapper.find('.filters__field--favorite select').setValue('top-100-liked')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).toContain('favorite=top-100-liked')
+    expect(last).not.toContain('company=')
+    expect(last).not.toContain('period=')
+  })
+
+  it('clears the favorite selection when a company is selected', async () => {
+    const listCalls: string[] = []
+    handler = favoriteAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.find('.filters__field--favorite select').setValue('top-100-liked')
+    await flushPromises()
+    expect(listCalls[listCalls.length - 1]).toContain('favorite=top-100-liked')
+
+    await wrapper.find('.filters__field--company select').setValue('amazon')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).toContain('company=amazon')
+    expect(last).toContain('period=thirty-days')
+    expect(last).not.toContain('favorite=')
+  })
+
+  it('notes that keyword is ignored in favorite list mode', async () => {
+    handler = favoriteAwareHandler()
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.find('.filters__field--favorite select').setValue('top-100-liked')
+    await wrapper.find('input[type="search"]').setValue('two')
+    await flushPromises()
+
+    const notes = wrapper.findAll('.filter-note').map((note) => note.text())
+    expect(notes.some((text) => text.includes('题单模式下关键字被忽略'))).toBe(true)
+  })
+
+  it('clears the favorite filter when switching platforms', async () => {
+    const listCalls: string[] = []
+    handler = favoriteAwareHandler(listCalls)
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    await wrapper.find('.filters__field--favorite select').setValue('top-100-liked')
+    await flushPromises()
+    expect(listCalls[listCalls.length - 1]).toContain('favorite=top-100-liked')
+
+    await wrapper.findAll('select')[0].setValue('leetcodecn')
+    await flushPromises()
+
+    const last = listCalls[listCalls.length - 1]
+    expect(last).toContain('platform=leetcodecn')
+    expect(last).not.toContain('favorite=')
+  })
+
+  // -----------------------------------------------------------------
   // WP49:平台下拉门控 + 力扣中国回落 + 静默恢复 + 子视图切换
   // -----------------------------------------------------------------
 

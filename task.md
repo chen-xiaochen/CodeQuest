@@ -404,15 +404,15 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] [unit] fetchMyFavorites 两种接口形态解析测试（favoriteFolders GraphQL / list_favorites REST）与双失败降级
 - [x] [unit] /api/favorites 端点 HTTP 测试（结构/404 语义）；favorite 分支与互斥兜底测试
 
-## WP57: 前端题库页题单下拉 [pending]
+## WP57: 前端题库页题单下拉 [x] (done @ iter 4;api.ts FavoriteSummary/fetchFavorites+favorite 参数透传;App.vue 题单下拉两组 optgroup(我的题单非空才渲染)/与公司互斥双向(handleFavoriteChange/handleCompanyChange)/平台切换与门控归位重置/题单模式 keyword 忽略提示;渲染条件采用能力探测式(/api/favorites 404→隐藏,同公司下拉模式,与力扣系限定行为等价——偏差已记);myFavorites 降级分层(后端空数组→optgroup 不渲染,整体失败→下拉隐藏);+6 vitest 共 165 过+build 绿,gradlew test check 无回归,loop 层独立核验)
 依赖 WP56
-- [ ] 过滤行新增「题单」下拉（渲染条件：力扣系平台）：`<optgroup label="学习计划">`（/api/favorites studyPlans）+ `<optgroup label="我的题单">`（myFavorites 非空才渲染）；默认「全部题库」
-- [ ] 与「公司」下拉互斥：选题单→清公司+期间；选公司→清题单（双向）
-- [ ] 选中后列表查询带 `favorite=<slug>`（复用现有 reload 参数链路）；题单模式下 keyword 忽略提示（同公司模式文案）
-- [ ] 我的题单拉取失败/未登录 → 只显示学习计划组，静默降级不打扰
-- [ ] 前端类型定义（FavoriteSummary）与 api.ts 请求函数
-- [ ] [unit] vitest：下拉渲染条件（力扣系/其他平台）、optgroup 两组结构、互斥双向清空、favorite 参数传递、myFavorites 失败降级
-- [ ] [acceptance] `npm run test && npm run build` 全绿
+- [x] 过滤行新增「题单」下拉（渲染条件：力扣系平台）：`<optgroup label="学习计划">`（/api/favorites studyPlans）+ `<optgroup label="我的题单">`（myFavorites 非空才渲染）；默认「全部题库」
+- [x] 与「公司」下拉互斥：选题单→清公司+期间；选公司→清题单（双向）
+- [x] 选中后列表查询带 `favorite=<slug>`（复用现有 reload 参数链路）；题单模式下 keyword 忽略提示（同公司模式文案）
+- [x] 我的题单拉取失败/未登录 → 只显示学习计划组，静默降级不打扰
+- [x] 前端类型定义（FavoriteSummary）与 api.ts 请求函数
+- [x] [unit] vitest：下拉渲染条件（力扣系/其他平台）、optgroup 两组结构、互斥双向清空、favorite 参数传递、myFavorites 失败降级
+- [x] [acceptance] `npm run test && npm run build` 全绿
 
 ## WP58: 集成验收与定版 1.3.0 [pending]
 依赖 WP53-WP57
