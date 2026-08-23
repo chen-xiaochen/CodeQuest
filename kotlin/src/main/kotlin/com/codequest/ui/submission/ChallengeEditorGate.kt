@@ -87,10 +87,14 @@ class ChallengeEditorGate(
         state: Snapshot,
         path: Path,
     ): ChallengeTarget? {
+        // roots 在 loadSnapshot 全量预计算;理论必命中,快照不完整(缺 root)的条目按不匹配跳过
+        val resolvable =
+            state.entries.mapNotNull { (challenge, languages) ->
+                state.roots[challenge.id.value]?.let { challenge to languages }
+            }
         val resolved =
-            WorkspaceTargetResolver.resolve(path, state.entries) { challenge ->
-                state.roots[challenge.id.value]
-                    ?: ChallengeWorkspaceLocations.workspaceRoot(project, challenge)
+            WorkspaceTargetResolver.resolve(path, resolvable) { challenge ->
+                state.roots.getValue(challenge.id.value)
             } ?: return null
         val problem = state.problems[resolved.challenge.problemId.value] ?: return null
         return ChallengeTarget(resolved.challenge, resolved.language, problem)

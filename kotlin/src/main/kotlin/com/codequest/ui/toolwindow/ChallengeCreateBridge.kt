@@ -15,7 +15,7 @@ import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
 import com.codequest.ui.challenge.WorkspaceExclusions
-import com.codequest.ui.challenge.createEntryFileWithTemplate
+import com.codequest.ui.challenge.createChallengeWithTemplate
 import com.codequest.ui.jcef.CQBridge
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -214,22 +214,34 @@ private suspend fun createOrOpenInProject(
         findExisting = { lang -> findExistingEntryFile(project, manager, problem.id, lang) },
         // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null=内置);
         // 1.2.4:拉平台起始代码注入模版 ${challenge.code}——拉取失败(会员题/网络/
-        // 平台无 ProblemQueryCapable)按无起始代码处理,回退语言默认桩继续创建
+        // 平台无 ProblemQueryCapable)按无起始代码处理,回退语言默认桩继续创建;
+        // 1.3.2:同一次详情顺带题面示例用例,新建挑战后自动写入(source=PLATFORM,
+        // 原版 exampleTestcaseList 语义),编辑器「修改测试用例/提交测试」开箱即用
         doCreate = { lang ->
-            val startCode =
-                runCatching {
-                    (platform as? ProblemQueryCapable)
-                        ?.fetchProblemDetail(request.remoteId)
-                        ?.codeSnippets
-                        ?.let { startCodeFor(it, lang) }
-                }.getOrNull()
-            createEntryFileWithTemplate(
-                service = workspaceService(project, manager),
-                problem = problem,
-                languageId = lang,
-                settings = CodeQuestSettings.getInstance(project),
-                code = startCode,
-            )
+            val detail =
+                runCatching { (platform as? ProblemQueryCapable)?.fetchProblemDetail(request.remoteId) }
+                    .getOrNull()
+            val startCode = detail?.codeSnippets?.let { startCodeFor(it, lang) }
+            val created =
+                createChallengeWithTemplate(
+                    service = workspaceService(project, manager),
+                    problem = problem,
+                    languageId = lang,
+                    settings = CodeQuestSettings.getInstance(project),
+                    code = startCode,
+                )
+            detail?.exampleTestcases?.takeIf { it.isNotEmpty() }?.let { examples ->
+                val service = workspaceService(project, manager)
+                examples.forEach { input ->
+                    service.saveTestCase(
+                        created.challenge.id,
+                        input,
+                        expected = "",
+                        source = com.codequest.core.model.TestCaseSource.PLATFORM,
+                    )
+                }
+            }
+            created.entryFile
         },
     )
 }

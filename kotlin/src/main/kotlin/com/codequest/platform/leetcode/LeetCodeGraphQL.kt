@@ -44,6 +44,7 @@ internal object LeetCodeGraphQL {
                     translatedName
                 }
                 status
+                exampleTestcaseList
                 codeSnippets {
                     lang
                     langSlug

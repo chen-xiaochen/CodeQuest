@@ -29,7 +29,7 @@ class ChallengeWorkspaceService(
     private val challengeRepository: ChallengeRepository,
     private val solutionRepository: SolutionRepository,
     private val testCaseRepository: TestCaseRepository,
-    private val workspaceRoot: (Challenge) -> Path,
+    private val workspaceRoot: suspend (Challenge) -> Path,
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Instant = Instant::now,
 ) {

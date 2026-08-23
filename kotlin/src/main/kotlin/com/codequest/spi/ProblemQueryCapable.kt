@@ -98,6 +98,12 @@ data class ProblemStatement(
      * 调用方回退语言默认桩。
      */
     val codeSnippets: List<CodeSnippet> = emptyList(),
+    /**
+     * 题面示例用例输入(1.3.2):LC `exampleTestcaseList`——平台已按用例切好,每项为
+     * 完整输入(多行用例内含换行)。开刷创建挑战时自动写入测试用例(source=PLATFORM,
+     * 仅新建时,不覆盖既有);平台不提供为空。
+     */
+    val exampleTestcases: List<String> = emptyList(),
 )
 
 /** 平台起始代码片段(lang=展示名,langSlug=语言标识,code=原文)。 */

@@ -160,6 +160,7 @@ class LeetCodeProblemServiceTest {
                 """{"data":{"question":{"questionId":"1","titleSlug":"two-sum","title":"Two Sum",
                    "content":"<p>Given an array...</p>","translatedContent":null,"isPaidOnly":false,
                    "difficulty":"Easy","topicTags":[],
+                   "exampleTestcaseList":["[2,7,11,15]\n9","[3,2,4]\n6"],
                    "codeSnippets":[
                      {"lang":"Java","langSlug":"java","code":"class Solution {\n    public int[] twoSum(int[] nums, int target) {}\n}"},
                      {"lang":"Python3","langSlug":"python3","code":"class Solution:\n    pass"},
@@ -174,6 +175,8 @@ class LeetCodeProblemServiceTest {
         val statement = service.fetchProblemDetail("two-sum")
 
         assertEquals(2, statement.codeSnippets.size) // code=null 的条目如实丢弃
+        // 1.3.2:示例用例透传(平台已按用例切好,每项完整输入)
+        assertEquals(listOf("[2,7,11,15]\n9", "[3,2,4]\n6"), statement.exampleTestcases)
         assertEquals("java", statement.codeSnippets[0].langSlug)
         assertTrue("twoSum(int[] nums" in statement.codeSnippets[0].code)
         assertEquals("python3", statement.codeSnippets[1].langSlug)

@@ -592,6 +592,8 @@ class LeetCodeApi(
         val topicTags: List<String>,
         /** 各语言起始代码(1.2.4);langSlug 与 WorkspaceLanguage.id 同名约定。 */
         val codeSnippets: List<CodeSnippet> = emptyList(),
+        /** 题面示例用例输入(1.3.2,原版 LeetCodeChallengeData.exampleTestcaseList 事实):平台已按用例切好,每项为完整输入(多行用例内含换行)。 */
+        val exampleTestcaseList: List<String> = emptyList(),
     )
 
     suspend fun fetchQuestionDetail(slug: String): LeetCodeQuestionDetail {
@@ -630,6 +632,11 @@ class LeetCodeApi(
                             code = code,
                         )
                     },
+            exampleTestcaseList =
+                question["exampleTestcaseList"]
+                    ?.jsonArray
+                    .orEmpty()
+                    .mapNotNull { it.jsonPrimitive.contentOrNullIfNull()?.takeIf { tc -> tc.isNotBlank() } },
         )
     }
 
