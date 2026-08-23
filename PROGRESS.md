@@ -9,6 +9,7 @@
 <!-- 每轮追加 -->
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
+| 5 | WP55 | wp-achieved→continue | 0.833 (5/6) | 0 | 浮动栏三键 9/9:AbstractFloatingToolbarProvider+ChallengeFileMatcher+ChallengeEditorGate(TTL 缓存);三 action 全链路(对话框/云端测试门禁/提交复用);resolveTarget 单一定位收敛;+13 测共 749 全绿+buildPlugin 产物核验;429 中断,续做零补齐纯核验恢复 |
 | 4 | WP57 | wp-achieved→continue | 0.667 (4/6) | 0 | 前端题单下拉 7/7:fetchFavorites+favorite 参数、两组 optgroup+互斥双向+平台归位、能力探测式渲染(404 隐藏,等价力扣系限定)、myFavorites 降级分层;前端 +6 测共 165+build 绿,gradlew 无回归,loop 层独立核验 |
 | 3 | WP54 | wp-achieved→continue | 0.5 (3/6) | 0 | 两对话框 5/5:TestCasesEditState/TestRunResultState 纯函数核(按 id diff/位图判定/CE-RE 分支)+两 DialogWrapper 薄壳;bundle +17 键;+17 测共 737 全绿,loop 层独立核验 |
 | 2 | WP56 | wp-achieved→continue | 0.333 (2/6) | 0 | 后端题单 8/8:FavoriteQueryCapable 三方法+18 学习计划(官方索引页实证)+我的题单(实测 favoritesLists 查询,REST 备选,双失败降级)+/api/favorites+favorite 分支(优先 company);+12 测共 720 全绿;429 中断一次零残留,重派注入匿名 API 教训一次过 |

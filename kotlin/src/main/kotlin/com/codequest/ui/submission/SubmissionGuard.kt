@@ -16,4 +16,7 @@ class SubmissionGuard {
     fun end(key: String) {
         inFlight.remove(key)
     }
+
+    /** [key] 是否仍在进行中(WP55:云端测试 action.update 置灰查询)。 */
+    fun isInFlight(key: String): Boolean = key in inFlight
 }

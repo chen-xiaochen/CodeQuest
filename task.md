@@ -382,17 +382,17 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] [unit] 表格模型转换与增删改 diff 纯函数测试
 - [x] [unit] 结果对话框数据组装纯函数测试（compare_result 逐位对错、CE 替代表格分支）
 
-## WP55: 编辑器浮动工具栏三键接线 [pending]
+## WP55: 编辑器浮动工具栏三键接线 [x] (done @ iter 5;AbstractFloatingToolbarProvider isApplicableAsync+EP com.intellij.editorFloatingToolbarProvider 注册,canShow=ChallengeFileMatcher(Path.startsWith 分量匹配+归一化)+ChallengeEditorGate(TTL 3s volatile 快照+Mutex 防击穿,update 走无 IO cachedIsChallengeFile);三 action=EditTestCases(pooled 装载→TestCasesDialog)/RunCloudTest(saveDocument→区域提取→dataInput→fetchProblemDetail 取 questionId→watchTestRun→TestRunResultDialog;无能力隐藏/未登录置灰/防重入)/SubmitToOj(加 saveDocument+浮动组,SubmissionCoordinator 复用);SubmissionCoordinator.resolveTarget 收敛为委托 ChallengeEditorGate 单一定位;ProblemStatement.questionId 默认 null 不破坏 21 平台;bundle 4+6 键英中;+13 测共 749 全绿+buildPlugin 产物核验含全部新类,loop 层独立核验;429 中断一次,续做 Teamee 零补齐纯核验恢复;版本号 1.3.0 留 WP58)
 依赖 WP54
-- [ ] 核对平台 2026.2 `FloatingToolbarProvider` 接口签名（本地 IDE 依赖源/反编译），实现 `ChallengeFloatingToolbarProvider`（EP `com.intellij.editorFloatingToolbarProvider`；actionGroupId=`CodeQuest.ChallengeEditor.FloatingToolbar`；canShow=文件属于挑战工作区）
-- [ ] plugin.xml：extensions 挂 `<editorFloatingToolbar>`；actions 注册 group `CodeQuest.ChallengeEditor.FloatingToolbar` 与三 action（修改测试用例 / 提交测试 / 提交，带图标）
-- [ ] 「修改测试用例」action：按编辑器文件定位 challenge（复用 WorkspaceTargetResolver/挑战集合枚举语义）→ 打开 TestCasesDialog
-- [ ] 「提交测试」action：saveDocument → 区域提取（SubmitRegionExtractor，缺标记报错同提交流程文案）→ 拉用例拼 dataInput（\n 连接，原版语义）→ questionId 经 fetchProblemDetail 取 → TestEvaluationCapable.watchTestRun 收集至终态 → TestRunResultDialog；平台无能力该键隐藏；未登录置灰；进行中防重入（同文件门禁）
-- [ ] 「提交」action：saveDocument → 复用 `SubmissionCoordinator.submitFile`（零新逻辑）
-- [ ] canShow 门控性能：路径前缀匹配工作区基目录 + 挑战集合缓存（DB 变更失效），不逐次查库
-- [ ] PluginBundle 英中同步：三 action 文案、两对话框全部文案、提交测试错误态（非挑战文件/平台不支持/未登录/无用例/区域标记缺失）
-- [ ] [unit] canShow 判定纯函数测试（工作区内/外、多基目录）
-- [ ] [unit] 提交测试链路纯函数部分（dataInput 拼装、错误分支文案选择）
+- [x] 核对平台 2026.2 `FloatingToolbarProvider` 接口签名（本地 IDE 依赖源/反编译），实现 `ChallengeFloatingToolbarProvider`（EP `com.intellij.editorFloatingToolbarProvider`；actionGroupId=`CodeQuest.ChallengeEditor.FloatingToolbar`；canShow=文件属于挑战工作区）
+- [x] plugin.xml：extensions 挂 `<editorFloatingToolbar>`；actions 注册 group `CodeQuest.ChallengeEditor.FloatingToolbar` 与三 action（修改测试用例 / 提交测试 / 提交，带图标）
+- [x] 「修改测试用例」action：按编辑器文件定位 challenge（复用 WorkspaceTargetResolver/挑战集合枚举语义）→ 打开 TestCasesDialog
+- [x] 「提交测试」action：saveDocument → 区域提取（SubmitRegionExtractor，缺标记报错同提交流程文案）→ 拉用例拼 dataInput（\n 连接，原版语义）→ questionId 经 fetchProblemDetail 取 → TestEvaluationCapable.watchTestRun 收集至终态 → TestRunResultDialog；平台无能力该键隐藏；未登录置灰；进行中防重入（同文件门禁）
+- [x] 「提交」action：saveDocument → 复用 `SubmissionCoordinator.submitFile`（零新逻辑）
+- [x] canShow 门控性能：路径前缀匹配工作区基目录 + 挑战集合缓存（DB 变更失效），不逐次查库
+- [x] PluginBundle 英中同步：三 action 文案、两对话框全部文案、提交测试错误态（非挑战文件/平台不支持/未登录/无用例/区域标记缺失）
+- [x] [unit] canShow 判定纯函数测试（工作区内/外、多基目录）
+- [x] [unit] 提交测试链路纯函数部分（dataInput 拼装、错误分支文案选择）
 
 ## WP56: 后端题单：favorite 泛化+学习计划+我的题单+端点 [x] (done @ iter 2;FavoriteQueryCapable(studyPlans/fetchMyFavorites/queryFavoriteProblems)+LeetCodeStudyPlans 18 计划(官方索引页 firecrawl 实证 slug);我的题单 GraphQL 实测修正 favoritesLists.allFavorites(spec 预估 favoriteFolders 不存在,CN 变体 slug 回退 id)+REST list_favorites 备选+双失败降级空表;fetchFavoriteQuestionPage 泛化(fetchCompanyQuestionPage 委托,线协议逐字不变);/api/favorites 端点(studyPlans 独立 DTO/404 探测同 companies)+/api/problems favorite 分支(优先于 company);+12 测共 720 全绿,check 过,loop 层独立核验;偏差:interview-75/data-structure 等 spec 例举 slug 不在 /studyplan/ 域未收录)
 - [x] SPI 泛化：`queryFavoriteProblems(favoriteSlug, filters, offset, limit)`（favoriteQuestionList 查询抽出；`queryCompanyProblems` 委托之，参数协议不变防回归）

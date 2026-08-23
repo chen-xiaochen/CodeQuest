@@ -68,6 +68,8 @@ class LeetCodeProblemService(
             remoteId = remoteId,
             content = content,
             contentFormat = ContentFormat.HTML,
+            // WP55:云端测试 interpret 端点按数字主档 id 寻址,详情顺带透出(空串归一为 null)
+            questionId = question.questionId.takeIf { it.isNotBlank() },
             codeSnippets = question.codeSnippets,
         )
     }

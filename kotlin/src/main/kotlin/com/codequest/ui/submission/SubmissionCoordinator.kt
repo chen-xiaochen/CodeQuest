@@ -1,10 +1,6 @@
 package com.codequest.ui.submission
 
 import com.codequest.core.model.AuthExpiredException
-import com.codequest.core.model.Challenge
-import com.codequest.core.model.ChallengeLanguage
-import com.codequest.core.model.PlatformId
-import com.codequest.core.model.Problem
 import com.codequest.core.model.Submission
 import com.codequest.core.model.SubmissionResult
 import com.codequest.core.workspace.ChallengeTemplates
@@ -14,7 +10,6 @@ import com.codequest.spi.AuthCapable
 import com.codequest.spi.SubmissionCapable
 import com.codequest.spi.SubmitRequest
 import com.codequest.ui.challenge.ChallengeToolWindowNavigator
-import com.codequest.ui.challenge.ChallengeWorkspaceLocations
 import com.codequest.ui.jcef.CQBridge
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -195,27 +190,8 @@ class SubmissionCoordinator(
     // 工作区定位
     // ------------------------------------------------------------------
 
-    private data class Target(
-        val challenge: Challenge,
-        val language: ChallengeLanguage,
-        val problem: Problem,
-    )
-
-    /** 本地库枚举 challenge + 语言配置,交给纯路径解析器匹配文件。 */
-    private suspend fun resolveTarget(path: Path): Target? {
-        val manager = databaseManager()
-        val challenges =
-            KNOWN_PLATFORMS
-                .flatMap { platform -> manager.problemRepository.search(PlatformId(platform), "") }
-                .flatMap { problem -> manager.challengeRepository.findByProblem(problem.id) }
-        val withLanguages = challenges.map { it to manager.challengeRepository.findLanguages(it.id) }
-        val resolved =
-            WorkspaceTargetResolver.resolve(path, withLanguages) {
-                ChallengeWorkspaceLocations.workspaceRoot(project, it)
-            } ?: return null
-        val problem = manager.problemRepository.findById(resolved.challenge.problemId) ?: return null
-        return Target(resolved.challenge, resolved.language, problem)
-    }
+    /** 挑战定位(WP55 起委托 [ChallengeEditorGate]:TTL 快照缓存,与浮动工具栏共单一定位实现)。 */
+    private suspend fun resolveTarget(path: Path): ChallengeTarget? = project.getService(ChallengeEditorGate::class.java).targetFor(path)
 
     // ------------------------------------------------------------------
     // 前端刷新推送
@@ -264,9 +240,5 @@ class SubmissionCoordinator(
     companion object {
         /** 提交完成事件 topic(Kotlin → JS,页面收到后重拉 /api/submissions)。 */
         const val TOPIC_SUBMISSION_UPDATED = "submission:updated"
-
-        /** 已知平台(与 ChallengeWorkspacePanel 一致;仓库无全量 challenge 接口,按平台聚合枚举)。 */
-        private val KNOWN_PLATFORMS =
-            listOf("leetcode", "leetcodecn", "codeforces", "atcoder", "luogu", "hackerrank")
     }
 }

@@ -23,6 +23,12 @@ object SubmissionNotifications {
         challengeName: String,
     ): Notification = notify(project, PluginBundle.message("submission.progress.submitting", challengeName), NotificationType.INFORMATION)
 
+    /** 云端测试进行中气泡(WP55);返回引用供终态时收掉。 */
+    fun notifyTesting(
+        project: Project?,
+        challengeName: String,
+    ): Notification = notify(project, PluginBundle.message("testRun.progress.running", challengeName), NotificationType.INFORMATION)
+
     /** 终态通知:AC 成功(绿),其余失败(红),含题目名与 verdict 文案。 */
     fun notifyCompleted(
         project: Project?,

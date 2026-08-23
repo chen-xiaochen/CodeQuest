@@ -86,6 +86,12 @@ data class ProblemStatement(
     val content: String,
     val contentFormat: ContentFormat,
     /**
+     * 平台侧题目数字主档 id(WP55:云端测试 interpret 请求体需要;LC 为
+     * questionData.questionId)。平台无此概念(CF/AtCoder 等以 remoteId 寻址)为
+     * null,消费方按「平台不支持」处理。
+     */
+    val questionId: String? = null,
+    /**
      * 各语言起始代码(1.2.4):LC `codeSnippets`(langSlug 与 [com.codequest.core.workspace.WorkspaceLanguage]
      * 的 id 同名约定:java/python3/cpp/kotlin/go,直接按 langSlug 匹配)。挑战创建时注入
      * 模版 `${challenge.code}`;平台不提供(CF/AtCoder stdin 风格、洛谷/HR 无对应字段)为空,

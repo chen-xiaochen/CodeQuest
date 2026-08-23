@@ -131,15 +131,35 @@
         <!-- WP23:竞赛提醒后台调度(周期 findDue → 通知 → markNotified) -->
         <projectService serviceImplementation="com.codequest.ui.contest.ContestReminderScheduler"/>
         <postStartupActivity implementation="com.codequest.ui.contest.ContestReminderSchedulerStartupActivity"/>
+
+        <!-- WP55:编辑器浮动工具栏(挑战工作区文件三键:修改测试用例/提交测试/提交) -->
+        <editorFloatingToolbarProvider implementation="com.codequest.ui.challenge.ChallengeFloatingToolbarProvider"/>
     </extensions>
 
     <actions>
-        <!-- WP21:编辑器提交 action(右键菜单;区域标记代码 → SPI submit → 轮询 → 落库) -->
+        <!-- WP55:挑战文件浮动工具栏组(editorFloatingToolbarProvider 消费;
+             provider 只放行挑战工作区文件,组内各 action 再做平台能力/登录态 update 门控) -->
+        <group id="CodeQuest.ChallengeEditor.FloatingToolbar" popup="false">
+            <action id="CodeQuest.ChallengeEditor.EditTestCases"
+                    class="com.codequest.ui.challenge.EditTestCasesAction"
+                    text="%action.editTestCases.text"
+                    description="%action.editTestCases.description"
+                    icon="AllIcons.Actions.Edit"/>
+            <action id="CodeQuest.ChallengeEditor.RunCloudTest"
+                    class="com.codequest.ui.challenge.RunCloudTestAction"
+                    text="%action.runCloudTest.text"
+                    description="%action.runCloudTest.description"
+                    icon="AllIcons.Actions.Execute"/>
+        </group>
+        <!-- WP21:编辑器提交 action(右键菜单;区域标记代码 → SPI submit → 轮询 → 落库);
+             WP55:同 action 并入浮动工具栏三键之「提交」(saveDocument → submitFile) -->
         <action id="CodeQuest.SubmitToOj"
                 class="com.codequest.ui.submission.SubmitToOjAction"
                 text="%action.submitToOj.text"
-                description="%action.submitToOj.description">
+                description="%action.submitToOj.description"
+                icon="AllIcons.Actions.Upload">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            <add-to-group group-id="CodeQuest.ChallengeEditor.FloatingToolbar" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
