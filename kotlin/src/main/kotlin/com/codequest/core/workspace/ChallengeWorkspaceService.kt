@@ -26,6 +26,7 @@ class ChallengeWorkspaceService(
     private val challengeRepository: ChallengeRepository,
     private val testCaseRepository: TestCaseRepository,
     private val workspaceRoot: suspend (Challenge) -> Path,
+    private val packageNameFor: suspend (Challenge) -> String? = { null },
     private val ids: () -> String = { UUID.randomUUID().toString() },
     private val clock: () -> Instant = Instant::now,
 ) {
@@ -59,6 +60,10 @@ class ChallengeWorkspaceService(
         val slug = slugFor(problem)
         val (beginRegion, endRegion) = ChallengeTemplates.regionMarkers(languageId)
         val templateText = template ?: ChallengeTemplates.entryTemplate(languageId)
+        // 1.5.1:challenge 先建(仅内存对象,失败不落库)——包名依赖目录名(含 id 前缀),
+        // 模板变量 challenge.packageName 需在渲染前经 [packageNameFor] 算出
+        val challenge = Challenge(ChallengeId(ids()), problem.id, problem.title, clock())
+        val root = workspaceRoot(challenge)
         val context =
             templateContext(
                 "challenge" to
@@ -70,6 +75,7 @@ class ChallengeWorkspaceService(
                         "slug" to slug,
                         "url" to problem.url,
                         "code" to (code?.takeIf { it.isNotBlank() } ?: ChallengeTemplates.defaultCode(languageId)),
+                        "packageName" to (packageNameFor(challenge) ?: ""),
                     ),
                 "beginRegion" to beginRegion,
                 "endRegion" to endRegion,
@@ -79,8 +85,6 @@ class ChallengeWorkspaceService(
         val entryFileName = engine.renderFileName(rule, context, language.fileExtension)
         val content = engine.render(templateText, context)
 
-        val challenge = Challenge(ChallengeId(ids()), problem.id, problem.title, clock())
-        val root = workspaceRoot(challenge)
         val entryFile = root.resolve(entryFileName)
         Files.createDirectories(entryFile.parent)
         Files.writeString(entryFile, ensureTrailingNewline(content))

@@ -304,4 +304,11 @@ private fun workspaceService(
         challengeRepository = manager.challengeRepository,
         testCaseRepository = manager.testCaseRepository,
         workspaceRoot = { ChallengeWorkspaceLocations.workspaceRoot(project, it) },
+        // 1.5.1:模板变量 challenge.packageName(工作区目录相对最近 source root;项目外 null)
+        packageNameFor = { challenge ->
+            JavaPackageDeclaration.packageNameFor(
+                project,
+                ChallengeWorkspaceLocations.workspaceRoot(project, challenge),
+            )
+        },
     )

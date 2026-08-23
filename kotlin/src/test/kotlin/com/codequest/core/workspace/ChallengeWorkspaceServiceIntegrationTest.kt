@@ -79,6 +79,35 @@ class ChallengeWorkspaceServiceIntegrationTest {
     }
 
     @Test
+    fun `create challenge renders challenge packageName template variable`() {
+        // 1.5.1:模板 `package ${challenge.packageName};` → 渲染时经 packageNameFor 注入
+        // (依赖 challenge id 前缀的目录名,故 challenge 构造提前到渲染前);null → 空串
+        val (db, dir) = newTempDatabase()
+        db.use {
+            val service =
+                ChallengeWorkspaceService(
+                    challengeRepository = ExposedChallengeRepository(db),
+                    testCaseRepository = ExposedTestCaseRepository(db),
+                    workspaceRoot = { dir.resolveSibling("ws").resolve(it.id.value) },
+                    packageNameFor = { "codequest.two_sum_${it.id.value.take(8)}" },
+                    ids = { "pkg-id-99" },
+                    clock = { fixedInstant },
+                )
+            val created =
+                kotlinx.coroutines.runBlocking {
+                    service.createChallenge(
+                        problem(),
+                        "java",
+                        template = "package \${challenge.packageName};\n\nclass Solution {}\n",
+                    )
+                }
+
+            val content = Files.readString(created.entryFile)
+            assertTrue(content.startsWith("package codequest.two_sum_pkg-id-9;"), content)
+        }
+    }
+
+    @Test
     fun `test case save update delete roundtrip`() {
         val (db, dir) = newTempDatabase()
         db.use {
