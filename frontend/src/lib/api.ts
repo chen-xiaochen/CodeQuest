@@ -320,6 +320,49 @@ export function fetchSubmissions(query: SubmissionListQuery): Promise<Submission
   return getJson<SubmissionListResult>(`/api/submissions?${params.toString()}`)
 }
 
+// ---------------------------------------------------------------------------
+// 1.5.0:测试用例(右窗「测试用例」页,按挑战过滤的本地库 CRUD)
+// ---------------------------------------------------------------------------
+
+/** 测试用例条目(source: USER=手动 / PLATFORM=平台样例)。 */
+export interface TestCaseItem {
+  id: string
+  input: string
+  expected: string
+  source: 'USER' | 'PLATFORM'
+}
+
+export interface TestCaseListResult {
+  challengeId: string
+  /** challenge 主档被删时缺失(页面回退显示 challengeId)。 */
+  challengeName?: string | null
+  items: TestCaseItem[]
+}
+
+export function fetchTestCases(challengeId: string): Promise<TestCaseListResult> {
+  return getJson<TestCaseListResult>(`/api/testcases?challengeId=${encodeURIComponent(challengeId)}`)
+}
+
+export function createTestCase(request: {
+  challengeId: string
+  input: string
+  expected: string
+}): Promise<TestCaseItem> {
+  return sendJson<TestCaseItem>('/api/testcases', 'POST', JSON.stringify(request))
+}
+
+export function updateTestCase(request: {
+  id: string
+  input: string
+  expected: string
+}): Promise<TestCaseItem> {
+  return sendJson<TestCaseItem>('/api/testcases/update', 'POST', JSON.stringify(request))
+}
+
+export function deleteTestCase(id: string): Promise<{ deleted: boolean }> {
+  return sendJson<{ deleted: boolean }>(`/api/testcases?id=${encodeURIComponent(id)}`, 'DELETE')
+}
+
 /** WP36:错误用例三件套(平台侧,如 LeetCode WA 的 input/期望/实际)。 */
 export interface SubmissionErrorCase {
   input?: string | null

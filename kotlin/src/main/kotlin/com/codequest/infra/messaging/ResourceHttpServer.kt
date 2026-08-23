@@ -28,6 +28,8 @@ import java.util.logging.Logger
  *   静默恢复 `POST /api/auth/refresh`(WP48);
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
  *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
+ *   测试用例端点(1.5.0,经 [testCasesApi] 注入后启用):`GET|POST /api/testcases`、
+ *   `POST /api/testcases/update`、`DELETE /api/testcases?id=`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
  *   `GET /api/contest/{remoteId}?platform=`、提醒订阅 `GET|POST|DELETE /api/contests/reminders`;
  *   题解端点(WP26 列表 / WP31 正文,经 [solutionsApi] 注入后启用):
@@ -41,10 +43,12 @@ import java.util.logging.Logger
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
  */
+@Suppress("LongParameterList") // API 端点 DI 直通构造,聚合封装不值
 class ResourceHttpServer(
     private val resourceRoot: String = DEFAULT_RESOURCE_ROOT,
     private val problemApi: ProblemApi? = null,
     private val submissionsApi: SubmissionsApi? = null,
+    private val testCasesApi: TestCasesApi? = null,
     private val contestApi: ContestApi? = null,
     private val solutionsApi: SolutionsApi? = null,
     private val statsApi: StatisticsApi? = null,
@@ -177,6 +181,7 @@ class ResourceHttpServer(
                         { handleProblemRoutes(exchange, path, query) },
                         { handleContestRoutes(exchange, path, query) },
                         { handleSubmissionRoutes(exchange, path, query) },
+                        { handleTestCaseRoutes(exchange, path, query) },
                         { handleLocalDataRoutes(exchange, path, query) },
                         { handleCatalogRoutes(exchange, path, query) },
                     )
@@ -270,6 +275,39 @@ class ResourceHttpServer(
                 } else {
                     runSubmissionsApi(exchange) { api -> api.submissionDetail(urlDecode(id)) }
                 }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 测试用例端点路由家族(1.5.0 列表/新增/更新/删除;形态同 [handleSubmissionRoutes])。 */
+    private fun handleTestCaseRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        val method = exchange.requestMethod.uppercase()
+        when {
+            path == "/api/testcases" && exchange.isGet() -> {
+                runTestCasesApi(exchange) { api -> api.listTestCases(query) }
+            }
+
+            path == "/api/testcases" && method == "POST" -> {
+                val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                runTestCasesApi(exchange) { api -> api.createTestCase(body) }
+            }
+
+            path == "/api/testcases/update" && method == "POST" -> {
+                val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                runTestCasesApi(exchange) { api -> api.updateTestCase(body) }
+            }
+
+            path == "/api/testcases" && method == "DELETE" -> {
+                runTestCasesApi(exchange) { api -> api.deleteTestCase(query) }
             }
 
             else -> {
@@ -422,6 +460,21 @@ class ResourceHttpServer(
         block: suspend (SubmissionsApi) -> ProblemApiResponse,
     ) {
         val api = submissionsApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 执行 [TestCasesApi] 调用并回写应答(形态同 [runProblemApi],1.5.0)。 */
+    private fun runTestCasesApi(
+        exchange: HttpExchange,
+        block: suspend (TestCasesApi) -> ProblemApiResponse,
+    ) {
+        val api = testCasesApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")

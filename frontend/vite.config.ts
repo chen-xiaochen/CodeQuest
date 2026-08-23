@@ -3,7 +3,7 @@ import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 /**
- * 六个页面 + 一个落地页,各自独立 entry(不做 SPA 大包):
+ * 七个页面 + 一个落地页,各自独立 entry(不做 SPA 大包):
  * 构建产物 dist/<page>/index.html,由 ResourceHttpServer 按资源相对路径提供。
  */
 export const PAGES = [
@@ -13,6 +13,7 @@ export const PAGES = [
   'search',
   'problem-view',
   'submissions',
+  'testcases',
 ] as const
 
 export type PageName = (typeof PAGES)[number]

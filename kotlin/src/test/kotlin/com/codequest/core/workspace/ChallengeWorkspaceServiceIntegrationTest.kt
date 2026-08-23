@@ -8,7 +8,6 @@ import com.codequest.core.model.ProblemId
 import com.codequest.core.model.TestCaseSource
 import com.codequest.infra.db.ExposedChallengeRepository
 import com.codequest.infra.db.ExposedProblemRepository
-import com.codequest.infra.db.ExposedSolutionRepository
 import com.codequest.infra.db.ExposedTestCaseRepository
 import com.codequest.infra.db.newTempDatabase
 import java.nio.file.Files
@@ -20,7 +19,7 @@ import kotlin.test.assertTrue
 
 /**
  * [integration] 数据链路(WP16 acceptance 自动化部分):
- * 创建 challenge → 多解法 → 测试用例 → 落库 → 读回一致。
+ * 创建 challenge → 测试用例 → 落库 → 读回一致(1.5.0 多解法随底部挑战窗删除)。
  *
  * 服务在 core(纯 Kotlin),仓库实现来自 infra(Exposed/SQLite),测试代码可跨层组装。
  */
@@ -47,7 +46,6 @@ class ChallengeWorkspaceServiceIntegrationTest {
             val service =
                 ChallengeWorkspaceService(
                     challengeRepository = challenges,
-                    solutionRepository = ExposedSolutionRepository(db),
                     testCaseRepository = ExposedTestCaseRepository(db),
                     workspaceRoot = { dir.resolveSibling("ws").resolve(it.id.value) },
                     ids = { "id-${(itmark++).toString().padStart(2, '0')}" },
@@ -81,40 +79,6 @@ class ChallengeWorkspaceServiceIntegrationTest {
     }
 
     @Test
-    fun `create and list multiple solutions with notes`() {
-        val (db, dir) = newTempDatabase()
-        db.use {
-            val challenges = ExposedChallengeRepository(db)
-            val solutions = ExposedSolutionRepository(db)
-            val service =
-                ChallengeWorkspaceService(
-                    challengeRepository = challenges,
-                    solutionRepository = solutions,
-                    testCaseRepository = ExposedTestCaseRepository(db),
-                    workspaceRoot = { dir.resolveSibling("ws").resolve(it.id.value) },
-                    ids = { "sid-%03d".format(itmark++) },
-                    clock = { fixedInstant },
-                )
-            kotlinx.coroutines.runBlocking {
-                val created = service.createChallenge(problem(), "java")
-                val first = service.createSolution(created, "brute force", "双层循环 O(n^2)")
-                val second = service.createSolution(created, "hash map", "哈希一次遍历 O(n)")
-
-                val list = solutions.findByChallenge(created.challenge.id)
-                assertEquals(listOf("brute force", "hash map"), list.map { it.name })
-                assertEquals(listOf("双层循环 O(n^2)", "哈希一次遍历 O(n)"), list.map { it.noteMd })
-
-                // 每个 solution 一个文件,均已写入工作区
-                list.forEach { solution ->
-                    val solutionFile = dir.resolveSibling("ws").resolve(created.challenge.id.value).resolve(solution.filePath)
-                    assertTrue(Files.isRegularFile(solutionFile), solution.filePath)
-                }
-                assertEquals(listOf(first.name, second.name), list.map { it.name })
-            }
-        }
-    }
-
-    @Test
     fun `test case save update delete roundtrip`() {
         val (db, dir) = newTempDatabase()
         db.use {
@@ -123,7 +87,6 @@ class ChallengeWorkspaceServiceIntegrationTest {
             val service =
                 ChallengeWorkspaceService(
                     challengeRepository = challenges,
-                    solutionRepository = ExposedSolutionRepository(db),
                     testCaseRepository = testCases,
                     workspaceRoot = { dir.resolveSibling("ws").resolve(it.id.value) },
                     ids = { "tc-%03d".format(itmark++) },
@@ -159,7 +122,6 @@ class ChallengeWorkspaceServiceIntegrationTest {
             val service =
                 ChallengeWorkspaceService(
                     challengeRepository = challenges,
-                    solutionRepository = ExposedSolutionRepository(db),
                     testCaseRepository = ExposedTestCaseRepository(db),
                     workspaceRoot = { dir.resolveSibling("ws").resolve(it.id.value) },
                     ids = { "id-${itmark++}" },

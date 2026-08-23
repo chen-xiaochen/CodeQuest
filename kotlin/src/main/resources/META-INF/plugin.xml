@@ -93,8 +93,8 @@
 
         <!-- WP20:题面工具窗口导航(nav:openProblem 桥消息 → 打开题目) -->
         <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewNavigator"/>
-        <!-- WP51:挑战工具窗口导航(提交完成 → 激活挑战窗 + 选中提交记录 tab) -->
-        <projectService serviceImplementation="com.codequest.ui.challenge.ChallengeToolWindowNavigator"/>
+        <!-- 1.5.0:右窗(题面)三 tab 导航——开刷联动/提交完成/云端测试结果定向 -->
+        <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewTabNavigator"/>
 
         <!-- WP15:设置持久化 + 数据库管理(项目级服务,随项目启动/关闭) -->
         <projectService serviceImplementation="com.codequest.infra.settings.CodeQuestSettings"/>
@@ -116,13 +116,6 @@
                     anchor="right"
                     icon="AllIcons.Toolwindows.ToolWindowProject"/>
 
-        <!-- WP16:challenge 工作区(创建/多解法/测试用例/本地运行);WP51 提交记录并入本窗,
-             独立 Submissions 工具窗删除(displayName 经工厂 init 本地化,id 一律不动) -->
-        <toolWindow id="CodeQuest Challenge"
-                    factoryClass="com.codequest.ui.challenge.ChallengeWorkspaceToolWindowFactory"
-                    anchor="bottom"
-                    icon="AllIcons.Toolwindows.ToolWindowRun"/>
-
         <!-- WP21:提交结果通知组(AC 绿/失败红气球) -->
         <notificationGroup id="codequest.submissions" displayType="BALLOON"/>
         <!-- WP23:竞赛提醒通知组 -->
@@ -141,23 +134,14 @@
              provider 只放行挑战工作区文件,组内各 action 再做平台能力/登录态 update 门控) -->
         <group id="CodeQuest.ChallengeEditor.FloatingToolbar" popup="false">
             <action id="CodeQuest.ChallengeEditor.EditTestCases"
-                    class="com.codequest.ui.challenge.EditTestCasesAction"
-                    text="%action.editTestCases.text"
-                    description="%action.editTestCases.description"
-                    icon="AllIcons.Actions.Edit"/>
+                    class="com.codequest.ui.challenge.EditTestCasesAction"/>
             <action id="CodeQuest.ChallengeEditor.RunCloudTest"
-                    class="com.codequest.ui.challenge.RunCloudTestAction"
-                    text="%action.runCloudTest.text"
-                    description="%action.runCloudTest.description"
-                    icon="AllIcons.Actions.Execute"/>
+                    class="com.codequest.ui.challenge.RunCloudTestAction"/>
         </group>
         <!-- WP21:编辑器提交 action(右键菜单;区域标记代码 → SPI submit → 轮询 → 落库);
              WP55:同 action 并入浮动工具栏三键之「提交」(saveDocument → submitFile) -->
         <action id="CodeQuest.SubmitToOj"
-                class="com.codequest.ui.submission.SubmitToOjAction"
-                text="%action.submitToOj.text"
-                description="%action.submitToOj.description"
-                icon="AllIcons.Actions.Upload">
+                class="com.codequest.ui.submission.SubmitToOjAction">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="CodeQuest.ChallengeEditor.FloatingToolbar" anchor="last"/>
         </action>

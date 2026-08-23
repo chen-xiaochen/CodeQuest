@@ -61,8 +61,14 @@ export const TOPIC_CHALLENGE_CREATE = 'challenge:create'
 /** WP41:webview 缩放(页面 → Kotlin);payload {delta:±1} 步进或 {level:0} 直设(level 优先,0=100%)。 */
 export const TOPIC_WEBVIEW_ZOOM = 'webview:zoom'
 
-/** 1.0.x:开刷结果回推(Kotlin → 页面);payload {ok, error?}。 */
+/** 1.0.x:开刷结果回推(Kotlin → 页面);payload {ok, error?, challengeId?}。 */
 export const TOPIC_CHALLENGE_CREATE_RESULT = 'challenge:create-result'
+
+/** 1.5.0:云端测试结果推送(Kotlin → 测试用例页);payload {challengeId, passed, total, rows, errorKind?, errorText?}。 */
+export const TOPIC_TESTRUN_RESULT = 'testrun:result'
+
+/** 1.5.0:测试用例页取最近结果(页面 → Kotlin);payload {challengeId}。 */
+export const TOPIC_TESTRUN_LATEST = 'testrun:latest'
 
 declare global {
   interface Window {

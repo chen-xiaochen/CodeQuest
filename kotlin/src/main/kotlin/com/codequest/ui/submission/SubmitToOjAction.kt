@@ -1,5 +1,7 @@
 package com.codequest.ui.submission
 
+import com.codequest.infra.i18n.PluginBundle
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -21,7 +23,12 @@ import com.intellij.openapi.vfs.VirtualFile
  *
  * EDT 只做文件/文本读取(读操作),网络与落库全部在后台线程;重复触发由协调器幂等门拦截。
  */
-class SubmitToOjAction : AnAction() {
+class SubmitToOjAction :
+    AnAction(
+        PluginBundle.message("action.submitToOj.text"),
+        PluginBundle.message("action.submitToOj.description"),
+        AllIcons.Actions.Upload,
+    ) {
     override fun actionPerformed(event: AnActionEvent) {
         val project: Project = event.project ?: return
         val file: VirtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return

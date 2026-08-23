@@ -27,6 +27,7 @@ class CodeQuestToolWindowFactory :
     DumbAware {
     /** WP51:显示名本地化(id 不动——id 改动使用户既有窗口布局失效)。 */
     override fun init(toolWindow: ToolWindow) {
+        toolWindow.setIcon(CQIcons.toolWindow) // 1.5.0:插件自有图标
         val name = PluginBundle.message("toolwindow.displayName.main")
         toolWindow.stripeTitle = name
         toolWindow.title = name

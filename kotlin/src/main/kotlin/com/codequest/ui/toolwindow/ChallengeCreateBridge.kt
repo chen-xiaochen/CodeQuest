@@ -14,9 +14,10 @@ import com.codequest.spi.OJPlatform
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.ui.challenge.ChallengeWorkspaceLocations
-import com.codequest.ui.challenge.WorkspaceExclusions
+import com.codequest.ui.challenge.JavaPackageDeclaration
 import com.codequest.ui.challenge.createChallengeWithTemplate
 import com.codequest.ui.jcef.CQBridge
+import com.codequest.ui.toolwindow.ProblemViewTabNavigator
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -72,6 +73,10 @@ object ChallengeCreateBridge {
             ApplicationManager.getApplication().executeOnPooledThread {
                 val result =
                     runBlocking { performCreate(project, request) }
+                // 1.5.0:开刷成功 → 右窗测试用例/提交记录 tab 的 URL 联动到新 challengeId
+                if (result.ok && result.challengeId != null) {
+                    project.getService(ProblemViewTabNavigator::class.java).challengeCreated(result.challengeId)
+                }
                 bridge.postMessage(TOPIC_CHALLENGE_CREATE_RESULT, result.toJson())
             }
         }
@@ -139,23 +144,32 @@ fun startCodeFor(
 data class ChallengeCreateResult(
     val ok: Boolean,
     val error: String? = null,
+    /** 成功时携带 challenge id(1.5.0:右窗 tab challengeId 联动;前端可不消费)。 */
+    val challengeId: String? = null,
 ) {
     fun toJson(): String =
         buildJsonObject {
             put("ok", ok)
             if (error != null) put("error", error)
+            if (challengeId != null) put("challengeId", challengeId)
         }.toString()
 }
 
 /**
  * 幂等创建/打开逻辑核(纯函数式注入,单测友好):已有同题同语言工作区→复用入口
- * 文件且不创建;否则创建并返回新入口文件。
+ * 文件且不创建;否则创建并返回新产物(1.5.0 泛化返回类型,项目侧携带 challengeId)。
  */
-suspend fun createOrOpen(
+suspend fun <T> createOrOpen(
     languageId: String,
-    findExisting: suspend (String) -> Path?,
-    doCreate: suspend (String) -> Path,
-): Path = findExisting(languageId) ?: doCreate(languageId)
+    findExisting: suspend (String) -> T?,
+    doCreate: suspend (String) -> T,
+): T = findExisting(languageId) ?: doCreate(languageId)
+
+/** 项目侧幂等创建/打开的产物:challenge id + 入口文件。 */
+private data class ChallengeEntry(
+    val challengeId: String,
+    val entryFile: Path,
+)
 
 /** glue:执行开刷(语言决策→主档复用/补建→幂等创建→EDT 打开编辑器)。 */
 private suspend fun performCreate(
@@ -176,11 +190,9 @@ private suspend fun performCreate(
                 return ChallengeCreateResult(ok = false, error = message)
             }
     return runCatching {
-        val entryFile = createOrOpenInProject(project, request, languageId, platform)
-        // 1.2.5:工作区基目录标记 Excluded,消除项目内挑战文件的 package 检查告警(幂等)
-        WorkspaceExclusions.ensureBaseExcluded(project)
-        openInEditor(project, entryFile)
-        ChallengeCreateResult(ok = true)
+        val entry = createOrOpenInProject(project, request, languageId, platform)
+        openInEditor(project, entry.entryFile)
+        ChallengeCreateResult(ok = true, challengeId = entry.challengeId)
     }.getOrElse { error ->
         ChallengeCreateResult(ok = false, error = error.message ?: error.javaClass.simpleName)
     }
@@ -192,7 +204,7 @@ private suspend fun createOrOpenInProject(
     request: ChallengeCreateRequest,
     languageId: String,
     platform: OJPlatform?,
-): Path {
+): ChallengeEntry {
     val manager = project.getService(DatabaseManager::class.java)
     val platformId = PlatformId(request.platform)
     // 主档:题面缓存已有则复用(保留 tags/fetchedAt),否则按请求数据补建
@@ -211,7 +223,7 @@ private suspend fun createOrOpenInProject(
 
     return createOrOpen(
         languageId = languageId,
-        findExisting = { lang -> findExistingEntryFile(project, manager, problem.id, lang) },
+        findExisting = { lang -> findExistingEntry(project, manager, problem.id, lang) },
         // WP39:创建前读设置,自定义模板覆盖内置(无覆盖传 null=内置);
         // 1.2.4:拉平台起始代码注入模版 ${challenge.code}——拉取失败(会员题/网络/
         // 平台无 ProblemQueryCapable)按无起始代码处理,回退语言默认桩继续创建;
@@ -241,25 +253,31 @@ private suspend fun createOrOpenInProject(
                     )
                 }
             }
-            created.entryFile
+            // 1.5.0:Java 入口文件注入 package 声明(按相对最近 source root 的目录,
+            // 目录名已为合法包段);已声明/不在 source root 下则不动
+            runCatching { JavaPackageDeclaration.ensureDeclared(project, created.entryFile) }
+                .onFailure {
+                    Logger.getLogger(ChallengeCreateBridge::class.java.name).warning("package declaration injection failed: $it")
+                }
+            ChallengeEntry(created.challenge.id.value, created.entryFile)
         },
     )
 }
 
 /** 幂等查找:同题已建且含该语言的 challenge → 重算工作区根定位入口文件(存在即复用)。 */
-private suspend fun findExistingEntryFile(
+private suspend fun findExistingEntry(
     project: Project,
     manager: DatabaseManager,
     problemId: ProblemId,
     languageId: String,
-): Path? {
+): ChallengeEntry? {
     val challenges = manager.challengeRepository.findByProblem(problemId)
     for (challenge in challenges) {
         val config =
             manager.challengeRepository.findLanguages(challenge.id).firstOrNull { it.language == languageId }
                 ?: continue
         val entry = ChallengeWorkspaceLocations.workspaceRoot(project, challenge).resolve(config.entryFilePath)
-        if (Files.exists(entry)) return entry
+        if (Files.exists(entry)) return ChallengeEntry(challenge.id.value, entry)
     }
     return null
 }
@@ -284,7 +302,6 @@ private fun workspaceService(
 ): ChallengeWorkspaceService =
     ChallengeWorkspaceService(
         challengeRepository = manager.challengeRepository,
-        solutionRepository = manager.solutionRepository,
         testCaseRepository = manager.testCaseRepository,
         workspaceRoot = { ChallengeWorkspaceLocations.workspaceRoot(project, it) },
     )

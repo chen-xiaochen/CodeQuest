@@ -10,6 +10,7 @@ import com.codequest.spi.TestEvaluationCapable
 import com.codequest.spi.TestRunRequest
 import com.codequest.spi.TestRunResult
 import com.codequest.spi.TestRunStatus
+import com.codequest.ui.jcef.CQBridge
 import com.codequest.ui.submission.ChallengeEditorGate
 import com.codequest.ui.submission.ChallengeTarget
 import com.codequest.ui.submission.RegionExtraction
@@ -17,12 +18,16 @@ import com.codequest.ui.submission.SubmissionGuard
 import com.codequest.ui.submission.SubmissionNotifications
 import com.codequest.ui.submission.SubmissionPlatforms
 import com.codequest.ui.submission.SubmitRegionExtractor
+import com.codequest.ui.toolwindow.ProblemViewTabNavigator
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.Service.Level
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.nio.file.Path
 import java.util.logging.Logger
 
@@ -32,12 +37,15 @@ import java.util.logging.Logger
  * 时序(EDT 只做保存/读文本/门禁,网络与查库全部在 pooled 线程):
  * 定位挑战 → 区域标记提取(缺标记文案同提交流程)→ 拉工作区用例拼 dataInput →
  * questionId 经平台 fetchProblemDetail 换取 → TestEvaluationCapable.watchTestRun
- * 收集至终态 → TestRunResultDialog 展示(逐用例输入按位对齐明细表)。
+ * 收集至终态 → 右窗「测试用例」tab 展示(1.5.0 起对话框删除):
+ * 经 [ProblemViewTabNavigator] 激活右窗并选中测试用例 tab,结果 JSON 经桥
+ * `testrun:result` 推送页面([TestRunResultState.resultPayload] 组装);
+ * tab 首建/页面重载的时序竞态由 `testrun:latest` 请求-应答补齐(缓存最近结果)。
  *
  * - 同一文件测试中防重复触发([SubmissionGuard],action.update 同步置灰);
  * - 平台无 TestEvaluationCapable / 未登录为发起前置分支(浮动键隐藏/置灰在
  *   action.update 处理,此处兜底同文案);
- * - 测试不产生正式提交记录,不落库、不推送前端。
+ * - 测试不产生正式提交记录,不落库。
  */
 @Service(Level.PROJECT)
 class CloudTestCoordinator(
@@ -46,6 +54,31 @@ class CloudTestCoordinator(
     private val logger = Logger.getLogger(CloudTestCoordinator::class.java.name)
 
     private val guard = SubmissionGuard()
+
+    /** 测试用例 tab 的桥引用(随 tab 内容创建/销毁挂接)。 */
+    @Volatile
+    private var bridge: CQBridge? = null
+
+    /** 最近一次测试结果 (challengeId, payload);供页面加载后 `testrun:latest` 取回。 */
+    @Volatile
+    private var latestResult: Pair<String, String>? = null
+
+    /** 测试用例 tab 创建内容时挂接桥(随内容销毁 [detachBridge])。 */
+    fun attachBridge(attached: CQBridge) {
+        bridge = attached
+        // 页面加载完成后按 challengeId 取最近结果(桥就绪前的推送不致丢失)
+        attached.on(TOPIC_TESTRUN_LATEST) { payload ->
+            val challengeId = parseLatestRequest(payload) ?: return@on
+            val latest = latestResult
+            if (latest != null && latest.first == challengeId) {
+                attached.postMessage(TOPIC_TESTRUN_RESULT, latest.second)
+            }
+        }
+    }
+
+    fun detachBridge(detached: CQBridge) {
+        if (bridge === detached) bridge = null
+    }
 
     /** 该文件是否仍有云端测试进行中(action.update 置灰查询)。 */
     fun isRunning(path: Path): Boolean = guard.isInFlight(path.toString())
@@ -102,12 +135,35 @@ class CloudTestCoordinator(
         try {
             val finished = watchTerminalResult(request.capable, request.request)
             ApplicationManager.getApplication().invokeLater {
-                TestRunResultDialog(project, finished, request.inputs).show()
+                publishResult(target.challenge.id.value, finished, request.inputs)
             }
         } catch (error: AuthExpiredException) {
             notify("submission.error.authExpired", error.message.orEmpty())
         } finally {
             progress.expire()
+        }
+    }
+
+    /**
+     * 结果展示(EDT):激活右窗测试用例 tab + 桥推送 `testrun:result`。
+     * 页面尚未就绪(首次建 tab/加载中)时推送会被页面错过——缓存最近结果,
+     * 页面加载完成后经 `testrun:latest` 主动取回。
+     */
+    private fun publishResult(
+        challengeId: String,
+        result: TestRunResult,
+        inputs: List<String>,
+    ) {
+        val payload = TestRunResultState.resultPayload(challengeId, result, inputs)
+        latestResult = challengeId to payload
+        project.getService(ProblemViewTabNavigator::class.java).showTestCases()
+        val target = bridge
+        if (target == null) {
+            logger.info("testcases tab bridge not attached; result kept for testrun:latest pickup")
+        } else {
+            runCatching {
+                target.postMessage(TOPIC_TESTRUN_RESULT, payload)
+            }.onFailure { error -> logger.warning("Failed to push $TOPIC_TESTRUN_RESULT: $error") }
         }
     }
 
@@ -211,4 +267,23 @@ class CloudTestCoordinator(
     ) {
         SubmissionNotifications.notifyError(project, PluginBundle.message(key, *params))
     }
+
+    companion object {
+        /** 云端测试结果推送 topic(Kotlin → JS,payload 见 [TestRunResultState.resultPayload])。 */
+        const val TOPIC_TESTRUN_RESULT = "testrun:result"
+
+        /** 页面取最近结果 topic(JS → Kotlin,payload `{"challengeId":"..."}`)。 */
+        const val TOPIC_TESTRUN_LATEST = "testrun:latest"
+    }
 }
+
+/** 解析 `testrun:latest` payload(纯函数):`{"challengeId":"..."}`;缺字段/非法 JSON 返回 null。 */
+internal fun parseLatestRequest(payload: String): String? =
+    runCatching {
+        Json
+            .parseToJsonElement(payload)
+            .jsonObject["challengeId"]
+            ?.jsonPrimitive
+            ?.content
+            ?.takeIf { it.isNotEmpty() }
+    }.getOrNull()

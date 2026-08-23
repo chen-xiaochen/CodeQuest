@@ -132,7 +132,6 @@ class TestCasesDialog(
     private fun service(): ChallengeWorkspaceService =
         ChallengeWorkspaceService(
             challengeRepository = manager().challengeRepository,
-            solutionRepository = manager().solutionRepository,
             testCaseRepository = manager().testCaseRepository,
             workspaceRoot = { ChallengeWorkspaceLocations.workspaceRoot(project, it) },
         )

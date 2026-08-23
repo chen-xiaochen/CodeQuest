@@ -57,13 +57,15 @@ object ChallengeWorkspaceLocations {
     }
 
     /**
-     * 目录名(1.3.2):`<asciiSlug(slugSource 或 name)>-<id前缀>`;asciiSlug 结果为空
-     * (纯中文标题且 slug 缺失)时回退 [FALLBACK_DIR_NAME]。
+     * 目录名(1.5.0):`<javaPackageDirName>-<id前缀>`——连字符转**下划线**
+     * (如 `shortest_palindrome-f2beabaa` 的目录段必须是合法 Java 包段
+     * `shortest_palindrome`,配合 package 声明注入消除 package 检查告警);
+     * slug 源 ASCII 化为空时回退 [FALLBACK_DIR_NAME]。
      */
     internal fun workspaceDirName(
         challenge: Challenge,
         slugSource: String?,
-    ): String = "${dirNamePrefix(challenge, slugSource)}-${challenge.id.value.take(ID_PREFIX_LENGTH)}"
+    ): String = "${dirNamePrefix(challenge, slugSource)}_${challenge.id.value.take(ID_PREFIX_LENGTH)}"
 
     /**
      * 纯函数核心(可单测):候选目录名 = 新名(slug 源) → 旧命名规则名(历史中文目录兼容);
@@ -78,7 +80,8 @@ object ChallengeWorkspaceLocations {
         directoryExists: (Path) -> Boolean,
     ): Path {
         val bases = candidateBaseDirs(configuredFolder, projectBasePath)
-        val dirNames = listOf(workspaceDirName(challenge, slugSource), legacyDirName(challenge))
+        // 候选目录名:新名(合法包段) → 1.3.2-1.4.0 连字符 slug 名 → 1.2.x 中文/旧 slugify 名
+        val dirNames = listOf(workspaceDirName(challenge, slugSource), legacyHyphenDirName(challenge, slugSource), legacyDirName(challenge))
         for (dirName in dirNames) {
             for (base in bases) {
                 val candidate = base.resolve(dirName)
@@ -88,17 +91,25 @@ object ChallengeWorkspaceLocations {
         return bases.first().resolve(dirNames.first())
     }
 
+    /** 1.3.2-1.4.0 命名:ASCII slug 连字符形态(`two-sum-a1b2c3d4`)。 */
+    private fun legacyHyphenDirName(
+        challenge: Challenge,
+        slugSource: String?,
+    ): String =
+        (asciiSlugify(slugSource).ifEmpty { asciiSlugify(challenge.name) }.ifEmpty { FALLBACK_DIR_NAME }) +
+            "-" + challenge.id.value.take(ID_PREFIX_LENGTH)
+
     /** 旧命名规则(< 1.3.2):slugify(挑战名)-id 前缀,挑战名中文时目录含中文。 */
     private fun legacyDirName(challenge: Challenge): String =
         "${Naming.slugify(challenge.name)}-${challenge.id.value.take(ID_PREFIX_LENGTH)}"
 
-    /** 目录名前缀:题目 slug ASCII 化优先,空则挑战名 ASCII 化,仍空回退固定名。 */
+    /** 目录名前缀(1.5.0):slug 源 ASCII 化后连字符→下划线(合法 Java 包段);空回退固定名。 */
     private fun dirNamePrefix(
         challenge: Challenge,
         slugSource: String?,
     ): String =
-        asciiSlugify(slugSource)
-            .ifEmpty { asciiSlugify(challenge.name) }
+        (asciiSlugify(slugSource).ifEmpty { asciiSlugify(challenge.name) })
+            .replace('-', '_')
             .ifEmpty { FALLBACK_DIR_NAME }
 
     /**

@@ -1,0 +1,10 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="cqtd" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4AE3A4"/>
+      <stop offset="1" stop-color="#5AB6F0"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="14" height="14" rx="3.5" fill="#2F3A4E"/>
+  <text x="8" y="11.5" font-family="'Segoe UI', Arial, sans-serif" font-size="7.5" font-weight="700" fill="url(#cqtd)" text-anchor="middle" letter-spacing="0.2">CQ</text>
+</svg>

@@ -1,10 +1,7 @@
-package com.codequest.ui.challenge
+package com.codequest.ui.toolwindow
 
-import com.codequest.infra.i18n.PluginBundle
 import com.codequest.infra.messaging.CodeQuestHttpServerService
 import com.codequest.ui.jcef.CQBridge
-import com.codequest.ui.submission.SubmissionCoordinator
-import com.codequest.ui.toolwindow.JcefToolWindowSupport
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
@@ -17,21 +14,25 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * 挑战工具窗「提交记录」tab(WP51):JCEF 惰性加载 `<base>/submissions/?challengeId=<id>`。
+ * 惰性 JCEF 路由 tab(1.5.0):`<base>/<route>/?challengeId=<id>` 页面的通用壳,
+ * 测试用例/提交记录两 tab 共用(原 ChallengeSubmissionsTab 泛化)。
  *
- * 原 SubmissionsToolWindowFactory(WP11/WP21 独立工具窗)删除后,提交记录页迁移至此:
- * - **惰性创建**:tab 组件先为空容器,首次切换到本 tab([onTabSelected])才创建 JCEF
- *   浏览器,避免从不看提交记录的用户白付一个浏览器实例;
- * - **challengeId 联动**:工作区面板选中挑战变化([onChallengeChanged])时,已创建则
- *   重新 load 新 URL,未创建只记录当前 challengeId(首次切换时作为初始 URL);
- * - 提交完成导航([show]):切到本 tab 并按指定 challengeId 定向过滤;
- * - 桥挂接沿用 WP21 机制:提交落库后 `submission:updated` 桥推送页面刷新
- *   (attach/detach 生命周期与 JCEF 内容一致)。
+ * - **惰性创建**:tab 组件先为空容器,首次切换到本 tab([onTabSelected])才创建
+ *   JCEF 浏览器,避免从不查看的用户白付浏览器实例;
+ * - **challengeId 联动**:[onChallengeChanged] 时已创建则重新 load 新 URL,
+ *   未创建只记录(首次切换时作为初始 URL);
+ * - **定向显示**:[show] 强制创建/刷新并按 challengeId 过滤(导航器入口)。
  */
-class ChallengeSubmissionsTab(
+class LazyJcefRouteTab(
     private val project: Project,
+    private val disposableName: String,
+    private val fallbackText: String,
+    private val route: String,
+    private val configure: ((JBCefBrowser, CQBridge) -> Unit)? = null,
+    /** 内容销毁时回调(随 JCEF disposable 注销,供调用方解挂桥引用)。 */
+    private val onDisposed: ((CQBridge) -> Unit)? = null,
 ) {
-    private val logger = Logger.getLogger(ChallengeSubmissionsTab::class.java.name)
+    private val logger = Logger.getLogger(LazyJcefRouteTab::class.java.name)
 
     private val container = JPanel(BorderLayout())
     private var browser: JBCefBrowser? = null
@@ -40,7 +41,7 @@ class ChallengeSubmissionsTab(
 
     val component: JComponent = container
 
-    /** 选中挑战变化:已创建则刷新 URL,未创建记 challengeId(首次切换加载)。 */
+    /** 当前挑战变化:已创建则刷新 URL,未创建记 challengeId(首次切换加载)。 */
     fun onChallengeChanged(challengeId: String?) {
         this.challengeId = challengeId
         if (created) reload()
@@ -51,7 +52,7 @@ class ChallengeSubmissionsTab(
         if (!created) ensureCreated()
     }
 
-    /** 定向显示某挑战的提交记录(提交完成导航入口;null = 不带过滤)。 */
+    /** 定向显示(navigator 入口;null = 不带过滤)。 */
     fun show(challengeId: String?) {
         if (challengeId != null) this.challengeId = challengeId
         if (created) reload() else ensureCreated()
@@ -64,26 +65,27 @@ class ChallengeSubmissionsTab(
     private fun ensureCreated() {
         if (created) return
         created = true
-        val coordinator = project.getService(SubmissionCoordinator::class.java)
         var attachedBridge: CQBridge? = null
         val content =
             JcefToolWindowSupport.createContent(
-                disposableName = "codequest.challenge.submissions",
-                fallbackText = PluginBundle.message("challenge.panel.submissionsFallback"),
-                url = submissionsUrl(),
+                disposableName = disposableName,
+                fallbackText = fallbackText,
+                url = pageUrl(),
                 configure = { jbBrowser, bridge ->
                     browser = jbBrowser
                     attachedBridge = bridge
-                    coordinator.attachSubmissionsBridge(bridge)
+                    configure?.invoke(jbBrowser, bridge)
                 },
             )
         // configure 在 createContent 内同步执行,返回时引用已就绪;随内容销毁解挂
         attachedBridge?.let { bridge ->
-            JcefToolWindowSupport.disposableOf(content)?.let { disposable ->
-                Disposer.register(
-                    disposable,
-                    Disposable { coordinator.detachSubmissionsBridge(bridge) },
-                )
+            onDisposed?.let { handler ->
+                JcefToolWindowSupport.disposableOf(content)?.let { disposable ->
+                    Disposer.register(
+                        disposable,
+                        Disposable { handler(bridge) },
+                    )
+                }
             }
         }
         container.add(content, BorderLayout.CENTER)
@@ -92,20 +94,20 @@ class ChallengeSubmissionsTab(
     }
 
     private fun reload() {
-        val url = submissionsUrl() ?: return
+        val url = pageUrl() ?: return
         val target = browser
         if (target == null) {
-            logger.warning("submissions tab reload skipped: browser not available")
+            logger.warning("$route tab reload skipped: browser not available")
         } else {
             target.loadURL(url)
         }
     }
 
-    /** `<base>/submissions/` + 可选 challengeId 过滤参数;服务未就绪时为 null。 */
-    private fun submissionsUrl(): String? =
+    /** `<base>/<route>/` + 可选 challengeId 过滤参数;服务未就绪时为 null。 */
+    private fun pageUrl(): String? =
         project.getService(CodeQuestHttpServerService::class.java).baseUrl?.let { base ->
             buildString {
-                append(base).append("/submissions/")
+                append(base).append('/').append(route).append('/')
                 challengeId?.let { append("?challengeId=").append(encode(it)) }
             }
         }

@@ -39,6 +39,12 @@ class CodeQuestHttpServerService(
                     submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
                     challenges = { project.getService(DatabaseManager::class.java).challengeRepository },
                 ),
+            // 1.5.0:测试用例端点——右窗「测试用例」页 CRUD(仓库按请求解析,切库即时生效)
+            testCasesApi =
+                TestCasesApi(
+                    testCases = { project.getService(DatabaseManager::class.java).testCaseRepository },
+                    challenges = { project.getService(DatabaseManager::class.java).challengeRepository },
+                ),
             // WP23:竞赛端点——ContestCapable 平台拉取 + 提醒落库(仓库按请求解析,切库即时生效)
             contestApi =
                 ContestApi(

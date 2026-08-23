@@ -1,14 +1,21 @@
 package com.codequest.ui.challenge
 
 import com.codequest.spi.TestRunResult
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * [unit] WP54:云端测试结果对话框的数据组装逻辑核——通过判定(compare_result 逐位
- * 优先,回退逐项答案相等)、汇总计数、CE/RE 替代表格分支(纯函数,脱离 Swing 可单测)。
+ * [unit] WP54:云端测试结果的数据组装逻辑核——通过判定(compare_result 逐位
+ * 优先,回退逐项答案相等)、汇总计数、CE/RE 替代表格分支、1.5.0 桥推送 payload
+ * 组装(纯函数,脱离 Swing 可单测)。
  */
 class TestRunResultStateTest {
     @Test
@@ -107,5 +114,54 @@ class TestRunResultStateTest {
         assertNull(TestRunResultState.errorText(TestRunResult()))
         assertNull(TestRunResultState.errorText(TestRunResult(compileError = " ")))
         assertTrue(TestRunResultState.errorText(TestRunResult(compareResult = "1")) == null)
+    }
+
+    // ------------------------------------------------------------------
+    // 1.5.0:testrun:result 桥推送 payload(右窗「测试用例」页结果区协议)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `result payload carries summary rows and inputs`() {
+        val result =
+            TestRunResult(
+                codeAnswers = listOf("a", "b"),
+                expectedCodeAnswers = listOf("a", "x"),
+                correctCount = 1,
+                totalCount = 2,
+            )
+        val payload = Json.parseToJsonElement(TestRunResultState.resultPayload("c-1", result, listOf("in0", "in1"))).jsonObject
+
+        assertEquals("c-1", payload["challengeId"]!!.jsonPrimitive.content)
+        assertEquals(1, payload["passed"]!!.jsonPrimitive.content.toInt())
+        assertEquals(2, payload["total"]!!.jsonPrimitive.content.toInt())
+        val rows = payload["rows"]!!.jsonArray
+        assertEquals(2, rows.size)
+        val first = rows[0].jsonObject
+        assertEquals("in0", first["input"]!!.jsonPrimitive.content)
+        assertEquals("a", first["expected"]!!.jsonPrimitive.content)
+        assertEquals("a", first["actual"]!!.jsonPrimitive.content)
+        assertEquals("true", first["passed"]!!.jsonPrimitive.content)
+        assertFalse("errorText" in payload)
+        assertFalse("errorKind" in payload)
+    }
+
+    @Test
+    fun `result payload nulls undecidable pass flag and includes error branch`() {
+        val result =
+            TestRunResult(
+                codeAnswers = listOf("a"),
+                runtimeError = "TypeError: x is undefined",
+            )
+        val payload = Json.parseToJsonElement(TestRunResultState.resultPayload("c-1", result, emptyList())).jsonObject
+
+        // 平台未给期望答案 → 行级 passed 为 null(JSON null)
+        assertEquals(JsonNull, payload["rows"]!!.jsonArray[0].jsonObject["passed"])
+        // RE 全文 + errorKind 替代表格
+        assertEquals("runtime", payload["errorKind"]!!.jsonPrimitive.content)
+        assertEquals("TypeError: x is undefined", payload["errorText"]!!.jsonPrimitive.content)
+
+        val ce = TestRunResult(compileError = "error: cannot find symbol")
+        val cePayload = Json.parseToJsonElement(TestRunResultState.resultPayload("c-1", ce, emptyList())).jsonObject
+        assertEquals("compile", cePayload["errorKind"]!!.jsonPrimitive.content)
     }
 }

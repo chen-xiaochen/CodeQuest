@@ -28,7 +28,7 @@ class ChallengeWorkspaceLocationsTest {
     @Test
     fun `dir name prefers ascii slug source over title`() {
         assertEquals(
-            "palindrome-number-a1b2c3d4",
+            "palindrome_number_a1b2c3d4",
             ChallengeWorkspaceLocations.workspaceDirName(challenge("回文数"), "palindrome-number"),
         )
     }
@@ -36,11 +36,11 @@ class ChallengeWorkspaceLocationsTest {
     @Test
     fun `dir name falls back to ascii title then fixed prefix`() {
         // slug 缺失 + 英文标题 → 标题 ASCII 化
-        assertEquals("two-sum-a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("Two Sum"), null))
+        assertEquals("two_sum_a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("Two Sum"), null))
         // slug 缺失 + 纯中文标题(滤光) → 固定前缀兜底
-        assertEquals("challenge-a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("回文数"), null))
+        assertEquals("challenge_a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("回文数"), null))
         // slug 本身含中文 → 滤光后回退标题
-        assertEquals("two-sum-a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("Two Sum"), "回文数"))
+        assertEquals("two_sum_a1b2c3d4", ChallengeWorkspaceLocations.workspaceDirName(challenge("Two Sum"), "回文数"))
     }
 
     @Test
@@ -67,7 +67,7 @@ class ChallengeWorkspaceLocationsTest {
                 projectBasePath = "E:/proj",
                 directoryExists = { false },
             )
-        assertEquals(Paths.get("E:/codequest-data/codequest/two-sum-a1b2c3d4"), root)
+        assertEquals(Paths.get("E:/codequest-data/codequest/two_sum_a1b2c3d4"), root)
     }
 
     @Test
@@ -80,7 +80,7 @@ class ChallengeWorkspaceLocationsTest {
                 projectBasePath = "E:/proj",
                 directoryExists = { false },
             )
-        assertEquals(Paths.get("E:/proj/codequest/two-sum-a1b2c3d4"), root)
+        assertEquals(Paths.get("E:/proj/codequest/two_sum_a1b2c3d4"), root)
     }
 
     @Test
@@ -101,7 +101,7 @@ class ChallengeWorkspaceLocationsTest {
     @Test
     fun `new ascii dir name wins over legacy when both exist`() {
         val legacyDir = Paths.get("E:/proj/codequest/回文数-a1b2c3d4")
-        val newDir = Paths.get("E:/proj/codequest/palindrome-number-a1b2c3d4")
+        val newDir = Paths.get("E:/proj/codequest/palindrome_number_a1b2c3d4")
         val root =
             ChallengeWorkspaceLocations.workspaceRoot(
                 challenge = challenge("回文数"),
@@ -124,7 +124,7 @@ class ChallengeWorkspaceLocationsTest {
                 projectBasePath = "E:/proj",
                 directoryExists = { candidate -> candidate.parent == legacyParent },
             )
-        assertEquals(Paths.get("E:/proj/two-sum-a1b2c3d4"), root)
+        assertEquals(Paths.get("E:/proj/two_sum_a1b2c3d4"), root)
     }
 
     @Test
@@ -137,7 +137,7 @@ class ChallengeWorkspaceLocationsTest {
                 projectBasePath = "E:/proj",
                 directoryExists = { candidate -> candidate.startsWith(Paths.get("E:/codequest-data")) },
             )
-        assertEquals(Paths.get("E:/codequest-data/codequest/two-sum-a1b2c3d4"), root)
+        assertEquals(Paths.get("E:/codequest-data/codequest/two_sum_a1b2c3d4"), root)
     }
 
     @Test
@@ -150,6 +150,6 @@ class ChallengeWorkspaceLocationsTest {
                 projectBasePath = "E:/proj",
                 directoryExists = { false },
             )
-        assertEquals(Paths.get("E:/proj/codequest/two-sum-a1b2c3d4"), root)
+        assertEquals(Paths.get("E:/proj/codequest/two_sum_a1b2c3d4"), root)
     }
 }

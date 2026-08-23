@@ -7,6 +7,7 @@ import com.codequest.spi.TestEvaluationCapable
 import com.codequest.ui.submission.ChallengeEditorGate
 import com.codequest.ui.submission.SubmissionNotifications
 import com.codequest.ui.submission.SubmissionPlatforms
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -25,8 +26,16 @@ import javax.swing.SwingUtilities
  * 「修改测试用例」浮动键(WP55):按编辑器文件定位挑战 → pooled 线程装载
  * testCaseRepository.findByChallenge → EDT 打开 [TestCasesDialog](WP54,
  * 写库与刷新由对话框自管,此处无面板需刷新,`onSaved` 缺省)。
+ *
+ * 1.5.0:文本/描述改构造器显式传入(PluginBundle 直读,随 locale 生效)——
+ * XML `%key` 在浮动工具栏 tooltip 上曾不被解析,显示 % 原文。
  */
-class EditTestCasesAction : AnAction() {
+class EditTestCasesAction :
+    AnAction(
+        PluginBundle.message("action.editTestCases.text"),
+        PluginBundle.message("action.editTestCases.description"),
+        AllIcons.Actions.Edit,
+    ) {
     override fun actionPerformed(event: AnActionEvent) {
         val project: Project = event.project ?: return
         val file: VirtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
@@ -69,12 +78,19 @@ class EditTestCasesAction : AnAction() {
 
 /**
  * 「提交测试」浮动键(WP55):saveDocument → 读取编辑器文本 → 委托
- * [CloudTestCoordinator](定位 → 区域提取 → 拼用例 → watchTestRun → 结果对话框)。
+ * [CloudTestCoordinator](定位 → 区域提取 → 拼用例 → watchTestRun → 结果展示)。
  *
  * update 门控(BGT,仅查快照缓存):非挑战文件隐藏;平台无 TestEvaluationCapable
  * 隐藏;未登录置灰;同文件测试进行中置灰(防重入)。
+ *
+ * 1.5.0:文本/描述改构造器显式传入(见 [EditTestCasesAction] 注释)。
  */
-class RunCloudTestAction : AnAction() {
+class RunCloudTestAction :
+    AnAction(
+        PluginBundle.message("action.runCloudTest.text"),
+        PluginBundle.message("action.runCloudTest.description"),
+        AllIcons.Actions.Execute,
+    ) {
     override fun actionPerformed(event: AnActionEvent) {
         val project: Project = event.project ?: return
         val file: VirtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE) ?: return

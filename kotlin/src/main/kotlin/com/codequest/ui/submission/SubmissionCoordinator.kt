@@ -9,8 +9,8 @@ import com.codequest.infra.i18n.PluginBundle
 import com.codequest.spi.AuthCapable
 import com.codequest.spi.SubmissionCapable
 import com.codequest.spi.SubmitRequest
-import com.codequest.ui.challenge.ChallengeToolWindowNavigator
 import com.codequest.ui.jcef.CQBridge
+import com.codequest.ui.toolwindow.ProblemViewTabNavigator
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.Service.Level
@@ -145,10 +145,10 @@ class SubmissionCoordinator(
                 )
             SubmissionNotifications.notifyCompleted(project, challengeName, submission.verdict)
             broadcastUpdated(submission, challengeName)
-            // WP51:提交记录并入挑战工具窗——导航改为「激活挑战窗 + 选中提交记录 tab」,
-            // challengeId 定向过滤透传给页面 URL(原 SubmissionsToolWindowFactory 已删除)
+            // 1.5.0:底部挑战工具窗删除,提交记录并入右窗「题面」工具窗三 tab——
+            // 导航改为「激活右窗 + 选中提交记录 tab」,challengeId 定向过滤透传给页面 URL
             project
-                .getService(ChallengeToolWindowNavigator::class.java)
+                .getService(ProblemViewTabNavigator::class.java)
                 .showSubmissions(submission.challengeId.value)
         } catch (error: AuthExpiredException) {
             SubmissionNotifications.notifyError(
