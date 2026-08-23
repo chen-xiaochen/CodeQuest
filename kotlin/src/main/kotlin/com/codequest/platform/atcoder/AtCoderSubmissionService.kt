@@ -84,9 +84,6 @@ class AtCoderSubmissionService(
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = flow.watchSubmission(handle)
 
-    /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
-    fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
-
     /**
      * WP36:不重拉(继承默认 null)。旧 AtCoderSubmissionResultForm 的详情区全部来自
      * 本地数据(判定/时间/语言/代码/消息);提交详情页的耗时/内存列旧实现从未提取

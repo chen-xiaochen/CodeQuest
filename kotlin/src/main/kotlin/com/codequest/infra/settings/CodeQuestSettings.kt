@@ -10,7 +10,6 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
 import java.nio.file.Path
-import java.nio.file.Paths
 
 /**
  * CodeQuest 项目级设置(WP15):持久化「数据库文件夹」路径。
@@ -33,12 +32,6 @@ class CodeQuestSettings : PersistentStateComponent<CodeQuestSettings.State> {
         state = newState.copy(templates = normalizeTemplateKeys(newState.templates))
     }
 
-    /** 当前生效的数据库**文件夹**(空设置 → 默认 `~/.codequest/`)。 */
-    fun effectiveDatabaseFolder(): Path {
-        val configured = state.databaseFolder.trim()
-        return if (configured.isEmpty()) DatabaseFolders.defaultFolder() else Paths.get(configured)
-    }
-
     /**
      * 写入新的数据库文件夹(空串 = 回到默认目录)。
      *
@@ -59,16 +52,6 @@ class CodeQuestSettings : PersistentStateComponent<CodeQuestSettings.State> {
         style: TemplateStyle,
         languageId: String,
     ): String? = state.templates[style.storageKey(languageId)]?.takeIf { it.isNotBlank() }
-
-    /**
-     * WP39 旧单参签名(WP45 起废弃):委托 [TemplateStyle.LEETCODE](历史默认风格),
-     * 既有调用方零破坏;WP47 创建链路改按平台风格读双参签名后移除。
-     */
-    @Deprecated(
-        "WP45 起改用双风格签名 entryTemplateOverride(style, languageId);本重载委托 LEETCODE 保行为不变",
-        replaceWith = ReplaceWith("entryTemplateOverride(TemplateStyle.LEETCODE, languageId)"),
-    )
-    fun entryTemplateOverride(languageId: String): String? = entryTemplateOverride(TemplateStyle.LEETCODE, languageId)
 
     /**
      * WP45:模版键归一化——旧格式键(不含冒号的纯语言键,WP39-44)一次性**双写**迁移,

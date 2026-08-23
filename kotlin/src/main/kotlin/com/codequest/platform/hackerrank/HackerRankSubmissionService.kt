@@ -69,9 +69,6 @@ class HackerRankSubmissionService(
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = flow.watchSubmission(handle)
 
-    /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
-    fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
-
     /**
      * WP36:详情重拉(contest/slug 由 problemRemoteId 反解,不依赖内存轮询上下文)。
      * message 沿用旧 updateSpecificSubmissionRecord 事实(CE 取 compile_message,其余

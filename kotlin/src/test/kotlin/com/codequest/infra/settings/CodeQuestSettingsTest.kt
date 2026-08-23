@@ -31,12 +31,6 @@ class CodeQuestSettingsTest {
     }
 
     @Test
-    fun `empty folder resolves to default location`() {
-        val settings = CodeQuestSettings()
-        assertEquals(DatabaseFolders.defaultFolder(), settings.effectiveDatabaseFolder())
-    }
-
-    @Test
     fun `configured folder resolves to itself`() {
         val settings = CodeQuestSettings()
         settings.loadState(CodeQuestSettings.State(databaseFolder = "E:/data/codequest"))
@@ -188,6 +182,6 @@ class CodeQuestSettingsTest {
                 ),
             ),
         )
-        assertEquals("// leetcode template", settings.entryTemplateOverride("kotlin"))
+        assertEquals("// leetcode template", settings.entryTemplateOverride(TemplateStyle.LEETCODE, "kotlin"))
     }
 }

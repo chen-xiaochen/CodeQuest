@@ -51,9 +51,6 @@ class LuoguSubmissionService(
 
     override fun watchSubmission(handle: SubmissionHandle): Flow<SubmissionResult> = flow.watchSubmission(handle)
 
-    /** 快照流(供落库等需要完整快照的调用方,对应 BaseSubmissionFlow.watchSnapshots)。 */
-    fun watchSnapshots(handle: SubmissionHandle) = flow.watchSnapshots(handle)
-
     /**
      * WP36:不重拉(继承默认 null)。旧 LuoGuSubmissionResultForm 的详情区全部来自
      * 本地数据(判定/时间/语言/代码/消息);record 页虽可 GET 重判,但旧实现从未在
