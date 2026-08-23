@@ -1,14 +1,15 @@
 # Agentic Loop 进度
 
-- **当前**: loop-20260822-editor-actions-favorites 迭代中(iteration=0)——编辑器三键+题库页题单(WP53-58,计划 docs/plan/editor-actions-and-favorites.md@2e87093,spec@1ad0361,目标定版 1.3.0)
+- **当前**: 无活跃 loop(最近完成 loop-20260822-editor-actions-favorites,achieved @ 2026-08-23,6/6 WP)
 - **上限**: max_iterations=10 / max_round_time_ms=600000 / max_wall_time_ms=7200000 / divergence_threshold=3 / proximity_goal=0.9
 - **调度顺序**: WP53 → WP56 → WP54 → WP57 → WP55 → WP58(53/56 双根链,58 恒末)
-- **lastUpdatedAt**: 2026-08-22
+- **lastUpdatedAt**: 2026-08-23
 
 ## History (loop-20260822-editor-actions-favorites)
 <!-- 每轮追加 -->
 | iter | wp | verdict | proximity | failed | 备注 |
 |---|---|---|---|---|---|
+| 6 | WP58 | wp-achieved→loop-achieved | 1.0 (6/6) | 0 | 验收定版 6/6:clean 全量门禁(749+165+build);沙箱 Playwright/端点实测(我的题单 favoritesLists 真实拉通);CHANGELOG 1.3.0+zip 27.8MB;spec 六条三态表;Swing 交互留人工 C 节五项 |
 | 5 | WP55 | wp-achieved→continue | 0.833 (5/6) | 0 | 浮动栏三键 9/9:AbstractFloatingToolbarProvider+ChallengeFileMatcher+ChallengeEditorGate(TTL 缓存);三 action 全链路(对话框/云端测试门禁/提交复用);resolveTarget 单一定位收敛;+13 测共 749 全绿+buildPlugin 产物核验;429 中断,续做零补齐纯核验恢复 |
 | 4 | WP57 | wp-achieved→continue | 0.667 (4/6) | 0 | 前端题单下拉 7/7:fetchFavorites+favorite 参数、两组 optgroup+互斥双向+平台归位、能力探测式渲染(404 隐藏,等价力扣系限定)、myFavorites 降级分层;前端 +6 测共 165+build 绿,gradlew 无回归,loop 层独立核验 |
 | 3 | WP54 | wp-achieved→continue | 0.5 (3/6) | 0 | 两对话框 5/5:TestCasesEditState/TestRunResultState 纯函数核(按 id diff/位图判定/CE-RE 分支)+两 DialogWrapper 薄壳;bundle +17 键;+17 测共 737 全绿,loop 层独立核验 |
@@ -46,6 +47,7 @@
 
 ## 已完成 loop 归档
 
+### loop-20260822-editor-actions-favorites(achieved):编辑器三键(修改测试用例/云端提交测试/提交浮动栏)+题库页题单下拉(学习计划 18+我的题单)——定版 1.3.0(WP53-58,commits ab912f7..2c93b1b+本批;沙箱 Playwright 实测题单两组+我的题单 favoritesLists 真实拉通;人工走查 docs/editor-actions-manual-checklist.md)
 ### loop-20260821-ui-revamp(achieved):UI 重构——面板精简 4→3/平台登录门控+力扣中国回落/模版 ACM·LeetCode 双风格×语言显式启用+默认Java/全界面中文化(WP44-52,commits eb7002f..7e66e92;人工走查 docs/ui-revamp-manual-checklist.md C 节(沙箱+Playwright 实测 B-1/2/3/7+端点恢复全 PASS);定版 1.2.0)
 ### loop-20260819-codequest-rewrite-m7(achieved):原版设计对齐九项——提交详情/状态列/账号/模板CSS/代码回看/题解排序/缩放/公司题单(WP36-43,commits 6ecbd62..2017c23)
 ### 1.0.x 直修(非 loop):浏览链路登录入口(a42a105)/力扣CN 中文化(eb28532)/一键开刷(db898bd)

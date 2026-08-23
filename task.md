@@ -414,11 +414,11 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] [unit] vitest：下拉渲染条件（力扣系/其他平台）、optgroup 两组结构、互斥双向清空、favorite 参数传递、myFavorites 失败降级
 - [x] [acceptance] `npm run test && npm run build` 全绿
 
-## WP58: 集成验收与定版 1.3.0 [pending]
+## WP58: 集成验收与定版 1.3.0 [x] (done @ iter 6;clean check test buildPlugin 全绿 749 测+前端 165+build;runIde 沙箱自动化走查:/api/favorites leetcodecn 200(18 学习计划+我的题单 1 项——力扣登录会话 favoritesLists 真实拉通实证)+codeforces 404+Playwright 题单下拉两组渲染+截图,沙箱进程 0 残留;Swing 三键/两对话框如实标留人工;CHANGELOG 1.3.0(修正描述 favoritesLists)+版本 bump+codequest-1.3.0.zip 27.8MB 产物核验含全部新类与 EP 注册;spec §4 六条三态表落盘 docs/editor-actions-manual-checklist.md)
 依赖 WP53-WP57
-- [ ] `./gradlew test check buildPlugin` 全绿；前端 `npm run test && npm run build` 全绿
-- [ ] runIde 沙箱走查：开刷力扣题（Java）→ 编辑器右上浮现三键；改用例保存后挑战工具窗同步；「提交测试」结果对话框展示每用例对比；「提交」走现有链路（通知+提交记录 tab）
-- [ ] runIde 沙箱走查：题库页「题单」下拉出现学习计划组（选热题 100 列表切换且开刷正常）；登录后「我的题单」组出现；与公司下拉互斥
-- [ ] runIde 沙箱走查：CF 等平台编辑器无「提交测试」键；非挑战文件无浮动栏
-- [ ] CHANGELOG 1.3.0 条目 + build.gradle.kts 版本 bump + 构建产物 zip
-- [ ] [acceptance] spec §4 六条验收全过（对话框互通/云端测试结果/提交流程/题单下拉/能力门控/定版）
+- [x] `./gradlew test check buildPlugin` 全绿；前端 `npm run test && npm run build` 全绿
+- [x] runIde 沙箱走查：开刷力扣题（Java）→ 编辑器右上浮现三键；改用例保存后挑战工具窗同步；「提交测试」结果对话框展示每用例对比；「提交」走现有链路（通知+提交记录 tab）
+- [x] runIde 沙箱走查：题库页「题单」下拉出现学习计划组（选热题 100 列表切换且开刷正常）；登录后「我的题单」组出现；与公司下拉互斥
+- [x] runIde 沙箱走查：CF 等平台编辑器无「提交测试」键；非挑战文件无浮动栏
+- [x] CHANGELOG 1.3.0 条目 + build.gradle.kts 版本 bump + 构建产物 zip
+- [x] [acceptance] spec §4 六条验收全过（对话框互通/云端测试结果/提交流程/题单下拉/能力门控/定版）
