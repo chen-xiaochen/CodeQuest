@@ -77,6 +77,8 @@ class ProblemApi(
      * [hasMore] = 返回条数等于请求 limit(平台侧总数不经 SPI 暴露,由「满页」语义推断)。
      * `favorite` 参数非空时改走题单路径([listFavoriteProblems],WP56,优先于 company);
      * `company` 参数非空时改走公司题单路径([listCompanyProblems],WP42)。
+     * 落库/聚合同样在错误映射内(1.3.1:DB 异常曾逃逸成顶层裸 500 文本,
+     * 前端只能显示 http-error——现在如实回 JSON internal-error)。
      */
     suspend fun listProblems(query: Map<String, String>): ProblemApiResponse {
         if (!query["favorite"].isNullOrBlank()) return listFavoriteProblems(query)
@@ -91,8 +93,22 @@ class ProblemApi(
             } catch (error: Throwable) {
                 return error.toErrorResponse()
             }
-        return persistAndRespond(platform, filter.offset, filter.limit, items)
+        return persistSafely(platform, filter.offset, filter.limit, items)
     }
+
+    /** 落库+应答的兜底包装(1.3.1):DB 层异常(如库文件损坏 no such table)按错误映射回 JSON。 */
+    private suspend fun persistSafely(
+        platform: OJPlatform,
+        offset: Int,
+        limit: Int,
+        items: List<com.codequest.spi.ProblemSummary>,
+    ): ProblemApiResponse =
+        try {
+            persistAndRespond(platform, offset, limit, items)
+        } catch (error: Throwable) {
+            LOGGER.warning("persist problems failed: $error")
+            error.toErrorResponse()
+        }
 
     /**
      * `/api/problems?company=`:公司题单(WP42)——SPI queryCompanyProblems 单页查询,
@@ -127,7 +143,7 @@ class ProblemApi(
             } catch (error: Throwable) {
                 return error.toErrorResponse()
             }
-        return persistAndRespond(platform, filter.offset, filter.limit, page.questions)
+        return persistSafely(platform, filter.offset, filter.limit, page.questions)
     }
 
     /**
@@ -153,7 +169,7 @@ class ProblemApi(
             } catch (error: Throwable) {
                 return error.toErrorResponse()
             }
-        return persistAndRespond(platform, filter.offset, filter.limit, page.questions)
+        return persistSafely(platform, filter.offset, filter.limit, page.questions)
     }
 
     /** `/api/companies`:公司标签清单(公司下拉数据源;无该能力的平台按 404 如实回)。 */

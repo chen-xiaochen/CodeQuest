@@ -1,3 +1,7 @@
+## 1.3.1 - 2026-08-23
+### Fixed
+- 题库列表三条查询路径(普通/公司题单/题单)的**落库阶段异常**不再逃逸成无信息的服务器 500 文本——数据库层错误(如库文件损坏后的 no such table)现在如实映射为 JSON 错误响应,前端可显示具体错误而非裸 http-error。修复背景:库文件被外部清零后选题单触发列表 500、且无任何可读信息(数据无损,见 docs)。
+
 ## 1.3.0 - 2026-08-23
 ### Added
 - Editor floating toolbar on challenge files: opening any file inside a challenge workspace shows three actions at the top-right of the editor — "修改测试用例" (test-case dialog with a two-column input/expected table, add/remove rows and bulk paste import, writing through to the same test-case store the challenge tool window reads), "提交测试" (cloud test run) and "提交" (the existing submission flow reused unchanged). The toolbar never appears on non-challenge files, "提交测试" is hidden on platforms without cloud-test capability (CodeForces / AtCoder / Luogu / HackerRank), both submission actions are disabled while the platform is not logged in, and unsaved editor changes are saved before any action runs.
