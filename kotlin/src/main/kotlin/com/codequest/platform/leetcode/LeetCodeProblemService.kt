@@ -93,7 +93,7 @@ class LeetCodeProblemService(
         return CompanyProblemPage(total = page.total, questions = page.questions.map { it.toSummary() })
     }
 
-    override fun studyPlans(): List<FavoriteList> = LeetCodeStudyPlans.ALL
+    override fun studyPlans(): List<FavoriteList> = LeetCodeStudyPlans.forVariant(variant.isCn)
 
     /**
      * 我的收藏题单(WP56):接口探测实现——优先 GraphQL `favoritesLists`,失败备选
@@ -118,6 +118,20 @@ class LeetCodeProblemService(
         offset: Int,
         limit: Int,
     ): FavoriteProblemPage {
+        // 1.6.0:内置学习计划走 studyPlanV2Detail(全量单次返回,内存过滤+切片)——
+        // favoriteQuestionList 对学习计划 slug 基本返回空集(匿名双站实测,旧版
+        // 「学习计划为空」的根因);该路径仍服务公司题单与我的题单
+        if (favoriteSlug in LeetCodeStudyPlans.SLUGS) {
+            val page = api.fetchStudyPlanDetail(favoriteSlug)
+            val filtered =
+                page.questions
+                    .filterByDifficulty(filters.difficulty)
+                    .filterByTags(filters.tags)
+            return FavoriteProblemPage(
+                total = filtered.size,
+                questions = filtered.drop(offset).take(limit).map { it.toSummary() },
+            )
+        }
         // keyword 与公司模式同规则忽略(题单面板无关键字入口);difficulty/tags 透传
         val page =
             api.fetchFavoriteQuestionPage(
@@ -130,12 +144,31 @@ class LeetCodeProblemService(
         return FavoriteProblemPage(total = page.total, questions = page.questions.map { it.toSummary() })
     }
 
+    /** 学习计划内存难度过滤(计划接口全量返回;难度原文大小写不敏感比对)。 */
+    private fun List<LeetCodeApi.LeetCodeQuestionListItem>.filterByDifficulty(
+        difficulty: Difficulty?,
+    ): List<LeetCodeApi.LeetCodeQuestionListItem> =
+        if (difficulty == null) {
+            this
+        } else {
+            filter { it.difficulty.equals(difficulty.value, ignoreCase = true) }
+        }
+
+    /** 学习计划内存标签过滤(与平台侧 tags=slug 协议一致;slug 缺失回退 name)。 */
+    private fun List<LeetCodeApi.LeetCodeQuestionListItem>.filterByTags(tags: List<String>): List<LeetCodeApi.LeetCodeQuestionListItem> =
+        if (tags.isEmpty()) {
+            this
+        } else {
+            filter { item -> item.topicTags.any { tag -> tags.any { selected -> selected == (tag.slug ?: tag.name) } } }
+        }
+
     private fun LeetCodeApi.LeetCodeFavorite.toFavoriteList() = FavoriteList(slug = slug, name = name, questionCount = questionCount)
 
     private fun LeetCodeApi.LeetCodeQuestionListItem.toSummary() =
         ProblemSummary(
             remoteId = titleSlug,
             title = title,
+            titleSecondary = titleSecondary,
             difficulty = Difficulty(difficulty),
             url = "https://${variant.domain}/problems/$titleSlug/",
             tags = topicTags,

@@ -18,12 +18,20 @@ export interface AuthStatusItem {
   userId: string | null
 }
 
+/** 1.6.0:标签(name 原文 + 可选中文名;展示侧 nameCn ?? name)。 */
+export interface ProblemTag {
+  name: string
+  nameCn?: string | null
+}
+
 export interface ProblemListItem {
   remoteId: string
   title: string
+  /** 1.6.0:副标题(标题另一语言形态);单语数据源缺省,展示侧隐藏。 */
+  titleSecondary?: string | null
   difficulty: string
   url: string
-  tags: string[]
+  tags: ProblemTag[]
 }
 
 export interface ProblemListResult {
@@ -495,9 +503,11 @@ export interface SearchItem {
   platform: string
   remoteId: string
   title: string
+  /** 1.6.0:副标题(标题另一语言形态);单语数据源缺省,展示侧隐藏。 */
+  titleSecondary?: string | null
   difficulty: string
   url: string
-  tags: string[]
+  tags: ProblemTag[]
   matchedSources: SearchMatchSource[]
 }
 
@@ -549,6 +559,10 @@ export interface TagSummary {
   name: string
   /** 关联题目数。 */
   count: number
+  /** 1.6.0:标签 slug(平台过滤用);未 enrich 时缺省。 */
+  slug?: string | null
+  /** 1.6.0:中文标签名(展示用);未 enrich 时缺省。 */
+  nameCn?: string | null
 }
 
 /** WP30:标签清单(名称 + 关联题数,题数降序);platform 过滤可选。 */

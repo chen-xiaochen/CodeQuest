@@ -6,6 +6,7 @@ import com.codequest.core.model.OJException
 import com.codequest.core.model.PlatformId
 import com.codequest.spi.CodeSnippet
 import com.codequest.spi.ProblemFilter
+import com.codequest.spi.TagInfo
 import kotlinx.coroutines.flow.single
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -74,6 +75,21 @@ class LeetCodeProblemServiceTest {
                         """{"data":{"favoritesLists":{"allFavorites":[
                            {"id":"1","name":"My Favorites","slug":"my-favorites","questionCount":12},
                            {"id":"2","name":"周赛补题","slug":"weekly-review","questionCount":3}]}}}"""
+                    // 1.6.0:学习计划详情(studyPlanV2Detail,两组三题;双语 + 中文标签)
+                    "studyPlanV2Detail" ->
+                        """{"data":{"studyPlanV2Detail":{"slug":"binary-search","name":"二分查找","premiumOnly":false,
+                           "planSubGroups":[
+                             {"name":"基础","questionNum":2,"questions":[
+                               {"title":"Binary Search","titleSlug":"binary-search","translatedTitle":"二分查找",
+                                "questionFrontendId":"704","difficulty":"EASY","paidOnly":false,
+                                "topicTags":[{"name":"Array","nameTranslated":"数组","slug":"array"},{"name":"Binary Search","nameTranslated":"二分查找","slug":"binary-search"}]},
+                               {"title":"Search Insert Position","titleSlug":"search-insert-position","translatedTitle":"搜索插入位置",
+                                "questionFrontendId":"35","difficulty":"EASY","paidOnly":false,
+                                "topicTags":[{"name":"Array","nameTranslated":"数组","slug":"array"}]}]},
+                             {"name":"进阶","questionNum":1,"questions":[
+                               {"title":"Median of Two Sorted Arrays","titleSlug":"median-of-two-sorted-arrays","translatedTitle":"寻找两个正序数组的中位数",
+                                "questionFrontendId":"4","difficulty":"HARD","paidOnly":false,
+                                "topicTags":[{"name":"Binary Search","nameTranslated":"二分查找","slug":"binary-search"}]}]}]}}}"""
                     else -> error("unexpected operation")
                 }
             } else {
@@ -121,10 +137,76 @@ class LeetCodeProblemServiceTest {
 
         val problem = service.queryProblems(ProblemFilter(limit = 1)).single()
 
-        assertEquals(listOf("DP"), problem.tags)
+        assertEquals(listOf(TagInfo("DP", "dp")), problem.tags)
         assertEquals("https://leetcode.cn/problems/cn-0/", problem.url)
         // 1.2.1:CN 夹具无 status 字段 → null(未知,不参与合并)
         assertEquals(null, problem.solvedOnPlatform)
+    }
+
+    @Test
+    fun `study plans filter cn-only slugs and mark premium names`() {
+        val cn = LeetCodeProblemService(LeetCodeVariant.LEETCODE_CN, LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transportFor()))
+        val com = LeetCodeProblemService(LeetCodeVariant.LEETCODE, LeetCodeApi(LeetCodeVariant.LEETCODE, transportFor()))
+
+        val cnSlugs = cn.studyPlans().map { it.slug }
+        val comSlugs = com.studyPlans().map { it.slug }
+
+        // CN 全量;COM 剔除 CN 专属 slug(2026-08-26 studyPlanV2Detail 双站实测)
+        assertTrue("sql-free-50" in cnSlugs)
+        assertTrue("sql-free-50" !in comSlugs)
+        assertTrue("top-100-liked" in comSlugs)
+        // 会员计划名称带后缀提示(未订阅时题目为空,见下个测试)
+        assertTrue(cn.studyPlans().any { it.slug == "premium-algo-100" && it.name.endsWith("(会员)") })
+    }
+
+    /** 1.6.0:学习计划走 studyPlanV2Detail(全量返回→内存过滤+切片),不再走 favoriteQuestionList。 */
+    @Test
+    fun `study plan problems route to studyPlanV2Detail with local filter and slicing`() = runBlocking {
+        val transport = transportFor()
+        val service = LeetCodeProblemService(LeetCodeVariant.LEETCODE_CN, LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transport))
+
+        val page =
+            service.queryFavoriteProblems(
+                favoriteSlug = "binary-search",
+                filters = ProblemFilter(),
+                offset = 1,
+                limit = 2,
+            )
+
+        // 夹具两组共 3 题,offset=1 取后两题;total 为过滤后总数(分页前)
+        assertEquals(3, page.total)
+        assertEquals(listOf("search-insert-position", "median-of-two-sorted-arrays"), page.questions.map { it.remoteId })
+        // 双语:主标题中文,副标题英文
+        assertEquals("搜索插入位置", page.questions[0].title)
+        assertEquals("Search Insert Position", page.questions[0].titleSecondary)
+        assertEquals(listOf(TagInfo("Array", "array", "数组")), page.questions[0].tags)
+        // 路由证据:只发 studyPlanV2Detail,不发 favoriteQuestionList
+        val operations =
+            transport.recorded
+                .filter { it.method == "POST_GRAPHQL" }
+                .map { Json.parseToJsonElement(it.body!!).jsonObject["operationName"]!!.jsonPrimitive.content }
+        assertEquals(listOf("studyPlanV2Detail"), operations)
+
+        // 内存难度过滤:HARD 只剩中位数一题
+        val hard =
+            service.queryFavoriteProblems(
+                favoriteSlug = "binary-search",
+                filters = ProblemFilter(difficulty = Difficulty("hard")),
+                offset = 0,
+                limit = 50,
+            )
+        assertEquals(listOf("median-of-two-sorted-arrays"), hard.questions.map { it.remoteId })
+        assertEquals(1, hard.total)
+
+        // 内存标签过滤(slug 语义,同平台侧协议)
+        val tagged =
+            service.queryFavoriteProblems(
+                favoriteSlug = "binary-search",
+                filters = ProblemFilter(tags = listOf("binary-search")),
+                offset = 0,
+                limit = 50,
+            )
+        assertEquals(listOf("binary-search", "median-of-two-sorted-arrays"), tagged.questions.map { it.remoteId })
     }
 
     @Test
@@ -281,7 +363,7 @@ class LeetCodeProblemServiceTest {
         assertEquals("Two Sum", first.title)
         assertEquals(Difficulty("Medium"), first.difficulty)
         assertEquals("https://leetcode.com/problems/two-sum/", first.url)
-        assertEquals(listOf("Array"), first.tags)
+        assertEquals(listOf(TagInfo("Array", "array")), first.tags)
         assertEquals(true, first.paidOnly)
         // 1.2.1(实测修正):公司题单站内状态——"NOT_AC" 与未做不可区分→null;"AC"→true
         assertEquals(null, first.solvedOnPlatform)
@@ -322,7 +404,7 @@ class LeetCodeProblemServiceTest {
 
         val page =
             service.queryFavoriteProblems(
-                favoriteSlug = "top-100-liked",
+                favoriteSlug = "my-favorites",
                 filters = ProblemFilter(difficulty = Difficulty("medium"), tags = listOf("Array")),
                 offset = 0,
                 limit = 20,
@@ -338,7 +420,8 @@ class LeetCodeProblemServiceTest {
                 .jsonObject["variables"]!!
                 .jsonObject
         // 泛化查询:favoriteSlug 原样透传(无期间后缀);companyFilter 空(纯题单查询)
-        assertEquals("top-100-liked", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        // 1.6.0:slug 换非学习计划值(my-favorites)——学习计划 slug 已路由 studyPlanV2Detail
+        assertEquals("my-favorites", variables["favoriteSlug"]!!.jsonPrimitive.content)
         assertEquals(
             "[]",
             variables["filtersV2"]!!.jsonObject["companyFilter"]!!.jsonObject["companySlugs"].toString(),

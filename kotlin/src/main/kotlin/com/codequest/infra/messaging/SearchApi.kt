@@ -78,11 +78,11 @@ class SearchApi(
         )
     }
 
-    /** `GET /api/tags?platform=`:标签名称 + 关联题数。 */
+    /** `GET /api/tags?platform=`:标签名称 + 关联题数(1.6.0 起附 slug/中文名,未 enrich 时省略)。 */
     suspend fun listTags(query: Map<String, String>): ProblemApiResponse {
         val platform = query["platform"]?.trim()?.takeIf { it.isNotEmpty() }
         val tags = store().tags(platform)
-        return ok(TagsResponseDto(tags.map { TagDto(name = it.name, count = it.problemCount) }))
+        return ok(TagsResponseDto(tags.map { TagDto(name = it.name, count = it.problemCount, slug = it.slug, nameCn = it.nameCn) }))
     }
 
     // ------------------------------------------------------------------
@@ -94,9 +94,10 @@ class SearchApi(
             platform = problem.platformId.value,
             remoteId = problem.remoteId,
             title = problem.title,
+            titleSecondary = problem.titleSecondary,
             difficulty = problem.difficulty.value,
             url = problem.url,
-            tags = problem.tags.map { it.name },
+            tags = problem.tags.map { SearchTagDto(name = it.name, nameCn = it.nameCn) },
             matchedSources = matchedSources.map { it.wireName },
             status = status,
             paidOnly = PAID_ONLY_UNAVAILABLE,
@@ -167,9 +168,11 @@ private data class SearchItemDto(
     val platform: String,
     val remoteId: String,
     val title: String,
+    /** 1.6.0:副标题(标题另一语言形态);单语数据源省略(explicitNulls=false)。 */
+    val titleSecondary: String? = null,
     val difficulty: String,
     val url: String,
-    val tags: List<String> = emptyList(),
+    val tags: List<SearchTagDto> = emptyList(),
     /** 命中来源标记:"title"(标题/remoteId)/ "content"(题面)/ "note"(题解笔记);浏览模式为空数组。 */
     val matchedSources: List<String> = emptyList(),
     /**
@@ -195,6 +198,17 @@ private data class TagDto(
     val name: String,
     /** 关联题目数。 */
     val count: Int,
+    /** 1.6.0:标签 slug(平台过滤用);未 enrich 时省略。 */
+    val slug: String? = null,
+    /** 1.6.0:中文标签名(展示用);未 enrich 时省略。 */
+    val nameCn: String? = null,
+)
+
+/** 1.6.0:命中项标签(name 原文 + 可选中文名,展示侧 nameCn ?? name)。 */
+@Serializable
+private data class SearchTagDto(
+    val name: String,
+    val nameCn: String? = null,
 )
 
 /** 与 StatisticsApi 的 StatsErrorResponseDto 同构;独立声明避免跨文件私有类型耦合。 */

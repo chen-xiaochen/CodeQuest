@@ -110,6 +110,10 @@ internal object LeetCodeGraphQL {
               paidOnly
               status
               frequency
+              topicTags {
+                name
+                slug
+              }
             }
           }
         }
@@ -336,6 +340,43 @@ internal object LeetCodeGraphQL {
             }
             total: totalLength
             hasMore
+          }
+        }
+        """.trimIndent()
+
+    /**
+     * 学习计划详情(studyPlanV2Detail,1.6.0;两站点同构,匿名可用)。
+     *
+     * 2026-08-26 双站实测:CN 19 个内置 slug 中 15 个匿名返回全量题目(双语标题 +
+     * 中文标签),3 个会员计划 premiumOnly=true 且题目空;COM 6 个 CN 专属 slug
+     * 返回 null。**学习计划专用**——favoriteQuestionList 对学习计划 slug 基本返回
+     * 空集(仅公司题单/我的题单适用),是旧版「学习计划为空」的根因。
+     * 全量单次返回(无分页参数),分页由服务层内存切片。
+     */
+    val STUDY_PLAN_DETAIL: String =
+        """
+        query studyPlanV2Detail(${'$'}planSlug: String!) {
+          studyPlanV2Detail(planSlug: ${'$'}planSlug) {
+            slug
+            name
+            premiumOnly
+            planSubGroups {
+              name
+              questionNum
+              questions {
+                title
+                titleSlug
+                translatedTitle
+                questionFrontendId
+                difficulty
+                paidOnly
+                topicTags {
+                  name
+                  nameTranslated
+                  slug
+                }
+              }
+            }
           }
         }
         """.trimIndent()

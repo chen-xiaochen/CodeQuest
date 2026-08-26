@@ -31,6 +31,8 @@ class ExposedTagRepository(
             Tags.insert {
                 it[id] = tag.id.value
                 it[name] = tag.name
+                it[slug] = tag.slug
+                it[nameCn] = tag.nameCn
             }
             Unit
         }
@@ -77,7 +79,7 @@ class ExposedTagRepository(
         }
 }
 
-private fun ResultRow.toTag() = Tag(TagId(this[Tags.id]), this[Tags.name])
+private fun ResultRow.toTag() = Tag(TagId(this[Tags.id]), this[Tags.name], this[Tags.slug], this[Tags.nameCn])
 
 /** ContestReminderRepository 的 Exposed/SQLite 实现(WP14)。 */
 class ExposedContestReminderRepository(

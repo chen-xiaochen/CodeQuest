@@ -230,9 +230,10 @@ class ProblemApi(
                     platformId = platform.id,
                     remoteId = summary.remoteId,
                     title = summary.title,
+                    titleSecondary = summary.titleSecondary,
                     difficulty = summary.difficulty,
                     url = summary.url,
-                    tags = summary.tags.map { tagId(it) },
+                    tags = summary.tags.map { toTag(it) },
                     fetchedAt = now(),
                 ),
             )
@@ -517,15 +518,16 @@ internal fun problemId(
 ): ProblemId = ProblemId("${platformId.value}:$remoteId")
 
 /** 确定性标签 id:同名标签跨平台共享一行(主档 save 为全量替换,幂等)。 */
-private fun tagId(name: String) = Tag(TagId("tag:$name"), name)
+private fun toTag(info: com.codequest.spi.TagInfo) = Tag(TagId("tag:${info.name}"), info.name, info.slug, info.nameCn)
 
 private fun com.codequest.spi.ProblemSummary.toDto(status: SolveStatus) =
     ProblemItemDto(
         remoteId = remoteId,
         title = title,
+        titleSecondary = titleSecondary,
         difficulty = difficulty.value,
         url = url,
-        tags = tags,
+        tags = tags.map { ProblemTagDto(name = it.name, nameCn = it.nameCn) },
         status = status,
         paidOnly = paidOnly,
     )
@@ -572,9 +574,11 @@ private data class ProblemListResponseDto(
 private data class ProblemItemDto(
     val remoteId: String,
     val title: String,
+    /** 1.6.0:副标题(标题另一语言形态);单语数据源为 null,前端隐藏。 */
+    val titleSecondary: String? = null,
     val difficulty: String,
     val url: String,
-    val tags: List<String> = emptyList(),
+    val tags: List<ProblemTagDto> = emptyList(),
     /**
      * WP37 刷题状态(本地聚合,零平台请求):该题全部工作区提交里任一 isSuccessful → AC;
      * 有提交无 AC → TRIED;无提交 → UNSOLVED。多 challenge 取最高(AC > TRIED)。
@@ -593,6 +597,13 @@ private data class ProblemItemDto(
 private data class CompaniesResponseDto(
     val platform: String,
     val items: List<CompanyItemDto>,
+)
+
+/** 1.6.0:列表项标签(name 原文 + 可选中文名,展示侧 nameCn ?? name)。 */
+@Serializable
+private data class ProblemTagDto(
+    val name: String,
+    val nameCn: String? = null,
 )
 
 @Serializable

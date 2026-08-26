@@ -35,15 +35,25 @@ class ExposedProblemRepository(
                 it[platformId] = problem.platformId.value
                 it[remoteId] = problem.remoteId
                 it[title] = problem.title
+                it[secondaryTitle] = problem.titleSecondary
                 it[difficulty] = problem.difficulty.value
                 it[url] = problem.url
                 it[fetchedAt] = DbCodecs.formatInstant(problem.fetchedAt)
             }
             problem.tags.forEachIndexed { index, tag ->
+                // 1.6.0:富信息(slug/中文名)为 null 时保留库内已有值——tag 行跨平台
+                // 共享(如 COM 数据先建行、CN 数据后 enrich),全量替换会丢 enrichment
+                val existing =
+                    Tags
+                        .selectAll()
+                        .where { Tags.id eq tag.id.value }
+                        .firstOrNull()
                 Tags.deleteWhere { id eq tag.id.value }
                 Tags.insert {
                     it[id] = tag.id.value
                     it[name] = tag.name
+                    it[slug] = tag.slug ?: existing?.get(Tags.slug)
+                    it[nameCn] = tag.nameCn ?: existing?.get(Tags.nameCn)
                 }
                 ProblemTags.insert {
                     it[problemId] = problem.id.value
@@ -184,7 +194,9 @@ class ExposedProblemRepository(
             ).selectAll()
             .where { ProblemTags.problemId eq problemId }
             .orderBy(ProblemTags.position to SortOrder.ASC)
-            .map { row -> Tag(TagId(row[Tags.id]), row[Tags.name]) }
+            .map { row ->
+                Tag(TagId(row[Tags.id]), row[Tags.name], row[Tags.slug], row[Tags.nameCn])
+            }
 }
 
 private fun ResultRow.toProblem() =
@@ -193,6 +205,7 @@ private fun ResultRow.toProblem() =
         platformId = PlatformId(this[Problems.platformId]),
         remoteId = this[Problems.remoteId],
         title = this[Problems.title],
+        titleSecondary = this[Problems.secondaryTitle],
         difficulty = Difficulty(this[Problems.difficulty]),
         url = this[Problems.url],
         tags = emptyList(),

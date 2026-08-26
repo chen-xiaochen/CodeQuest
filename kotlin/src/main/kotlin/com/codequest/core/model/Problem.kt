@@ -20,6 +20,10 @@ value class Difficulty(
 data class Tag(
     val id: TagId,
     val name: String,
+    /** 1.6.0:标签 slug(LC 平台过滤用,如 "binary-search");平台无此概念为 null。 */
+    val slug: String? = null,
+    /** 1.6.0:中文标签名(如 "二分查找");平台未提供为 null,展示侧回退 [name]。 */
+    val nameCn: String? = null,
 )
 
 /** 题目主档,对应表 `problem`(id, platform_id, dojo_problem_id, title, difficulty, url, fetched_at)。 */
@@ -30,6 +34,11 @@ data class Problem(
     /** 平台侧题目标识,如 CF "1927A"、LC 标题 slug、洛谷 pid。 */
     val remoteId: String,
     val title: String,
+    /**
+     * 1.6.0:副标题(标题另一语言形态——CN 站主标题为中文时存英文,反之存中文);
+     * 平台无双语概念或未拉到为 null,展示侧隐藏。列 `secondary_title`。
+     */
+    val titleSecondary: String? = null,
     val difficulty: Difficulty,
     val url: String,
     val tags: List<Tag>,

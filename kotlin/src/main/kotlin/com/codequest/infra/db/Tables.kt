@@ -23,6 +23,9 @@ internal object Problems : Table("problem") {
     val platformId = varchar("platform_id", NAME_LEN)
     val remoteId = varchar("dojo_problem_id", NAME_LEN)
     val title = varchar("title", TITLE_LEN)
+
+    /** 1.6.0:副标题(标题另一语言形态);v2 迁移加列,旧行为 null。 */
+    val secondaryTitle = varchar("secondary_title", TITLE_LEN).nullable()
     val difficulty = varchar("difficulty", NAME_LEN)
     val url = varchar("url", URL_LEN)
     val fetchedAt = varchar("fetched_at", INSTANT_LEN)
@@ -97,6 +100,12 @@ internal object Submissions : Table("submission") {
 internal object Tags : Table("tag") {
     val id = varchar("id", ID_LEN)
     val name = varchar("name", NAME_LEN)
+
+    /** 1.6.0:标签 slug(平台过滤用);v2 迁移加列,旧行为 null。 */
+    val slug = varchar("slug", NAME_LEN).nullable()
+
+    /** 1.6.0:中文标签名(展示用);v2 迁移加列,旧行为 null。 */
+    val nameCn = varchar("name_cn", NAME_LEN).nullable()
 
     override val primaryKey = PrimaryKey(id)
 }

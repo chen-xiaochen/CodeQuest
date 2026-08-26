@@ -67,11 +67,18 @@ class ExposedSearchStore(
         val platformJoin =
             if (platformFilter == null) "" else "JOIN problem p ON p.id = pt.problem_id AND p.platform_id = ? "
         return query(
-            "SELECT t.name, COUNT(pt.problem_id) FROM tag t " +
+            "SELECT t.name, t.slug, t.name_cn, COUNT(pt.problem_id) FROM tag t " +
                 "JOIN problem_tag pt ON pt.tag_id = t.id $platformJoin" +
                 "GROUP BY t.id ORDER BY COUNT(pt.problem_id) DESC, t.name ASC",
             platformFilter?.let(::listOf).orEmpty(),
-        ) { rs -> TagSummary(rs.getString(1), rs.getInt(2)) }
+        ) { rs ->
+            TagSummary(
+                name = rs.getString(LIST_COL_NAME),
+                problemCount = rs.getInt(LIST_COL_COUNT),
+                slug = rs.getString(LIST_COL_SLUG),
+                nameCn = rs.getString(LIST_COL_NAME_CN),
+            )
+        }
     }
 
     // ------------------------------------------------------------------
@@ -179,15 +186,40 @@ class ExposedSearchStore(
     /** 某题的标签,按 problem_tag.position 排序(与 ExposedProblemRepository 同语义)。 */
     private suspend fun tagsFor(problemId: String): List<Tag> =
         db.rawQuery(
-            "SELECT t.id, t.name FROM problem_tag pt JOIN tag t ON t.id = pt.tag_id " +
+            "SELECT t.id, t.name, t.slug, t.name_cn FROM problem_tag pt JOIN tag t ON t.id = pt.tag_id " +
                 "WHERE pt.problem_id = ? ORDER BY pt.position ASC",
             problemId,
-        ) { rs -> Tag(TagId(rs.getString(1)), rs.getString(2)) }
+        ) { rs ->
+            Tag(
+                TagId(rs.getString(ROW_COL_ID)),
+                rs.getString(ROW_COL_NAME),
+                rs.getString(ROW_COL_SLUG),
+                rs.getString(ROW_COL_NAME_CN),
+            )
+        }
 
     private fun Problem.withTags(tags: List<Tag>): Problem = if (tags.isEmpty()) this else copy(tags = tags)
 
     private companion object {
         private const val PROBLEM_COLUMNS = "p.id, p.platform_id, p.dojo_problem_id, p.title, p.difficulty, p.url, p.fetched_at"
+
+        /** 1.6.0:tags() 清单查询列下标(SELECT name, slug, name_cn, COUNT)。 */
+        private const val LIST_COL_NAME = 1
+
+        private const val LIST_COL_SLUG = 2
+
+        private const val LIST_COL_NAME_CN = 3
+
+        private const val LIST_COL_COUNT = 4
+
+        /** 1.6.0:tagsFor() 行查询列下标(SELECT id, name, slug, name_cn)。 */
+        private const val ROW_COL_ID = 1
+
+        private const val ROW_COL_NAME = 2
+
+        private const val ROW_COL_SLUG = 3
+
+        private const val ROW_COL_NAME_CN = 4
 
         /** id 集合内插为 IN 列表;值来自本地库(服务端生成),单引号双写兜底转义。 */
         fun sqlIdList(ids: Collection<String>): String = ids.joinToString(",") { "'${it.replace("'", "''")}'" }

@@ -30,4 +30,20 @@ class ProblemViewNavigatorTest {
         assertNull(parseOpenProblemPayload("not-json"))
         assertNull(parseOpenProblemPayload("""["leetcode","two-sum"]"""))
     }
+
+    /** 1.6.0:最近打开题目持久化串编解码(会话恢复协议锁定)。 */
+    @Test
+    fun `last opened problem round trips`() {
+        val request = parseLastOpenedProblem(encodeLastOpenedProblem("leetcodecn", "two-sum"))
+        assertEquals(OpenProblemRequest("leetcodecn", "two-sum"), request)
+    }
+
+    @Test
+    fun `malformed last opened problem strings return null`() {
+        assertNull(parseLastOpenedProblem(""))
+        assertNull(parseLastOpenedProblem("leetcode"))
+        assertNull(parseLastOpenedProblem("\ttwo-sum"))
+        assertNull(parseLastOpenedProblem("leetcode\t"))
+        assertNull(parseLastOpenedProblem("a\tb\tc"))
+    }
 }

@@ -48,7 +48,7 @@ class ProblemApiPersistFailureHttpTest {
         override val info = PlatformInfo(displayName = "One", templateStyle = TemplateStyle.ACM)
 
         private val summary =
-            ProblemSummary("p-1", "P1", com.codequest.core.model.Difficulty("easy"), "https://x/p1")
+            ProblemSummary(remoteId = "p-1", title = "P1", difficulty = com.codequest.core.model.Difficulty("easy"), url = "https://x/p1")
 
         override fun queryProblems(filter: ProblemFilter): Flow<ProblemSummary> =
             flow { emit(summary) }

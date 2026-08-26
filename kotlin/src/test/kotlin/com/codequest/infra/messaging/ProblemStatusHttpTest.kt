@@ -69,7 +69,7 @@ class ProblemStatusHttpTest {
         override fun queryProblems(filter: ProblemFilter): Flow<ProblemSummary> =
             flow {
                 remoteIds.forEach { remote ->
-                    emit(ProblemSummary(remote, "Title $remote", Difficulty("easy"), "https://fakeoj/$remote"))
+                    emit(ProblemSummary(remoteId = remote, title = "Title $remote", difficulty = Difficulty("easy"), url = "https://fakeoj/$remote"))
                 }
             }
 

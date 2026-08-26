@@ -70,7 +70,11 @@ const ROWS = [
     title: 'Two Sum',
     difficulty: 'Easy',
     url: 'https://leetcode.com/problems/two-sum/',
-    tags: ['Array', 'Hash Table'],
+    // 1.6.0:tags 为对象数组(name + 可选中文名,展示侧 nameCn ?? name)
+    tags: [
+      { name: 'Array', nameCn: '数组' },
+      { name: 'Hash Table', nameCn: null },
+    ],
   },
   {
     remoteId: 'trapping-rain-water',
@@ -92,7 +96,8 @@ describe('problems page', () => {
     expect(rows[0].text()).toContain('Two Sum')
     expect(rows[0].text()).toContain('two-sum')
     expect(rows[0].find('.diff-badge--easy').exists()).toBe(true)
-    expect(rows[0].text()).toContain('Array · Hash Table')
+    // 1.6.0:tag 展示中文优先(nameCn ?? name)
+    expect(rows[0].text()).toContain('数组 · Hash Table')
     expect(rows[1].find('.diff-badge--hard').exists()).toBe(true)
   })
 

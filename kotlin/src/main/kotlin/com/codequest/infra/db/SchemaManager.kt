@@ -18,7 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
  * 由调用侧降级 LIKE([FtsSupport])。
  */
 object SchemaManager {
-    const val CURRENT_VERSION: Int = 1
+    const val CURRENT_VERSION: Int = 2
 
     fun createAll(db: Database) {
         transaction(db) {
@@ -40,12 +40,30 @@ object SchemaManager {
             exec(CREATE_SOLUTION_NOTE_FTS)
             PROBLEM_CONTENT_TRIGGERS.forEach(::exec)
             SOLUTION_NOTE_TRIGGERS.forEach(::exec)
-            if (SchemaVersionTable.selectAll().count() == 0L) {
-                SchemaVersionTable.insert { it[version] = CURRENT_VERSION }
+            val existingVersion = SchemaVersionTable.selectAll().firstOrNull()?.let { it[SchemaVersionTable.version] }
+            when {
+                existingVersion == null -> {
+                    SchemaVersionTable.insert { it[version] = CURRENT_VERSION }
+                }
+
+                existingVersion < 2 -> {
+                    // v1→v2(1.6.0):problem/tag 补列(新库由 SchemaUtils.create 直接建全,
+                    // 仅旧库走 ALTER)。SQLite 无 ADD COLUMN IF NOT EXISTS,按版本号门控幂等
+                    MIGRATIONS_V2.forEach { exec(it) }
+                    exec("UPDATE schema_version SET version = 2")
+                }
             }
         }
     }
 }
+
+/** v1→v2 增量 DDL:双语副标题 + tag slug/中文名(全部 nullable,旧行为 null)。 */
+private val MIGRATIONS_V2 =
+    listOf(
+        "ALTER TABLE problem ADD COLUMN secondary_title VARCHAR(1024)",
+        "ALTER TABLE tag ADD COLUMN slug VARCHAR(256)",
+        "ALTER TABLE tag ADD COLUMN name_cn VARCHAR(256)",
+    )
 
 private const val CREATE_PROBLEM_CONTENT_FTS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS problem_content_fts USING fts5(

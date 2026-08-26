@@ -59,7 +59,7 @@ class ProblemApiHttpTest {
         override fun queryProblems(filter: ProblemFilter): Flow<ProblemSummary> =
             flow {
                 failure()
-                emit(ProblemSummary("never", "Never", com.codequest.core.model.Difficulty("easy"), "https://x/"))
+                emit(ProblemSummary(remoteId = "never", title = "Never", difficulty = com.codequest.core.model.Difficulty("easy"), url = "https://x/"))
             }
 
         override suspend fun fetchProblemDetail(remoteId: String): ProblemStatement {
@@ -278,8 +278,10 @@ class ProblemApiHttpTest {
     }
 
     @Test
-    fun `problems endpoint with favorite param queries study plan list and persists items`() {
-        val body = getJson("/api/problems?platform=leetcode&favorite=top-100-liked&difficulty=medium&limit=2")
+    fun `problems endpoint with favorite param queries favorite list and persists items`() {
+        // 1.6.0:内置学习计划 slug 已路由 studyPlanV2Detail(服务层测试覆盖);
+        // 端点层用「我的题单」slug 锁定 favoriteQuestionList 透传路径
+        val body = getJson("/api/problems?platform=leetcode&favorite=my-favorites&difficulty=medium&limit=2")
 
         assertEquals("leetcode", body["platform"]!!.jsonPrimitive.content)
         val items = body.getAsJsonArray("items")
@@ -290,7 +292,7 @@ class ProblemApiHttpTest {
         val request =
             transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
         val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
-        assertEquals("top-100-liked", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals("my-favorites", variables["favoriteSlug"]!!.jsonPrimitive.content)
         assertEquals(
             "[\"MEDIUM\"]",
             variables["filtersV2"]!!.jsonObject["difficultyFilter"]!!.jsonObject["difficulties"].toString(),
@@ -307,12 +309,12 @@ class ProblemApiHttpTest {
     @Test
     fun `problems endpoint favorite takes precedence over company`() {
         // favorite 与 company 同给 → favorite 优先、company/period 忽略(后端宽松兜底)
-        getJson("/api/problems?platform=leetcode&favorite=leetcode-75&company=amazon&period=thirty-days&limit=1")
+        getJson("/api/problems?platform=leetcode&favorite=my-favorites&company=amazon&period=thirty-days&limit=1")
 
         val request =
             transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
         val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
-        assertEquals("leetcode-75", variables["favoriteSlug"]!!.jsonPrimitive.content)
+        assertEquals("my-favorites", variables["favoriteSlug"]!!.jsonPrimitive.content)
     }
 
     @Test

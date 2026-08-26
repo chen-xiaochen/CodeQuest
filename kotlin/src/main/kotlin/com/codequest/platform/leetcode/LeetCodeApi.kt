@@ -4,6 +4,7 @@ import com.codequest.core.model.OJException
 import com.codequest.spi.CodeSnippet
 import com.codequest.spi.OJTransport
 import com.codequest.spi.ProblemFilter
+import com.codequest.spi.TagInfo
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -137,10 +138,12 @@ class LeetCodeApi(
     data class LeetCodeQuestionListItem(
         val frontendQuestionId: String,
         val title: String,
+        /** 1.6.0:副标题(标题另一语言形态);单语数据源为 null。 */
+        val titleSecondary: String? = null,
         val titleSlug: String,
         val difficulty: String,
         val paidOnly: Boolean,
-        val topicTags: List<String>,
+        val topicTags: List<TagInfo>,
         /** 站内做题状态原文("ac"/"AC"/"notac"/"NOT_AC"/null);1.2.1 起透传给 [com.codequest.spi.ProblemSummary.solvedOnPlatform]。 */
         val status: String? = null,
     )
@@ -201,26 +204,44 @@ class LeetCodeApi(
             questions =
                 list["questions"]?.jsonArray.orEmpty().map { element ->
                     val q = element.jsonObject
+                    val enTitle = q["title"]?.jsonPrimitive?.content.orEmpty()
+                    // 旧实现事实(UI 三处消费):titleCn 非空优先(CN 中文),title 兜底;
+                    // 1.6.0:另一侧标题不再丢弃,存 titleSecondary(中文为主英文为辅)
+                    val cnTitle = q["titleCn"]?.jsonPrimitive?.contentOrNullIfNull().orEmpty()
+                    val (primary, secondary) =
+                        if (cnTitle.isNotEmpty()) cnTitle to enTitle else enTitle to null
                     LeetCodeQuestionListItem(
                         frontendQuestionId = q["frontendQuestionId"]?.jsonPrimitive?.content.orEmpty(),
-                        // 旧实现事实(UI 三处消费):titleCn 非空优先(CN 中文),title 兜底
-                        title =
-                            q["titleCn"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() }
-                                ?: q["title"]?.jsonPrimitive?.content.orEmpty(),
+                        title = primary,
+                        titleSecondary = secondary?.takeIf { it.isNotEmpty() },
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
                         status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
-                        topicTags =
-                            q["topicTags"]
-                                ?.jsonArray
-                                .orEmpty()
-                                .map { it.jsonObject["name"]?.jsonPrimitive?.content }
-                                .filterNotNull(),
+                        topicTags = parseTopicTags(q),
                     )
                 },
         )
     }
+
+    /**
+     * topicTags 数组 → [TagInfo](1.6.0):name 原文、slug、nameTranslated→中文名;
+     * 三字段按站点/查询差异缺失时为 null(CN 列表/题单带 nameTranslated,COM 仅
+     * name+slug,studyPlanV2Detail 双站同构带全三字段)。
+     */
+    private fun parseTopicTags(question: JsonObject): List<TagInfo> =
+        question["topicTags"]
+            ?.jsonArray
+            .orEmpty()
+            .mapNotNull { element ->
+                val tag = element.jsonObject
+                val name = tag["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                TagInfo(
+                    name = name,
+                    slug = tag["slug"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() },
+                    nameCn = tag["nameTranslated"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() },
+                )
+            }
 
     private suspend fun fetchQuestionPageCom(
         filter: ProblemFilter,
@@ -316,7 +337,10 @@ class LeetCodeApi(
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
                         status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
-                        topicTags = emptyList(), // V2 查询不含 topicTags(旧实现同款字段集)
+                        // 1.6.0:V2 查询补 topicTags(name+slug;COM 无 nameTranslated,
+                        // 中文名由 tag 表已 enrich 的行回退);列表无中文字段(V2 实测
+                        // translatedTitle 请求不返回),titleSecondary 为 null
+                        topicTags = parseTopicTags(q),
                     )
                 },
         )
@@ -489,26 +513,65 @@ class LeetCodeApi(
             questions =
                 list["questions"]?.jsonArray.orEmpty().map { element ->
                     val q = element.jsonObject
+                    val enTitle = q["title"]?.jsonPrimitive?.content.orEmpty()
+                    // 字段名与普通列表不同:questionFrontendId / translatedTitle(旧模型
+                    // 即以 frontendQuestionId/titleCn 别名承载);1.6.0 双语同 CN 列表规则
+                    val translated = q["translatedTitle"]?.jsonPrimitive?.contentOrNullIfNull().orEmpty()
+                    val (primary, secondary) =
+                        if (translated.isNotEmpty()) translated to enTitle else enTitle to null
                     LeetCodeQuestionListItem(
-                        // 字段名与普通列表不同:questionFrontendId / translatedTitle(旧模型
-                        // 即以 frontendQuestionId/titleCn 别名承载)
                         frontendQuestionId = q["questionFrontendId"]?.jsonPrimitive?.content.orEmpty(),
-                        title =
-                            q["translatedTitle"]?.jsonPrimitive?.contentOrNullIfNull()?.takeIf { it.isNotEmpty() }
-                                ?: q["title"]?.jsonPrimitive?.content.orEmpty(),
+                        title = primary,
+                        titleSecondary = secondary?.takeIf { it.isNotEmpty() },
                         titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
                         difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
                         paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
                         status = q["status"]?.jsonPrimitive?.contentOrNullIfNull(),
-                        topicTags =
-                            q["topicTags"]
-                                ?.jsonArray
-                                .orEmpty()
-                                .map { it.jsonObject["name"]?.jsonPrimitive?.content }
-                                .filterNotNull(),
+                        topicTags = parseTopicTags(q),
                     )
                 },
         )
+    }
+
+    // -------------------------------------------------------------------
+    // 学习计划(1.6.0)
+    // -------------------------------------------------------------------
+
+    /**
+     * 学习计划详情(`studyPlanV2Detail`,全量单次返回):拍平 planSubGroups.questions,
+     * total = 题目总数。会员计划未订阅时 questions 为空(premiumOnly=true),
+     * slug 不存在时 data 字段为 null → 抛 [OJException](与 GraphQL 缺字段口径一致)。
+     */
+    suspend fun fetchStudyPlanDetail(planSlug: String): LeetCodeQuestionPage {
+        val variables =
+            buildJsonObject {
+                put("planSlug", planSlug)
+            }
+        val data = graphql("studyPlanV2Detail", LeetCodeGraphQL.STUDY_PLAN_DETAIL, variables)
+        val plan = data.child("studyPlanV2Detail")
+        val questions =
+            plan["planSubGroups"]
+                ?.jsonArray
+                .orEmpty()
+                .flatMap { group ->
+                    group.jsonObject["questions"]?.jsonArray.orEmpty().map { element ->
+                        val q = element.jsonObject
+                        val enTitle = q["title"]?.jsonPrimitive?.content.orEmpty()
+                        val translated = q["translatedTitle"]?.jsonPrimitive?.contentOrNullIfNull().orEmpty()
+                        val (primary, secondary) =
+                            if (translated.isNotEmpty()) translated to enTitle else enTitle to null
+                        LeetCodeQuestionListItem(
+                            frontendQuestionId = q["questionFrontendId"]?.jsonPrimitive?.content.orEmpty(),
+                            title = primary,
+                            titleSecondary = secondary?.takeIf { it.isNotEmpty() },
+                            titleSlug = q["titleSlug"]?.jsonPrimitive?.content.orEmpty(),
+                            difficulty = q["difficulty"]?.jsonPrimitive?.content.orEmpty(),
+                            paidOnly = q["paidOnly"]?.jsonPrimitive?.content == "true",
+                            topicTags = parseTopicTags(q),
+                        )
+                    }
+                }
+        return LeetCodeQuestionPage(total = questions.size, questions = questions)
     }
 
     // -------------------------------------------------------------------

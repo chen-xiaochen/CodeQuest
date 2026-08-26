@@ -93,6 +93,8 @@
 
         <!-- WP20:题面工具窗口导航(nav:openProblem 桥消息 → 打开题目) -->
         <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewNavigator"/>
+        <!-- 1.6.0:启动恢复上次打开的题目(题面会话恢复,HTTP 服务就绪后触发) -->
+        <postStartupActivity implementation="com.codequest.ui.toolwindow.ProblemViewRestoreStartupActivity"/>
         <!-- 1.5.0:右窗(题面)三 tab 导航——开刷联动/提交完成/云端测试结果定向 -->
         <projectService serviceImplementation="com.codequest.ui.toolwindow.ProblemViewTabNavigator"/>
 

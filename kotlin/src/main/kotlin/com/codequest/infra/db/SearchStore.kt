@@ -73,8 +73,10 @@ enum class SearchSource {
     NOTE,
 }
 
-/** 标签清单项:名称 + 关联题目数。 */
+/** 标签清单项:名称 + 关联题目数(slug/中文名 1.6.0 起,库内未 enrich 时为 null)。 */
 data class TagSummary(
     val name: String,
     val problemCount: Int,
+    val slug: String? = null,
+    val nameCn: String? = null,
 )

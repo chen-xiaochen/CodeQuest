@@ -61,7 +61,7 @@ class CodeForcesProblemServiceTest {
         assertEquals(listOf("1927A", "1927B", "1926A"), problems.map { it.remoteId })
         assertEquals(Difficulty("800"), problems[0].difficulty)
         assertEquals(Difficulty("1600"), problems[2].difficulty)
-        assertEquals(listOf("math", "implementation"), problems[0].tags)
+        assertEquals(listOf("math", "implementation"), problems[0].tags.map { it.name })
         assertEquals("https://codeforces.com/problemset/problem/1927/A", problems[0].url)
     }
 

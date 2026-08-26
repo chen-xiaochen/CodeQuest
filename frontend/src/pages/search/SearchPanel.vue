@@ -17,6 +17,7 @@ import {
   fetchSearch,
   fetchTags,
   type PlatformSummary,
+  type ProblemTag,
   type SearchItem,
   type SearchMatchSource,
   type TagSummary,
@@ -126,6 +127,11 @@ function openProblem(item: SearchItem): void {
   })
 }
 
+/** 1.6.0:标签展示名——中文优先,英文兜底(tag 行经 CN 数据 enrich 后带中文名)。 */
+function tagLabel(tag: ProblemTag): string {
+  return tag.nameCn || tag.name
+}
+
 onMounted(async () => {
   // 浏览模式首屏(全部近期题目)+ 标签面板;平台下拉失败不阻塞检索
   reload()
@@ -191,9 +197,10 @@ onMounted(async () => {
         class="tags__chip"
         :class="{ 'tags__chip--on': selectedTags.includes(tag.name) }"
         :aria-pressed="selectedTags.includes(tag.name)"
+        :title="tag.nameCn ? tag.name : undefined"
         @click="toggleTag(tag.name)"
       >
-        {{ tag.name }} <span class="tags__count">{{ tag.count }}</span>
+        {{ tag.nameCn || tag.name }} <span class="tags__count">{{ tag.count }}</span>
       </button>
     </fieldset>
 
@@ -238,7 +245,11 @@ onMounted(async () => {
             <span class="platform-badge">{{ item.platform }}</span>
             <span class="results__id">{{ item.remoteId }}</span>
           </span>
-          <span class="results__title">{{ item.title }}</span>
+          <span class="results__title">
+            {{ item.title }}
+            <!-- 1.6.0:副标题(标题另一语言形态;缺失侧不渲染) -->
+            <span v-if="item.titleSecondary" class="results__title-alt">{{ item.titleSecondary }}</span>
+          </span>
           <span class="results__meta">
             <span class="results__sources">
               <span
@@ -250,7 +261,7 @@ onMounted(async () => {
                 {{ SOURCE_LABELS[source] }}
               </span>
             </span>
-            <span v-if="item.tags.length > 0" class="results__tags">{{ item.tags.join(' · ') }}</span>
+            <span v-if="item.tags.length > 0" class="results__tags">{{ item.tags.map(tagLabel).join(' · ') }}</span>
             <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
           </span>
         </button>
@@ -493,6 +504,13 @@ onMounted(async () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 1.6.0:副标题(标题另一语言形态) */
+.results__title-alt {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--cq-muted);
 }
 
 .results__id {

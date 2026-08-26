@@ -40,8 +40,10 @@ import {
   type FavoritesResult,
   type PlatformSummary,
   type ProblemListItem,
+  type ProblemTag,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
+import { LC_TAGS, lcTagName } from '../../lib/lcTags'
 import {
   filterByStatus,
   statusIconOf,
@@ -93,6 +95,30 @@ const loading = ref(false)
 const error = ref('')
 /** 后端错误码;auth-expired 时错误态附登录入口(1.0.x,如 leetcode.com 列表 401)。 */
 const errorCode = ref('')
+
+/**
+ * 1.6.0:知识点多选筛选(slug 值,仅力扣系平台渲染)——普通/公司/题单三模式
+ * 后端均按 slug 过滤(CN filters.tags / COM topicFilter.topicSlugs / 学习计划内存过滤)。
+ */
+const selectedTags = ref<string[]>([])
+
+/** 力扣双站点(知识点 chips 仅对 leetcode/leetcodecn 平台渲染)。 */
+const isLeetCode = computed(() => platform.value === 'leetcode' || platform.value === 'leetcodecn')
+
+/** 行内/结果行标签展示名:中文优先,英文兜底。 */
+function tagLabel(tag: ProblemTag): string {
+  return tag.nameCn || tag.name
+}
+
+function toggleTag(slug: string): void {
+  const index = selectedTags.value.indexOf(slug)
+  if (index >= 0) {
+    selectedTags.value.splice(index, 1)
+  } else {
+    selectedTags.value.push(slug)
+  }
+  reload()
+}
 
 /** WP37:本地过滤后的可见行(仅作用于已加载项;不发请求、不影响分页游标)。 */
 const visibleItems = computed(() => filterByStatus(items.value, statusFilter.value))
@@ -258,6 +284,7 @@ async function loadPage(append: boolean): Promise<void> {
       platform: platform.value,
       keyword: keyword.value,
       difficulty: difficulty.value || undefined,
+      tags: isLeetCode.value && selectedTags.value.length > 0 ? selectedTags.value : undefined,
       favorite: favorite.value || undefined,
       company: favorite.value === '' ? company.value || undefined : undefined,
       period: favorite.value === '' && company.value !== '' ? period.value : undefined,
@@ -313,6 +340,7 @@ async function handlePlatformChange(): Promise<void> {
   company.value = ''
   period.value = DEFAULT_PERIOD
   favorite.value = ''
+  selectedTags.value = []
   await Promise.all([refreshCompanies(), refreshFavorites()])
   reload()
 }
@@ -343,6 +371,7 @@ function resetFilters(): void {
   statusFilter.value = ''
   company.value = ''
   favorite.value = ''
+  selectedTags.value = []
   reload()
 }
 
@@ -529,6 +558,25 @@ onUnmounted(() => {
         状态筛选仅作用于已加载条目——加载更多可扩大范围。
       </p>
 
+      <!-- 1.6.0:知识点多选筛选(仅力扣系平台;值 = tag slug,三查询模式后端均支持) -->
+      <fieldset v-if="isLeetCode" class="tags" aria-label="知识点筛选">
+        <legend class="tags__legend">知识点(多选,任一命中)</legend>
+        <div class="tags__scroll">
+          <button
+            v-for="tag in LC_TAGS"
+            :key="tag.slug"
+            type="button"
+            class="tags__chip"
+            :class="{ 'tags__chip--on': selectedTags.includes(tag.slug) }"
+            :aria-pressed="selectedTags.includes(tag.slug)"
+            :title="tag.en"
+            @click="toggleTag(tag.slug)"
+          >
+            {{ lcTagName(tag) }}
+          </button>
+        </div>
+      </fieldset>
+
       <p v-if="company !== '' && keyword.trim() !== ''" class="filter-note">
         公司题单模式下关键字被忽略(平台限制)。
       </p>
@@ -552,6 +600,13 @@ onUnmounted(() => {
       <p v-else-if="loading && items.length === 0" class="state">正在加载题目…</p>
       <p v-else-if="!loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
         没有已加载条目匹配状态筛选,请加载更多或清除筛选。
+      </p>
+      <!-- 1.6.0:题单模式空态可辨识(会员计划未订阅/计划已下线),区别于普通筛选无匹配 -->
+      <p
+        v-else-if="!loading && items.length === 0 && favorite !== '' && difficulty === '' && selectedTags.length === 0"
+        class="state"
+      >
+        该题单在当前站点暂无可见题目——会员计划订阅后可用,或计划已下线。
       </p>
       <p v-else-if="!loading && items.length === 0" class="state">没有匹配的题目,请调整筛选后重试。</p>
 
@@ -581,9 +636,13 @@ onUnmounted(() => {
               <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
             </span>
             <span class="problems__remote">{{ item.remoteId }}</span>
-            <span class="problems__title">{{ item.title }}</span>
+            <span class="problems__title">
+              {{ item.title }}
+              <!-- 1.6.0:副标题(另一语言形态,CN 中文主标题 + 英文辅;缺失侧不渲染) -->
+              <span v-if="item.titleSecondary" class="problems__title-alt">{{ item.titleSecondary }}</span>
+            </span>
             <span class="problems__meta">
-              <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.join(' · ') }}</span>
+              <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.map(tagLabel).join(' · ') }}</span>
               <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
             </span>
           </button>
@@ -892,6 +951,57 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 1.6.0:副标题(标题另一语言形态,CN 中文为主英文为辅) */
+.problems__title-alt {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--cq-muted);
+}
+
+/* 1.6.0:知识点筛选面板(同本地搜索的 tag chips;72 项进滚动容器) */
+.tags {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel);
+}
+
+.tags__legend {
+  font-size: 11px;
+  color: var(--cq-muted);
+  padding: 0 4px;
+}
+
+.tags__scroll {
+  max-height: 108px;
+  overflow-y: auto;
+}
+
+.tags__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 4px 2px 0;
+  padding: 2px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tags__chip:hover {
+  border-color: var(--cq-accent);
+}
+
+.tags__chip--on {
+  background: var(--cq-accent);
+  border-color: var(--cq-accent);
+  color: var(--cq-accent-fg);
 }
 
 .problems__meta {

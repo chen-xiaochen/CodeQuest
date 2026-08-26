@@ -45,6 +45,17 @@ data class ProblemFilter(
 }
 
 /**
+ * 平台侧标签(1.6.0):name 为标签名原文(本地 tag 表关联键),slug/中文名为可选
+ * 富信息(LC 列表接口携带;平台无此概念时仅 name)。
+ */
+@Serializable
+data class TagInfo(
+    val name: String,
+    val slug: String? = null,
+    val nameCn: String? = null,
+)
+
+/**
  * 平台侧题目摘要(列表项,WP17)。
  *
  * 仅含列表展示与落库建立主档所需字段。
@@ -54,10 +65,12 @@ data class ProblemSummary(
     /** 平台侧题目标识,如 CF "1927A"、LC 标题 slug。 */
     val remoteId: String,
     val title: String,
+    /** 1.6.0:副标题(标题另一语言形态);无双语概念的平台为 null。 */
+    val titleSecondary: String? = null,
     val difficulty: Difficulty,
     val url: String,
-    /** 平台侧标签名原文;与本地 tag 表的关联由用例层建立。 */
-    val tags: List<String> = emptyList(),
+    /** 平台侧标签;与本地 tag 表的关联由用例层建立。 */
+    val tags: List<TagInfo> = emptyList(),
     /**
      * 会员/付费题标记(WP42 起透传,列表状态列 🔒 图标数据源;WP37 KDoc 预留的
      * 跨平台语义——LC paidOnly / HR premium)。平台无此概念时恒 false(缺省)。

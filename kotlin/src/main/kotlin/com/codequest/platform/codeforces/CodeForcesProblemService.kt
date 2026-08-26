@@ -7,6 +7,7 @@ import com.codequest.spi.ProblemFilter
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.ProblemStatement
 import com.codequest.spi.ProblemSummary
+import com.codequest.spi.TagInfo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -77,7 +78,7 @@ class CodeForcesProblemService(
             title = name,
             difficulty = rating?.let { Difficulty(it.toString()) } ?: Difficulty(UNRATED),
             url = codeForcesProblemPageUrl(contestId ?: 0L, index),
-            tags = tags,
+            tags = tags.map { TagInfo(it) },
         )
 
     companion object {

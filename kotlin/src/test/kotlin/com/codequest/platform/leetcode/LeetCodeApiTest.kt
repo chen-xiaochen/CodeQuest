@@ -4,6 +4,7 @@ import com.codequest.core.model.OJException
 import com.codequest.infra.http.HttpOJTransport
 import com.codequest.infra.http.OJHttpClient
 import com.codequest.spi.ProblemFilter
+import com.codequest.spi.TagInfo
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.engine.mock.respond
@@ -122,6 +123,49 @@ class LeetCodeApiTest {
     }
 
     // -------------------------------------------------------------------
+    // 学习计划(1.6.0)
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `study plan detail flattens groups with bilingual titles and rich tags`() = runBlocking {
+        graphqlResponses["studyPlanV2Detail"] =
+            """
+            {"data":{"studyPlanV2Detail":{"slug":"top-100-liked","name":"LeetCode 热题 100","premiumOnly":false,
+              "planSubGroups":[
+                {"name":"哈希","questionNum":1,"questions":[
+                  {"title":"Two Sum","titleSlug":"two-sum","translatedTitle":"两数之和","questionFrontendId":"1",
+                   "difficulty":"EASY","paidOnly":false,
+                   "topicTags":[{"name":"Array","nameTranslated":"数组","slug":"array"},
+                                {"name":"Hash Table","nameTranslated":"哈希表","slug":"hash-table"}]}]},
+                {"name":"双指针","questionNum":1,"questions":[
+                  {"title":"Container With Most Water","titleSlug":"container-with-most-water","translatedTitle":"盛最多水的容器",
+                   "questionFrontendId":"11","difficulty":"MEDIUM","paidOnly":true,"topicTags":[]}]}]}}}
+            """.trimIndent()
+
+        val page = cnApi.fetchStudyPlanDetail("top-100-liked")
+
+        assertEquals(2, page.total)
+        assertEquals(listOf("two-sum", "container-with-most-water"), page.questions.map { it.titleSlug })
+        // 双语:translatedTitle 非空为主标题,英文进 titleSecondary;缺失侧为 null
+        assertEquals(listOf("两数之和", "盛最多水的容器"), page.questions.map { it.title })
+        assertEquals(listOf("Two Sum", "Container With Most Water"), page.questions.map { it.titleSecondary })
+        assertEquals(listOf(TagInfo("Array", "array", "数组"), TagInfo("Hash Table", "hash-table", "哈希表")), page.questions[0].topicTags)
+        assertTrue(page.questions[1].paidOnly)
+
+        val record = graphqlRecord("studyPlanV2Detail")
+        assertEquals(LeetCodeGraphQL.STUDY_PLAN_DETAIL, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("top-100-liked", variablesOf(record)["planSlug"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `study plan detail missing slug surfaces as OJException`() = runBlocking {
+        // slug 在目标站点不存在时 data.studyPlanV2Detail 为 null(2026-08-26 COM 实测 CN 专属计划)
+        graphqlResponses["studyPlanV2Detail"] = """{"data":{"studyPlanV2Detail":null}}"""
+
+        assertFailsWith<OJException> { cnApi.fetchStudyPlanDetail("cn-only-plan") }
+    }
+
+    // -------------------------------------------------------------------
     // 题目列表:CN 站点
     // -------------------------------------------------------------------
 
@@ -148,7 +192,7 @@ class LeetCodeApiTest {
 
         assertEquals(2, page.total)
         assertEquals(listOf("two-sum", "add-two-numbers"), page.questions.map { it.titleSlug })
-        assertEquals(listOf("Array"), page.questions[0].topicTags)
+        assertEquals(listOf(TagInfo("Array", "array")), page.questions[0].topicTags)
         assertEquals("1", page.questions[0].frontendQuestionId)
 
         val variables = variablesOf(graphqlRecord("problemsetQuestionList"))
@@ -441,12 +485,14 @@ class LeetCodeApiTest {
             )
 
         assertEquals(2, page.total)
-        // translatedTitle 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义),空回退 title
+        // translatedTitle 非空优先(旧 LeetCodeChallengeListItem.titleCn 语义),空回退 title;
+        // 1.6.0:另一侧标题存 titleSecondary(中文为主英文为辅)
         assertEquals(listOf("两数之和", "Reverse Integer"), page.questions.map { it.title })
+        assertEquals(listOf("Two Sum", null), page.questions.map { it.titleSecondary })
         assertEquals(listOf("two-sum", "reverse-integer"), page.questions.map { it.titleSlug })
         assertEquals("1", page.questions[0].frontendQuestionId)
         assertTrue(page.questions[0].paidOnly)
-        assertEquals(listOf("Array"), page.questions[0].topicTags)
+        assertEquals(listOf(TagInfo("Array", "array", "数组")), page.questions[0].topicTags)
 
         val record = graphqlRecord("favoriteQuestionList")
         assertEquals(LeetCodeGraphQL.FAVORITE_QUESTION_LIST_CN, envelopeOf(record)["query"]!!.jsonPrimitive.content)

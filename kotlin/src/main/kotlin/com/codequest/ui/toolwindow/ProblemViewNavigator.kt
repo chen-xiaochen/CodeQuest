@@ -1,6 +1,7 @@
 package com.codequest.ui.toolwindow
 
 import com.codequest.infra.messaging.CodeQuestHttpServerService
+import com.codequest.infra.settings.CodeQuestSettings
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.Service.Level
@@ -51,6 +52,8 @@ class ProblemViewNavigator(
         platformId: String,
         remoteId: String,
     ) {
+        // 1.6.0:记录最近打开的题目供启动恢复(恢复链路重写同值,幂等无害)
+        CodeQuestSettings.getInstance(project).updateLastOpenedProblem(encodeLastOpenedProblem(platformId, remoteId))
         ApplicationManager.getApplication().invokeLater {
             val base = project.getService(CodeQuestHttpServerService::class.java).baseUrl ?: return@invokeLater
             val url =
@@ -105,3 +108,16 @@ fun parseOpenProblemPayload(payload: String): OpenProblemRequest? =
                 Logger.getLogger("parseOpenProblemPayload").warning("unparseable nav:openProblem payload: $payload")
             }
         }
+
+/** 1.6.0:最近打开题目的持久化串编码(`platformId\tremoteId`,存 CodeQuestSettings)。 */
+fun encodeLastOpenedProblem(
+    platformId: String,
+    remoteId: String,
+): String = "$platformId\t$remoteId"
+
+/** 解析持久化串;格式不符(缺分隔符/空段)返回 null(纯函数,单测锁定)。 */
+fun parseLastOpenedProblem(encoded: String): OpenProblemRequest? =
+    encoded
+        .split('\t')
+        .takeIf { parts -> parts.size == 2 && parts[0].isNotEmpty() && parts[1].isNotEmpty() }
+        ?.let { OpenProblemRequest(it[0], it[1]) }

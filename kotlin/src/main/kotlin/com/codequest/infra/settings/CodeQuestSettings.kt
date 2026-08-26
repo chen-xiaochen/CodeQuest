@@ -101,6 +101,14 @@ class CodeQuestSettings : PersistentStateComponent<CodeQuestSettings.State> {
         state = state.copy(templates = LinkedHashMap(templates), customCss = customCss)
     }
 
+    /**
+     * 1.6.0:记录最近打开的题目(题面会话恢复;串格式与编解码见
+     * `ui.toolwindow.encodeLastOpenedProblem`,空串 = 未记录)。
+     */
+    fun updateLastOpenedProblem(encoded: String) {
+        state = state.copy(lastOpenedProblem = encoded)
+    }
+
     data class State(
         /** 数据库文件夹绝对路径;空 = 使用默认目录 `~/.codequest/`。 */
         var databaseFolder: String = "",
@@ -113,6 +121,8 @@ class CodeQuestSettings : PersistentStateComponent<CodeQuestSettings.State> {
         var templates: MutableMap<String, String> = LinkedHashMap(),
         /** WP39:题面页注入的自定义 CSS(空 = 不注入)。 */
         var customCss: String = "",
+        /** 1.6.0:最近打开的题目持久化串(`platformId\tremoteId`,空 = 未记录),启动时恢复题面。 */
+        var lastOpenedProblem: String = "",
     )
 
     /**
