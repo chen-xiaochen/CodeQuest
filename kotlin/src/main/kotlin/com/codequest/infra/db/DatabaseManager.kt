@@ -55,6 +55,18 @@ class ManagedDatabase(
     val submissionRepository: ExposedSubmissionRepository
         get() = handle.submission
 
+    /** 难度评分仓库(1.7.0 F1,WP59);随切库指向新句柄。 */
+    val ratingRepository: ExposedRatingRepository
+        get() = handle.rating
+
+    /** 站内提交历史仓库(1.7.0 F2,WP59);随切库指向新句柄。 */
+    val remoteSubmissionRepository: ExposedRemoteSubmissionRepository
+        get() = handle.remoteSubmission
+
+    /** 间隔重复复习排期仓库(1.7.0 F3,WP59);随切库指向新句柄。 */
+    val reviewRepository: ExposedReviewRepository
+        get() = handle.review
+
     val challengeRepository: ChallengeRepository
         get() = handle.challenge
 
@@ -100,6 +112,9 @@ class ManagedDatabase(
         val search: ExposedSearchStore by lazy { ExposedSearchStore(db) }
         val statuses: ExposedProblemStatusStore by lazy { ExposedProblemStatusStore(db) }
         val submission by lazy { ExposedSubmissionRepository(db) }
+        val rating by lazy { ExposedRatingRepository(db) }
+        val remoteSubmission by lazy { ExposedRemoteSubmissionRepository(db) }
+        val review by lazy { ExposedReviewRepository(db) }
         val challenge by lazy { ExposedChallengeRepository(db) }
         val solution by lazy { ExposedSolutionRepository(db) }
         val testCase by lazy { ExposedTestCaseRepository(db) }
@@ -147,6 +162,18 @@ class DatabaseManager(
 
     val submissionRepository: ExposedSubmissionRepository
         get() = managed.submissionRepository
+
+    /** 难度评分仓库(1.7.0 F1,WP59);随切库指向新句柄。 */
+    val ratingRepository: ExposedRatingRepository
+        get() = managed.ratingRepository
+
+    /** 站内提交历史仓库(1.7.0 F2,WP59);随切库指向新句柄。 */
+    val remoteSubmissionRepository: ExposedRemoteSubmissionRepository
+        get() = managed.remoteSubmissionRepository
+
+    /** 间隔重复复习排期仓库(1.7.0 F3,WP59);随切库指向新句柄。 */
+    val reviewRepository: ExposedReviewRepository
+        get() = managed.reviewRepository
 
     val challengeRepository: ChallengeRepository
         get() = managed.challengeRepository

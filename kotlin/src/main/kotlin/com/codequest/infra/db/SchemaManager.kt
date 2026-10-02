@@ -18,7 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
  * 由调用侧降级 LIKE([FtsSupport])。
  */
 object SchemaManager {
-    const val CURRENT_VERSION: Int = 2
+    const val CURRENT_VERSION: Int = 3
 
     fun createAll(db: Database) {
         transaction(db) {
@@ -40,17 +40,20 @@ object SchemaManager {
             exec(CREATE_SOLUTION_NOTE_FTS)
             PROBLEM_CONTENT_TRIGGERS.forEach(::exec)
             SOLUTION_NOTE_TRIGGERS.forEach(::exec)
+            // v3 三表走 raw DDL(remote_submission 的 AUTOINCREMENT 不赌 Exposed 方言生成),
+            // 新库与旧库升级统一经 [MIGRATIONS_V3] 建表,全部 IF NOT EXISTS 幂等
+            MIGRATIONS_V3.forEach(::exec)
             val existingVersion = SchemaVersionTable.selectAll().firstOrNull()?.let { it[SchemaVersionTable.version] }
             when {
                 existingVersion == null -> {
                     SchemaVersionTable.insert { it[version] = CURRENT_VERSION }
                 }
 
-                existingVersion < 2 -> {
+                existingVersion < CURRENT_VERSION -> {
                     // v1→v2(1.6.0):problem/tag 补列(新库由 SchemaUtils.create 直接建全,
                     // 仅旧库走 ALTER)。SQLite 无 ADD COLUMN IF NOT EXISTS,按版本号门控幂等
-                    MIGRATIONS_V2.forEach { exec(it) }
-                    exec("UPDATE schema_version SET version = 2")
+                    if (existingVersion < 2) MIGRATIONS_V2.forEach { exec(it) }
+                    exec("UPDATE schema_version SET version = $CURRENT_VERSION")
                 }
             }
         }
@@ -63,6 +66,46 @@ private val MIGRATIONS_V2 =
         "ALTER TABLE problem ADD COLUMN secondary_title VARCHAR(1024)",
         "ALTER TABLE tag ADD COLUMN slug VARCHAR(256)",
         "ALTER TABLE tag ADD COLUMN name_cn VARCHAR(256)",
+    )
+
+/**
+ * v2→v3(1.7.0)增量 DDL:三张新表(难度评分/站内提交历史/复习排期),既有表零改动。
+ * 全部 CREATE TABLE IF NOT EXISTS,新库、旧库升级、重复执行三条路径共用,天然幂等。
+ */
+private val MIGRATIONS_V3 =
+    listOf(
+        """
+        CREATE TABLE IF NOT EXISTS problem_rating (
+            frontend_id VARCHAR(256) NOT NULL,
+            rating REAL NOT NULL,
+            updated_at VARCHAR(48) NOT NULL,
+            CONSTRAINT pk_problem_rating PRIMARY KEY (frontend_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS remote_submission (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            platform_id VARCHAR(256) NOT NULL,
+            remote_id VARCHAR(256) NOT NULL,
+            title_slug VARCHAR(256) NOT NULL,
+            title VARCHAR(1024) NOT NULL,
+            status_display VARCHAR(256) NOT NULL,
+            lang VARCHAR(256) NOT NULL,
+            runtime_ms INT NULL,
+            memory_kb INT NULL,
+            submitted_at VARCHAR(48) NOT NULL,
+            CONSTRAINT uq_remote_submission_platform_remote UNIQUE (platform_id, remote_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS review_schedule (
+            problem_id VARCHAR(128) NOT NULL,
+            plan_dates TEXT NOT NULL,
+            history_dates TEXT NOT NULL,
+            updated_at VARCHAR(48) NOT NULL,
+            CONSTRAINT pk_review_schedule PRIMARY KEY (problem_id)
+        )
+        """,
     )
 
 private const val CREATE_PROBLEM_CONTENT_FTS = """

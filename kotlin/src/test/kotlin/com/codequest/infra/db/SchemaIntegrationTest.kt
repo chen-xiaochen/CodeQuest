@@ -17,6 +17,7 @@ class SchemaIntegrationTest {
             "problem", "problem_content", "challenge", "challenge_language", "solution",
             "test_case", "submission", "tag", "problem_tag", "contest_reminder",
             "settings_kv", "schema_version",
+            "problem_rating", "remote_submission", "review_schedule",
         ).forEach { name ->
             assertTrue(name in tables, "缺少表 $name,实际: $tables")
         }

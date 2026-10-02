@@ -133,6 +133,53 @@ internal object SettingsKv : Table("settings_kv") {
     override val primaryKey = PrimaryKey(key)
 }
 
+/**
+ * 1.7.0:zerotrac 难度评分(F1),对应表 `problem_rating`,按 LC 题号主键;
+ * 在线刷新 upsert 全量覆盖(schema v3 raw DDL 建表,不走 SchemaUtils.create)。
+ */
+internal object ProblemRatings : Table("problem_rating") {
+    val frontendId = varchar("frontend_id", NAME_LEN)
+    val rating = double("rating")
+    val updatedAt = varchar("updated_at", INSTANT_LEN)
+
+    override val primaryKey = PrimaryKey(frontendId)
+}
+
+/**
+ * 1.7.0:站内提交历史(F2),对应表 `remote_submission`,与本地 `submission` 表独立
+ * (站内历史无本地 challenge)。`UNIQUE(platform_id, remote_id)` 支撑增量同步停止
+ * 判定(INSERT OR IGNORE 冲突跳过)。id 自增主键由 v3 raw DDL 的
+ * `INTEGER PRIMARY KEY AUTOINCREMENT` 保证(不赌 Exposed 方言生成,故本表不进
+ * SchemaUtils.create 列表)。
+ */
+internal object RemoteSubmissions : Table("remote_submission") {
+    val id = integer("id").autoIncrement()
+    val platformId = varchar("platform_id", NAME_LEN)
+    val remoteId = varchar("remote_id", NAME_LEN)
+    val titleSlug = varchar("title_slug", NAME_LEN)
+    val title = varchar("title", TITLE_LEN)
+    val statusDisplay = varchar("status_display", NAME_LEN)
+    val lang = varchar("lang", NAME_LEN)
+    val runtimeMs = integer("runtime_ms").nullable()
+    val memoryKb = integer("memory_kb").nullable()
+    val submittedAt = varchar("submitted_at", INSTANT_LEN)
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * 1.7.0:间隔重复复习排期(F3),对应表 `review_schedule`;plan/history 两列均为
+ * epoch 秒数组 JSON(见 [DbCodecs.encodeEpochSecondsList]),秒值对齐当天零点。
+ */
+internal object ReviewSchedules : Table("review_schedule") {
+    val problemId = varchar("problem_id", ID_LEN)
+    val planDates = text("plan_dates")
+    val historyDates = text("history_dates")
+    val updatedAt = varchar("updated_at", INSTANT_LEN)
+
+    override val primaryKey = PrimaryKey(problemId)
+}
+
 internal object SchemaVersionTable : Table("schema_version") {
     val version = integer("version")
 

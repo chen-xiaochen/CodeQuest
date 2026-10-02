@@ -1,6 +1,8 @@
 package com.codequest.infra.db
 
 import com.codequest.core.model.SubmissionResult
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneOffset
@@ -15,6 +17,7 @@ import java.time.format.DateTimeFormatter
  *   字典序即时序,且纳秒精度无损往返([Instant.parse] 兼容 9 位小数)。
  * - SubmissionResult ↔ TEXT:kotlinx.serialization 多态 JSON(discriminator = `type`,
  *   与 core 层 [SubmissionResult] 的 SerialName 契约一致)。
+ * - List&lt;Long&gt; ↔ TEXT:epoch 秒数组 JSON(1.7.0 F3,review_schedule 两列)。
  */
 internal object DbCodecs {
     private val instantFormatter: DateTimeFormatter =
@@ -28,6 +31,8 @@ internal object DbCodecs {
             ignoreUnknownKeys = true
         }
 
+    private val epochListSerializer = ListSerializer(Long.serializer())
+
     fun formatInstant(instant: Instant): String = instantFormatter.format(instant)
 
     fun parseInstant(text: String): Instant = Instant.parse(text)
@@ -35,4 +40,8 @@ internal object DbCodecs {
     fun encodeVerdict(verdict: SubmissionResult): String = verdictJson.encodeToString(SubmissionResult.serializer(), verdict)
 
     fun decodeVerdict(text: String): SubmissionResult = verdictJson.decodeFromString(SubmissionResult.serializer(), text)
+
+    fun encodeEpochSeconds(dates: List<Long>): String = verdictJson.encodeToString(epochListSerializer, dates)
+
+    fun decodeEpochSeconds(text: String): List<Long> = verdictJson.decodeFromString(epochListSerializer, text)
 }
