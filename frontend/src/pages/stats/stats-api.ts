@@ -32,6 +32,11 @@ export interface StatsResult {
   heatmap: DailyCount[]
   /** 今天往前 min(days, 30) 天,升序。 */
   trend: DailyCount[]
+  /**
+   * 1.7.0 F2(WP61 起):站内提交历史已同步条数(remote_submission 计数,
+   * 两表合并统计;旧版端点无此字段按 0)。
+   */
+  remoteSyncedCount?: number | null
 }
 
 export interface StatsQuery {

@@ -76,10 +76,10 @@ async function getJson<T>(path: string): Promise<T> {
   return unwrap<T>(response)
 }
 
-/** WP23:POST/DELETE 请求(getJson 同款错误解包)。 */
+/** WP23:POST/DELETE/PUT 请求(getJson 同款错误解包;PUT 为 WP64 复习配置新增)。 */
 async function sendJson<T>(
   path: string,
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'DELETE' | 'PUT',
   body?: string,
 ): Promise<T> {
   const response = await fetch(path, {
@@ -644,4 +644,101 @@ export function fetchUserContest(platform: string): Promise<UserContestResult> {
 /** 清空用户竞赛分会话缓存(登录/登出/在线刷新评分后重拉)。 */
 export function clearUserContestCache(): void {
   userContestCache = null
+}
+
+// ---------------------------------------------------------------------------
+// 1.7.0 F3(WP64):间隔复习(ReviewService 端点:今日视图/加入/完成/间隔配置)
+// ---------------------------------------------------------------------------
+
+/** 复习行(today 三组同构;platformId/remoteId/difficulty 联查缺失时缺省)。 */
+export interface ReviewRow {
+  /** 本地 problem 主档 id(`<platform>:<remoteId>` 确定性映射)。 */
+  problemId: string
+  platformId?: string | null
+  /** 平台题号(行点击经 nav:openProblem 开题面需要,与 platformId 成对)。 */
+  remoteId?: string | null
+  title: string
+  difficulty?: string | null
+  /** 下次到期日(epoch 秒,本地时区零点对齐)。 */
+  nextDate: number
+}
+
+export interface ReviewTodayResult {
+  overdue: ReviewRow[]
+  today: ReviewRow[]
+  upcoming: ReviewRow[]
+  /** 追踪中的题目总数(含已完成排期的历史行)。 */
+  totalTracked: number
+}
+
+/** GET /api/review/today(三分组视图 + 追踪总数)。 */
+export function fetchReviewToday(): Promise<ReviewTodayResult> {
+  return getJson<ReviewTodayResult>('/api/review/today')
+}
+
+/** 加入复习响应(幂等:已排期返回现有 plan;planDates 为 epoch 秒升序)。 */
+export interface ReviewAddResult {
+  problemId: string
+  planDates: number[]
+}
+
+/** POST /api/review/problems/{problemId}/add(手动加入/冷启动,明天零点起排期)。 */
+export function addReviewProblem(problemId: string): Promise<ReviewAddResult> {
+  return sendJson<ReviewAddResult>(
+    `/api/review/problems/${encodeURIComponent(problemId)}/add`,
+    'POST',
+  )
+}
+
+/** 完成复习响应(planDates 空 = 排期自然结束)。 */
+export interface ReviewCompleteResult {
+  problemId: string
+  planDates: number[]
+  historyDates: number[]
+}
+
+/** POST /api/review/problems/{problemId}/complete(手动完成当日复习;未排期 404)。 */
+export function completeReviewProblem(problemId: string): Promise<ReviewCompleteResult> {
+  return sendJson<ReviewCompleteResult>(
+    `/api/review/problems/${encodeURIComponent(problemId)}/complete`,
+    'POST',
+  )
+}
+
+export interface ReviewConfigResult {
+  /** 间隔天数(正整数严格升序)。 */
+  intervals: number[]
+}
+
+/** GET /api/review/config(非法存储后端回退默认)。 */
+export function fetchReviewConfig(): Promise<ReviewConfigResult> {
+  return getJson<ReviewConfigResult>('/api/review/config')
+}
+
+/** PUT /api/review/config(非正整数/非升序/空 → 400 附默认值提示)。 */
+export function updateReviewConfig(intervals: number[]): Promise<ReviewConfigResult> {
+  return sendJson<ReviewConfigResult>('/api/review/config', 'PUT', JSON.stringify({ intervals }))
+}
+
+// ---------------------------------------------------------------------------
+// 1.7.0 F2(WP64):站内提交历史同步
+// ---------------------------------------------------------------------------
+
+/** 同步结果(无能力平台 400 / 未知平台 404 / 拉取失败 502)。 */
+export interface SubmissionSyncResult {
+  /** 本次新入库条数。 */
+  synced: number
+  /** 该平台站内历史总条数(含存量)。 */
+  total: number
+  /** 停止原因:EXISTING(增量到头)/ LIMIT(页数保护)/ END(自然到底)。 */
+  stoppedBy: 'EXISTING' | 'LIMIT' | 'END'
+}
+
+/** POST /api/submissions/sync(倒序分页拉取站内提交增量落库)。 */
+export function syncSubmissions(platformId: string): Promise<SubmissionSyncResult> {
+  return sendJson<SubmissionSyncResult>(
+    '/api/submissions/sync',
+    'POST',
+    JSON.stringify({ platformId }),
+  )
 }

@@ -197,7 +197,9 @@ describe('stats page', () => {
     mockStats()
     const wrapper = mount(StatsApp)
     await flushPromises()
-    expect(fetchCalls.length).toBe(1)
+    // WP64:mount 还会拉 /api/platforms(同步平台下拉),按 stats 前缀过滤计数
+    const statsGets = () => fetchCalls.filter((url) => url.startsWith('/api/stats')).length
+    expect(statsGets()).toBe(1)
 
     window.__cqBridge!.emit({
       topic: 'submission:updated',
@@ -205,7 +207,7 @@ describe('stats page', () => {
     })
     await flushPromises()
 
-    expect(fetchCalls.length).toBe(2)
+    expect(statsGets()).toBe(2)
     expect(wrapper.findAll('.card').length).toBe(4)
   })
 })

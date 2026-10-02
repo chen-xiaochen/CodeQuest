@@ -18,8 +18,10 @@ import java.time.ZoneId
  *
  * 端点契约(由 [ResourceHttpServer] 挂载):
  * - `GET /api/review/today` → `{overdue:[...], today:[...], upcoming:[...], totalTracked}`,
- *   行 = `{problemId, platformId?, title, difficulty?, nextDate}`(nextDate 为零点 epoch 秒);
- *   元数据联查 problem 表,查不到的行仍返回(title 回退 problemId,平台/难度缺省);
+ *   行 = `{problemId, platformId?, remoteId?, title, difficulty?, nextDate}`(nextDate 为
+ *   零点 epoch 秒);元数据联查 problem 表,查不到的行仍返回(title 回退 problemId,
+ *   平台/难度缺省);WP64 行补 remoteId(前端行点击经 `nav:openProblem` 开题面需要
+ *   platformId+remoteId,而 problemId 是本地主档 id,前端不可拆);
  * - `POST /api/review/problems/{problemId}/add` → 手动加入(冷启动),返回
  *   `{problemId, planDates}`;已有排期幂等返回现有 plan;
  * - `POST /api/review/problems/{problemId}/complete` → 手动完成当日复习,返回
@@ -48,6 +50,7 @@ class ReviewApi(
                 ReviewRowDto(
                     problemId = item.problemId.value,
                     platformId = problem?.platformId?.value,
+                    remoteId = problem?.remoteId,
                     title = problem?.title ?: item.problemId.value,
                     difficulty = problem?.difficulty?.value,
                     nextDate = item.nextDate,
@@ -156,6 +159,8 @@ class ReviewApi(
 private data class ReviewRowDto(
     val problemId: String,
     val platformId: String? = null,
+    /** 平台题号(联查缺失时缺省;WP64 前端开题面用)。 */
+    val remoteId: String? = null,
     val title: String,
     val difficulty: String? = null,
     /** 下次到期日(epoch 秒,零点对齐)。 */

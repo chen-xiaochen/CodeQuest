@@ -889,7 +889,8 @@ describe('problems page', () => {
     expect(wrapper.find('.search-panel').exists()).toBe(false)
 
     const tabs = wrapper.findAll('.subviews__tab')
-    expect(tabs.map((tab) => tab.text())).toEqual(['平台题库', '本地搜索'])
+    // WP64:第三个「复习」tab(today 未 mock → 404 → 计数 0,无徽标,纯文案)
+    expect(tabs.map((tab) => tab.text())).toEqual(['平台题库', '本地搜索', '复习'])
     await tabs[1].trigger('click')
     await flushPromises()
 

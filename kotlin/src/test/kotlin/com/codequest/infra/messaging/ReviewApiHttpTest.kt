@@ -97,6 +97,7 @@ class ReviewApiHttpTest {
         assertEquals("two-sum", overdue[0]["problemId"]!!.jsonPrimitive.content)
         assertEquals("Two Sum", overdue[0]["title"]!!.jsonPrimitive.content)   // 联查 problem 表
         assertEquals("leetcode", overdue[0]["platformId"]!!.jsonPrimitive.content)
+        assertEquals("two-sum", overdue[0]["remoteId"]!!.jsonPrimitive.content) // WP64:前端开题面用
         assertEquals("easy", overdue[0]["difficulty"]!!.jsonPrimitive.content)
         assertEquals((today0 - day).toString(), overdue[0]["nextDate"]!!.jsonPrimitive.content)
 
@@ -105,6 +106,7 @@ class ReviewApiHttpTest {
         assertEquals("unknown-problem", today[0]["title"]!!.jsonPrimitive.content) // 查不到 → title 回退 problemId
         assertFalse(today[0].containsKey("difficulty"))                            // explicitNulls=false → 缺省不出现
         assertFalse(today[0].containsKey("platformId"))
+        assertFalse(today[0].containsKey("remoteId"))
 
         assertEquals(listOf("future-problem"), body["upcoming"]!!.jsonArray.toList().map { it.jsonObject["problemId"]!!.jsonPrimitive.content })
     }

@@ -14,21 +14,27 @@
  * 事实,变更即重拉)与 webview 缩放工具栏(−/100%/+,经 `webview:zoom`
  * 桥消息;题面与阅读器同属一个浏览器实例,天然共用;不持久化)。
  * WP50:文案全面中文化(排序选项 value 不变,仅 label 中文)。
+ * WP64(1.7.0 F3):header「加入复习」按钮——本地主档 id 为确定性
+ * `<platform>:<remoteId>` 映射,直接调 add(幂等);已排期(today 三组里查
+ * 同 id 行)则两态切换为「已排期至 yyyy-MM-dd」。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, TOPIC_WEBVIEW_ZOOM, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
+  addReviewProblem,
   fetchCustomCss,
   fetchProblemDetail,
   fetchProblemSolutions,
+  fetchReviewToday,
   fetchSolutionArticleContent,
   type ProblemDetail,
   type SolutionArticle,
   type SolutionArticleContent,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
+import { formatEpochDay } from '../../lib/epochDay'
 import { renderStatement } from '../../lib/statement'
 
 const detail = ref<ProblemDetail | null>(null)
@@ -90,6 +96,41 @@ function handleCreateResult(payload: unknown): void {
   startMsg.value = result?.ok ? '' : result?.error || '创建失败'
 }
 
+/** WP64:加入复习(1.7.0 F3)。 */
+/** 已排期时为首个别到期日(epoch 秒);null = 未排期。 */
+const reviewScheduledFor = ref<number | null>(null)
+const reviewAdding = ref(false)
+const reviewError = ref('')
+
+/** 查当前题排期:today 三组里找同 id 行(附属能力,失败按未排期处理)。 */
+async function loadReviewState(): Promise<void> {
+  if (!platform || !remoteId) return
+  try {
+    const result = await fetchReviewToday()
+    const row = [...result.overdue, ...result.today, ...result.upcoming].find(
+      (item) => item.problemId === reviewProblemId,
+    )
+    reviewScheduledFor.value = row?.nextDate ?? null
+  } catch {
+    reviewScheduledFor.value = null
+  }
+}
+
+/** 加入复习(幂等):成功切「已排期至 首个计划日」;失败按钮旁提示后端消息。 */
+async function handleAddReview(): Promise<void> {
+  if (reviewAdding.value || reviewScheduledFor.value !== null) return
+  reviewAdding.value = true
+  reviewError.value = ''
+  try {
+    const result = await addReviewProblem(reviewProblemId)
+    reviewScheduledFor.value = result.planDates[0] ?? null
+  } catch (cause) {
+    reviewError.value = describeError(cause)
+  } finally {
+    reviewAdding.value = false
+  }
+}
+
 /** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
 const readerHistory = ref<SolutionArticle[]>([])
 const readerCursor = ref(-1)
@@ -102,6 +143,9 @@ const contentCache = new Map<string, SolutionArticleContent>()
 const params = new URLSearchParams(window.location.search)
 const platform = params.get('platform') ?? ''
 const remoteId = params.get('remoteId') ?? ''
+
+/** WP64:本地 problem 主档 id(后端确定性映射 `<platform>:<remoteId>`,add/complete 均用它)。 */
+const reviewProblemId = `${platform}:${remoteId}`
 
 /**
  * WP41:题解排序——仅 LeetCode 系平台有排序能力(原版排序器即 LC 题解视图
@@ -284,6 +328,7 @@ onMounted(() => {
   void load()
   void loadSolutions()
   void injectCustomCss()
+  void loadReviewState()
   detachLoginResult = cqBridge().on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
   detachCreateResult = cqBridge().on(TOPIC_CHALLENGE_CREATE_RESULT, handleCreateResult)
 })
@@ -371,6 +416,23 @@ onUnmounted(() => {
           >
             {{ startPending ? '准备中…' : '一键开刷' }}
           </button>
+          <!-- WP64:加入复习两态(未排期可点;已排期显示首个到期日并禁用,add 幂等) -->
+          <button
+            type="button"
+            class="statement-header__review"
+            :disabled="reviewAdding || reviewScheduledFor !== null"
+            :title="reviewScheduledFor !== null ? '已加入间隔复习计划' : '加入间隔复习计划(1,4,7,14,28,60 天)'"
+            @click="handleAddReview"
+          >
+            {{
+              reviewScheduledFor !== null
+                ? `已排期至 ${formatEpochDay(reviewScheduledFor)}`
+                : reviewAdding
+                  ? '加入中…'
+                  : '加入复习'
+            }}
+          </button>
+          <span v-if="reviewError" class="statement-header__start-msg" role="alert">{{ reviewError }}</span>
           <span v-if="startMsg" class="statement-header__start-msg" role="alert">{{ startMsg }}</span>
           <a
             v-if="detail.url"
@@ -626,6 +688,24 @@ onUnmounted(() => {
 
 .statement-header__start:disabled {
   opacity: 0.55;
+  cursor: default;
+}
+
+/* WP64:加入复习按钮(主题色描边,与绿色「一键开刷」并排) */
+.statement-header__review {
+  padding: 1px 12px;
+  border: 1px solid var(--cq-accent);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.statement-header__review:disabled {
+  opacity: 0.75;
   cursor: default;
 }
 

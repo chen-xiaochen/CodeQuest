@@ -18,10 +18,14 @@
  * WP63(1.7.0 F1):难度评分呈现——行内评分列(五档文字着色:分差基准,无用户
  * 竞赛分退化绝对分档;显隐/着色模式持久化 localStorage)+ 评分区间本地过滤 +
  * 评分排序(循环切换)+ 账号区竞赛分徽标与「刷新评分」(在线刷新+重拉列表)。
+ * WP64(1.7.0 F3):「复习」第三子视图(ReviewPanel,三分组到期列表 + 间隔配置
+ * + 标记完成);tab 徽标 = 今日到期数(挂载时静默拉一次,面板刷新经 count-change
+ * 回同步;0 不显示)。
  */
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import SearchPanel from '../search/SearchPanel.vue'
+import ReviewPanel from './ReviewPanel.vue'
 import {
   TOPIC_AUTH_LOGIN,
   TOPIC_AUTH_LOGIN_RESULT,
@@ -38,6 +42,7 @@ import {
   fetchFavorites,
   fetchPlatforms,
   fetchProblems,
+  fetchReviewToday,
   fetchUserContest,
   refreshAuthStatus as requestAuthRefresh,
   refreshRating,
@@ -419,17 +424,31 @@ function handleLoginResult(payload: unknown): void {
 }
 
 // ---------------------------------------------------------------------
-// WP49:子视图切换(平台题库｜本地搜索;状态本地保持)
+// WP49:子视图切换(平台题库｜本地搜索;WP64 增「复习」;状态本地保持)
 // ---------------------------------------------------------------------
 
-type Subview = 'platform' | 'search'
+type Subview = 'platform' | 'search' | 'review'
 const subview = ref<Subview>('platform')
-/** 本地搜索子视图惰性挂载(首次切换才建),之后 v-show 保持组件状态。 */
+/** 本地搜索/复习子视图惰性挂载(首次切换才建),之后 v-show 保持组件状态。 */
 const searchMounted = ref(false)
+const reviewMounted = ref(false)
+
+/** WP64:今日到期数(tab 徽标;0 不显示;面板 complete/add 后经 count-change 回同步)。 */
+const reviewTodayCount = ref(0)
 
 function switchSubview(next: Subview): void {
   subview.value = next
   if (next === 'search') searchMounted.value = true
+  if (next === 'review') reviewMounted.value = true
+}
+
+/** 挂载时静默拉一次今日到期数供徽标(失败按 0,不门控页面)。 */
+async function loadReviewBadgeCount(): Promise<void> {
+  try {
+    reviewTodayCount.value = (await fetchReviewToday()).today.length
+  } catch {
+    reviewTodayCount.value = 0
+  }
 }
 
 function describeError(cause: unknown): string {
@@ -580,6 +599,9 @@ onMounted(async () => {
 
   // 异步静默恢复(POST /api/auth/refresh):不阻塞首屏,结果刷新账号区与门控
   void silentRestore()
+
+  // WP64:复习徽标计数(静默,失败按 0)
+  void loadReviewBadgeCount()
 })
 
 onUnmounted(() => {
@@ -665,6 +687,18 @@ onUnmounted(() => {
         @click="switchSubview('search')"
       >
         本地搜索
+      </button>
+      <!-- WP64:复习子视图入口(徽标 = 今日到期数,0 不显示,样式同账号区竞赛分徽标) -->
+      <button
+        type="button"
+        class="subviews__tab"
+        :class="{ 'subviews__tab--on': subview === 'review' }"
+        role="tab"
+        :aria-selected="subview === 'review'"
+        @click="switchSubview('review')"
+      >
+        复习
+        <span v-if="reviewTodayCount > 0" class="subviews__badge">{{ reviewTodayCount }}</span>
       </button>
     </div>
 
@@ -934,6 +968,13 @@ onUnmounted(() => {
 
     <!-- 本地搜索子视图(WP49 复用 SearchPanel;/search/ 独立路由同款) -->
     <SearchPanel v-if="searchMounted" v-show="subview === 'search'" />
+
+    <!-- 复习子视图(WP64;count-change 同步 tab 徽标) -->
+    <ReviewPanel
+      v-if="reviewMounted"
+      v-show="subview === 'review'"
+      @count-change="reviewTodayCount = $event"
+    />
   </AppShell>
 </template>
 
@@ -1166,6 +1207,17 @@ onUnmounted(() => {
 
 .subviews__tab:not(.subviews__tab--on):hover {
   color: var(--cq-fg);
+}
+
+/* WP64:复习 tab 今日到期徽标(同账号区竞赛分徽标风格) */
+.subviews__badge {
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--cq-accent-soft);
+  color: var(--cq-accent);
+  font-weight: 600;
+  font-size: 11px;
 }
 
 /* WP49:全未登录回落提示条 */

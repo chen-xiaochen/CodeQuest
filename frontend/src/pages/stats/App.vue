@@ -3,11 +3,14 @@
  * 刷题统计页(WP29 真实数据;WP50 中文化):`GET /api/stats` → 汇总卡片(总提交/
  * 通过数/AC 率/当前连续)+ GitHub 风格日历热力图(纯 CSS grid,亮/暗主题变量)+
  * 近 30 天趋势条形;空库友好占位。提交落库后经桥 `submission:updated` 推送本页刷新。
+ * WP64(1.7.0 F2):站内历史区——已同步条数(remoteSyncedCount)+「同步历史」
+ * 按钮(POST /api/submissions/sync 所选平台;成功/失败 toast,进行中防重入,
+ * 完成后重拉统计)。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_SUBMISSION_UPDATED, cqBridge } from '../../bridge/cq-bridge'
-import { ApiError } from '../../lib/api'
+import { ApiError, fetchPlatforms, syncSubmissions, type PlatformSummary } from '../../lib/api'
 import { fetchStats, type StatsResult } from './stats-api'
 
 const bridge = cqBridge()
@@ -15,6 +18,55 @@ const bridge = cqBridge()
 const stats = ref<StatsResult | null>(null)
 const loading = ref(false)
 const error = ref('')
+
+// ---------------------------------------------------------------------------
+// WP64:站内历史同步(remoteSyncedCount 呈现 + 同步按钮)
+// ---------------------------------------------------------------------------
+
+const platforms = ref<PlatformSummary[]>([])
+/** 同步目标平台(默认 leetcode,无则首项;站内历史目前仅 LC 系支持)。 */
+const syncPlatform = ref('')
+const syncing = ref(false)
+const syncNotice = ref('')
+const syncNoticeKind = ref<'ok' | 'error'>('ok')
+let syncToastTimer: ReturnType<typeof setTimeout> | null = null
+
+/** toast 语义:短暂提示后自动消失(同键新提示覆盖旧计时,照题库页 rating toast)。 */
+function showSyncNotice(kind: 'ok' | 'error', text: string): void {
+  syncNoticeKind.value = kind
+  syncNotice.value = text
+  if (syncToastTimer !== null) clearTimeout(syncToastTimer)
+  syncToastTimer = setTimeout(() => {
+    syncNotice.value = ''
+    syncToastTimer = null
+  }, 4000)
+}
+
+/** 平台清单为附属能力:拉取失败留空(无选项时同步按钮禁用)。 */
+async function loadPlatforms(): Promise<void> {
+  try {
+    platforms.value = await fetchPlatforms()
+    syncPlatform.value =
+      platforms.value.find((entry) => entry.id === 'leetcode')?.id ?? platforms.value[0]?.id ?? ''
+  } catch {
+    platforms.value = []
+  }
+}
+
+/** 同步所选平台站内历史:成功 toast 条数 + 重拉统计;失败 toast 后端消息;防重入。 */
+async function handleSync(): Promise<void> {
+  if (syncing.value || !syncPlatform.value) return
+  syncing.value = true
+  try {
+    const result = await syncSubmissions(syncPlatform.value)
+    showSyncNotice('ok', `同步完成:新入库 ${result.synced} 条,站内共 ${result.total} 条`)
+    await load()
+  } catch (cause) {
+    showSyncNotice('error', `同步失败:${describeError(cause)}`)
+  } finally {
+    syncing.value = false
+  }
+}
 
 function describeError(cause: unknown): string {
   if (cause instanceof ApiError) {
@@ -47,12 +99,17 @@ function onSubmissionUpdated(): void {
 let offBridge: (() => void) | null = null
 onMounted(() => {
   void load()
+  void loadPlatforms()
   offBridge = bridge.on(TOPIC_SUBMISSION_UPDATED, onSubmissionUpdated)
 })
 
 onUnmounted(() => {
   offBridge?.()
   offBridge = null
+  if (syncToastTimer !== null) {
+    clearTimeout(syncToastTimer)
+    syncToastTimer = null
+  }
 })
 
 const isEmpty = computed(() => (stats.value?.summary.totalSubmissions ?? 0) === 0)
@@ -143,6 +200,34 @@ const trendHeight = (count: number): string => `${Math.round((count / trendMax.v
 
 <template>
   <AppShell title="统计" subtitle="本地提交历史的刷题统计、热力图与趋势。">
+    <!-- WP64:站内历史同步区(统计加载后常驻,空库态也可同步;自含 v-if 不入下方状态链) -->
+    <section v-if="stats" class="remote-sync" aria-label="站内提交历史">
+      <span class="remote-sync__count">
+        站内历史:已同步 {{ stats.remoteSyncedCount ?? 0 }} 条
+      </span>
+      <select v-if="platforms.length > 0" v-model="syncPlatform" aria-label="同步平台">
+        <option v-for="entry in platforms" :key="entry.id" :value="entry.id">
+          {{ entry.displayName }}
+        </option>
+      </select>
+      <button
+        type="button"
+        class="remote-sync__btn"
+        :disabled="syncing || !syncPlatform"
+        @click="handleSync"
+      >
+        {{ syncing ? '同步中…' : '同步历史' }}
+      </button>
+    </section>
+    <p
+      v-if="syncNotice"
+      class="remote-sync__toast"
+      :class="`remote-sync__toast--${syncNoticeKind}`"
+      role="status"
+    >
+      {{ syncNotice }}
+    </p>
+
     <p v-if="error" class="state state--error" role="alert">
       {{ error }}
       <button type="button" class="state__retry" @click="reload">重试</button>
@@ -255,6 +340,70 @@ const trendHeight = (count: number): string => `${Math.round((count / trendMax.v
 </template>
 
 <style scoped>
+/* WP64:站内历史同步区(计数 + 平台下拉 + 同步按钮) */
+.remote-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel);
+}
+
+.remote-sync__count {
+  font-size: 12px;
+  color: var(--cq-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.remote-sync select {
+  padding: 3px 8px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+}
+
+.remote-sync__btn {
+  padding: 3px 14px;
+  border: 1px solid var(--cq-accent);
+  border-radius: 6px;
+  background: var(--cq-accent);
+  color: var(--cq-accent-fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.remote-sync__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.remote-sync__toast {
+  margin: 0 0 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel);
+  font-size: 12px;
+  color: var(--cq-fg);
+}
+
+.remote-sync__toast--ok {
+  border-color: var(--cq-success);
+  color: var(--cq-success);
+}
+
+.remote-sync__toast--error {
+  border-color: var(--cq-danger);
+  color: var(--cq-danger);
+}
+
 .state {
   margin: 16px 0;
   padding: 10px 12px;
