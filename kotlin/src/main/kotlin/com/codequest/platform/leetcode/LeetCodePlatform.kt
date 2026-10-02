@@ -33,13 +33,15 @@ import com.codequest.spi.SubmitRequest
 import com.codequest.spi.TestEvaluationCapable
 import com.codequest.spi.TestRunRequest
 import com.codequest.spi.TestRunStatus
+import com.codequest.spi.UserContestCapable
+import com.codequest.spi.UserContestRanking
 import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现八个能力接口并按服务拆分委托:
+ * (身份差异见 [LeetCodeVariant]),组合实现九个能力接口并按服务拆分委托:
  * auth / problem / company(WP42)/ favorite(WP56)/ submission / solutions /
- * submission detail(WP36)/ test evaluation(WP53)。
+ * submission detail(WP36)/ test evaluation(WP53)/ user contest(1.7.0 F1)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -54,7 +56,8 @@ class LeetCodePlatform(
     SubmissionCapable,
     SolutionViewCapable,
     SubmissionDetailCapable,
-    TestEvaluationCapable {
+    TestEvaluationCapable,
+    UserContestCapable {
     private val api = LeetCodeApi(variant, transport)
     private val auth = LeetCodeAuth(variant, api, transport, credentialStore, cookiePrompt)
     private val problemService = LeetCodeProblemService(variant, api)
@@ -128,6 +131,16 @@ class LeetCodePlatform(
     ): String? = submissionService.submissionViewUrl(remoteSubmissionId, problemRemoteId)
 
     override fun watchTestRun(request: TestRunRequest): Flow<TestRunStatus> = testEvaluationService.watchTestRun(request)
+
+    /** 1.7.0 F1:登录用户的竞赛分(评分着色基准);未登录/无 userSlug/未参赛 → null。 */
+    override suspend fun fetchUserContestRanking(): UserContestRanking? {
+        val status = api.fetchUserStatus()
+        if (!status.isSignedIn) return null
+        val userSlug = status.userSlug ?: status.username ?: return null
+        return api.fetchUserContestRankingInfo(userSlug)?.let {
+            UserContestRanking(rating = it.rating, attendedContestsCount = it.attendedContestsCount)
+        }
+    }
 }
 
 /** leetcode.com 注册(plugin.xml `<ojPlatformProvider implementation=.../>`)。 */

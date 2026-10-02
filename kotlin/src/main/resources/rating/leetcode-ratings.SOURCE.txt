@@ -1,0 +1,4 @@
+Source: https://zerotrac.github.io/leetcode_problem_rating/data.json
+Fetched: 2026-10-02
+Format: flattened {"<frontendQuestionId>": rating} map, derived from zerotrac array items {"ID": int, "Rating": float, ...}
+Note: build-time manual update, offline fallback only; POST /api/rating/refresh pulls the live data.

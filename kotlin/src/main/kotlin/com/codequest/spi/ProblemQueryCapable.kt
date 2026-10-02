@@ -84,6 +84,12 @@ data class ProblemSummary(
      * null(缺省)。与本地提交聚合在端点层取最高(AC > TRIED > UNSOLVED)。
      */
     val solvedOnPlatform: Boolean? = null,
+    /**
+     * 平台侧题号字符串(1.7.0 F1):LC 列表协议 `questionFrontendId`(CN/COM 列表、
+     * 公司/题单、学习计划均已解析)——难度评分按此 key 关联。其他平台无稳定题号
+     * 概念(CF "1927A" 已是 remoteId 本身),恒 null(缺省)。
+     */
+    val frontendQuestionId: String? = null,
 )
 
 /**

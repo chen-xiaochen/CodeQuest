@@ -178,5 +178,7 @@ class LeetCodeProblemService(
             // true(站内已解);其余一律 null(未解,不参与合并)。「已尝试」只来自
             // 本地提交记录,避免全库误标 TRIED。对齐原版状态列语义。
             solvedOnPlatform = status?.takeIf { it.equals("ac", ignoreCase = true) }?.let { true },
+            // 1.7.0 F1:题号透传(评分装饰按 frontendQuestionId 关联;列表/公司/题单/学习计划共用本映射)
+            frontendQuestionId = frontendQuestionId.takeIf { it.isNotEmpty() },
         )
 }

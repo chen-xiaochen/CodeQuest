@@ -15,6 +15,7 @@ import com.codequest.core.model.TagId
 import com.codequest.infra.db.ProblemStatusStore
 import com.codequest.infra.db.ProblemStore
 import com.codequest.infra.db.SolveStatus
+import com.codequest.infra.rating.RatingService
 import com.codequest.spi.CompanyQueryCapable
 import com.codequest.spi.FavoriteQueryCapable
 import com.codequest.spi.OJPlatform
@@ -60,6 +61,8 @@ class ProblemApi(
     private val platforms: () -> List<OJPlatform> = OJPlatformRegistry::all,
     private val json: Json = DEFAULT_JSON,
     private val now: () -> Instant = Instant::now,
+    /** 1.7.0 F1:难度评分装饰源(内存 Map 按 frontendQuestionId 查);null = 未装配,行 rating 恒 null。 */
+    private val ratings: RatingService? = null,
 ) {
     /** `/api/platforms`:返回实现了 [ProblemQueryCapable] 的平台(题目列表页数据源)。 */
     fun listPlatforms(): ProblemApiResponse =
@@ -242,6 +245,8 @@ class ProblemApi(
         // 1.2.1 修复反馈:与平台侧已解状态取最高合并(力扣站内已解的题,即便从未在
         // 插件内提交,也如实显示 AC)
         val statusById = statuses().statuses(items.map { problemId(platform.id, it.remoteId) })
+        // 1.7.0 F1:难度评分装饰(普通/公司/题单三模式共用本收尾;按题号查内存 Map,
+        // 无分或平台无题号概念为 null)——装饰在 infra REST 层,platform 不 import infra
         return ok(
             ProblemListResponseDto(
                 platform = platform.id.value,
@@ -251,6 +256,7 @@ class ProblemApi(
                     items.map {
                         it.toDto(
                             mergeSolveStatus(statusById[problemId(platform.id, it.remoteId)], it.solvedOnPlatform),
+                            ratings?.get(it.frontendQuestionId),
                         )
                     },
                 hasMore = items.size == limit,
@@ -520,17 +526,20 @@ internal fun problemId(
 /** 确定性标签 id:同名标签跨平台共享一行(主档 save 为全量替换,幂等)。 */
 private fun toTag(info: com.codequest.spi.TagInfo) = Tag(TagId("tag:${info.name}"), info.name, info.slug, info.nameCn)
 
-private fun com.codequest.spi.ProblemSummary.toDto(status: SolveStatus) =
-    ProblemItemDto(
-        remoteId = remoteId,
-        title = title,
-        titleSecondary = titleSecondary,
-        difficulty = difficulty.value,
-        url = url,
-        tags = tags.map { ProblemTagDto(name = it.name, nameCn = it.nameCn) },
-        status = status,
-        paidOnly = paidOnly,
-    )
+private fun com.codequest.spi.ProblemSummary.toDto(
+    status: SolveStatus,
+    rating: Double? = null,
+) = ProblemItemDto(
+    remoteId = remoteId,
+    title = title,
+    titleSecondary = titleSecondary,
+    difficulty = difficulty.value,
+    url = url,
+    tags = tags.map { ProblemTagDto(name = it.name, nameCn = it.nameCn) },
+    status = status,
+    paidOnly = paidOnly,
+    rating = rating,
+)
 
 private fun Problem.toDetailDto(
     detail: ProblemDetail,
@@ -590,6 +599,11 @@ private data class ProblemItemDto(
      * 无此概念的平台缺省 false),端点原样转发。
      */
     val paidOnly: Boolean,
+    /**
+     * 1.7.0 F1:难度评分(zerotrac 口径,RatingService 内存 Map 按
+     * frontendQuestionId 查);非 LC 平台/无评分题目为 null(不着色、不参与区间过滤)。
+     */
+    val rating: Double? = null,
 )
 
 /** 公司标签清单响应(WP42,`/api/companies`)。 */

@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -127,6 +128,39 @@ class LeetCodeApi(
                     ?: throw OJException("LeetCode userStatus 缺少 isSignedIn"),
             username = status["username"]?.jsonPrimitive?.contentOrNullIfNull(),
             userSlug = status["userSlug"]?.jsonPrimitive?.contentOrNullIfNull(),
+        )
+    }
+
+    // -------------------------------------------------------------------
+    // 用户竞赛分(1.7.0 F1)
+    // -------------------------------------------------------------------
+
+    /** 竞赛分快照(评分着色基准;仅取 [com.codequest.spi.UserContestRanking] 所需字段)。 */
+    data class LeetCodeUserContestRanking(
+        val rating: Double,
+        val attendedContestsCount: Int,
+    )
+
+    /**
+     * 操作 `userContestRankingInfo` → data.userContestRanking(1.7.0 F1;[userSlug] 取
+     * 登录态 userStatus 的 userSlug ?: username,两站点变量名同为 userSlug)。
+     * 未参赛时该字段为 null → 返回 null(未登录也可能走 GraphQL errors 信封抛
+     * [OJException],由消费方降级)。
+     */
+    suspend fun fetchUserContestRankingInfo(userSlug: String): LeetCodeUserContestRanking? {
+        val variables =
+            buildJsonObject {
+                put("userSlug", userSlug)
+            }
+        val data = graphql("userContestRankingInfo", LeetCodeGraphQL.USER_CONTEST_RANKING_INFO, variables)
+        val ranking = data["userContestRanking"] as? JsonObject ?: return null
+        return LeetCodeUserContestRanking(
+            rating =
+                ranking["rating"]?.jsonPrimitive?.doubleOrNull
+                    ?: throw OJException("LeetCode userContestRankingInfo 缺少 rating: $ranking"),
+            attendedContestsCount =
+                ranking["attendedContestsCount"]?.jsonPrimitive?.intOrNull
+                    ?: throw OJException("LeetCode userContestRankingInfo 缺少 attendedContestsCount: $ranking"),
         )
     }
 

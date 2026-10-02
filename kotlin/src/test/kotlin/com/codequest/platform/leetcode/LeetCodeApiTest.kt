@@ -21,6 +21,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -120,6 +121,44 @@ class LeetCodeApiTest {
         // csrf:先 GET /api/home/ 种 cookie,再读出作 x-csrftoken 头(旧实现 commonHeaders)
         assertEquals("csrf-test", record.headers["x-csrftoken"])
         assertEquals("https://leetcode.com/", record.headers["Referer"])
+    }
+
+    // -------------------------------------------------------------------
+    // 用户竞赛分(1.7.0 F1)
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `userContestRankingInfo builds query per protocol and parses`() = runBlocking {
+        graphqlResponses["userContestRankingInfo"] =
+            """
+            {"data":{"userContestRanking":{"attendedContestsCount":42,"rating":1875.3,
+              "globalRanking":12034,"topPercentage":7.25}}}
+            """.trimIndent()
+
+        val ranking = api.fetchUserContestRankingInfo("alice-s")
+
+        assertEquals(1875.3, ranking!!.rating)
+        assertEquals(42, ranking.attendedContestsCount)
+
+        val record = graphqlRecord("userContestRankingInfo")
+        assertEquals(LeetCodeGraphQL.USER_CONTEST_RANKING_INFO, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("alice-s", variablesOf(record)["userSlug"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `userContestRankingInfo never attended yields null`() = runBlocking {
+        // 未参赛:字段为 null(协议事实,非缺字段错误)
+        graphqlResponses["userContestRankingInfo"] = """{"data":{"userContestRanking":null}}"""
+
+        assertNull(api.fetchUserContestRankingInfo("alice-s"))
+    }
+
+    @Test
+    fun `userContestRankingInfo unauthenticated surfaces as OJException`() = runBlocking {
+        // 未登录:站点走 GraphQL errors 信封(data 为 null)——API 层如实抛,REST 消费方降级双 null
+        graphqlResponses["userContestRankingInfo"] = """{"errors":[{"message":"You are not signed in"}],"data":null}"""
+
+        assertFailsWith<OJException> { api.fetchUserContestRankingInfo("alice-s") }
     }
 
     // -------------------------------------------------------------------

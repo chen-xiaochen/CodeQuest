@@ -37,6 +37,8 @@ import java.util.logging.Logger
  *   `GET /api/problem/{remoteId}/solutions/{sid}?platform=`;
  *   统计端点(WP29,经 [statsApi] 注入后启用):`GET /api/stats?platform=&days=`;
  *   检索端点(WP30,经 [searchApi] 注入后启用):`GET /api/search`、`GET /api/tags`;
+ *   评分端点(1.7.0 F1,经 [ratingApi] 注入后启用):`GET /api/rating/status`、
+ *   `POST /api/rating/refresh`、`GET /api/rating/user-contest?platform=`;
  *   自定义 CSS 端点(WP39,经 [customCss] provider 注入):`GET /api/custom.css`
  *   返回 text/css(未设置空体);
  *   其余骨架 404
@@ -54,6 +56,9 @@ class ResourceHttpServer(
     private val statsApi: StatisticsApi? = null,
     private val searchApi: SearchApi? = null,
     private val authApi: AuthApi? = null,
+    /** 评分端点(1.7.0 F1,经 [ratingApi] 注入后启用):`GET /api/rating/status`、
+     *  `POST /api/rating/refresh`、`GET /api/rating/user-contest?platform=`。 */
+    private val ratingApi: RatingApi? = null,
     /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
     private val customCss: () -> String = { "" },
 ) {
@@ -184,6 +189,7 @@ class ResourceHttpServer(
                         { handleTestCaseRoutes(exchange, path, query) },
                         { handleLocalDataRoutes(exchange, path, query) },
                         { handleCatalogRoutes(exchange, path, query) },
+                        { handleRatingRoutes(exchange, path, query) },
                     )
                 if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
@@ -339,6 +345,48 @@ class ResourceHttpServer(
             }
         }
         return true
+    }
+
+    /** 评分端点路由家族(1.7.0 F1 状态/刷新/用户竞赛分;形态同 [handleLocalDataRoutes])。 */
+    private fun handleRatingRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        val method = exchange.requestMethod.uppercase()
+        when {
+            path == "/api/rating/status" && exchange.isGet() -> {
+                runRatingApi(exchange) { api -> api.status() }
+            }
+
+            path == "/api/rating/refresh" && method == "POST" -> {
+                runRatingApi(exchange) { api -> api.refresh() }
+            }
+
+            path == "/api/rating/user-contest" && exchange.isGet() -> {
+                runRatingApi(exchange) { api -> api.userContest(query) }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 执行 [RatingApi] 调用并回写应答(形态同 [runProblemApi])。 */
+    private fun runRatingApi(
+        exchange: HttpExchange,
+        block: suspend (RatingApi) -> ProblemApiResponse,
+    ) {
+        val api = ratingApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
     }
 
     /** 本地库数据端点路由(WP29 stats / WP30 search;形态同 [handleContestRoutes])。 */

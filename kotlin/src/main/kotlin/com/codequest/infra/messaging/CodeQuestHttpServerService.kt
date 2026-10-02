@@ -24,14 +24,22 @@ class CodeQuestHttpServerService(
 ) : Disposable {
     private val logger = Logger.getLogger(CodeQuestHttpServerService::class.java.name)
 
+    /** 1.7.0 F1:难度评分服务(内存快照;仓库按调用解析,切库后手动刷新即生效)。 */
+    private val ratingService =
+        com.codequest.infra.rating.RatingService(
+            ratings = { project.getService(DatabaseManager::class.java).ratingRepository },
+        )
+
     val httpServer: ResourceHttpServer =
         ResourceHttpServer(
             // WP20:题目数据端点——平台经 SPI 注册表,存储按请求解析(数据库切换即时生效);
-            // WP37:列表项附刷题状态(本地聚合,store 按请求解析)
+            // WP37:列表项附刷题状态(本地聚合,store 按请求解析);
+            // 1.7.0 F1:列表行附难度评分(RatingService 内存 Map 装饰)
             problemApi =
                 ProblemApi(
                     store = { project.getService(DatabaseManager::class.java).problemStore },
                     statuses = { project.getService(DatabaseManager::class.java).problemStatusStore },
+                    ratings = ratingService,
                 ),
             // WP21:提交记录端点——本地库分页查询,同样按请求解析(切库即时生效)
             submissionsApi =
@@ -73,6 +81,12 @@ class CodeQuestHttpServerService(
             // WP39:题面自定义 CSS——按请求现读项目设置(settings 在 infra,同层引用),
             // 改设置后无需重启,题面页下次加载拉到新值
             customCss = { CodeQuestSettings.getInstance(project).state.customCss },
+            // 1.7.0 F1:评分端点(状态/在线刷新/用户竞赛分;用户竞赛分经 SPI 注册表
+            // 解析 UserContestCapable 平台,与其他平台族端点同法)
+            ratingApi =
+                RatingApi(
+                    ratings = ratingService,
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

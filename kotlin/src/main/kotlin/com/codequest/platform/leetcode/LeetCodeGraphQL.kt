@@ -24,6 +24,20 @@ internal object LeetCodeGraphQL {
         }
         """.trimIndent()
 
+    /**
+     * 用户竞赛分(userContestRankingInfo,1.7.0 F1;两站点同构,变量名均 userSlug)。
+     * 仅取评分着色所需两字段;未参赛/未登录时 `userContestRanking` 字段为 null。
+     */
+    val USER_CONTEST_RANKING_INFO: String =
+        """
+        query userContestRankingInfo(${'$'}userSlug: String!) {
+          userContestRanking(userSlug: ${'$'}userSlug) {
+            attendedContestsCount
+            rating
+          }
+        }
+        """.trimIndent()
+
     /** 题目详情(questionData.graphql,两站点同构;content 为 HTML)。 */
     val QUESTION_DATA: String =
         """
