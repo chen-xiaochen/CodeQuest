@@ -32,6 +32,8 @@ export interface ProblemListItem {
   difficulty: string
   url: string
   tags: ProblemTag[]
+  /** 1.7.0:难度评分(zerotrac 竞赛分,RatingService 装饰);非竞赛题/非 LC 平台 null。 */
+  rating?: number | null
 }
 
 export interface ProblemListResult {
@@ -589,4 +591,57 @@ export async function fetchCustomCss(): Promise<string> {
   const response = await fetch('/api/custom.css')
   if (!response.ok) return ''
   return response.text()
+}
+
+// ---------------------------------------------------------------------------
+// 1.7.0 F1:难度评分(RatingService 端点:快照状态/在线刷新/用户竞赛分)
+// ---------------------------------------------------------------------------
+
+/** 评分快照状态(/api/rating/status;source: db=库快照/bundled=内置资源/empty=双空)。 */
+export interface RatingStatusResult {
+  source: 'db' | 'bundled' | 'empty'
+  count: number
+  /** ISO-8601;仅在线刷新后有意义。 */
+  updatedAt?: string | null
+}
+
+export function fetchRatingStatus(): Promise<RatingStatusResult> {
+  return getJson<RatingStatusResult>('/api/rating/status')
+}
+
+/** 在线刷新结果(POST /api/rating/refresh;拉 zerotrac 覆盖 DB 并重载内存)。 */
+export interface RatingRefreshResult {
+  count: number
+  updatedAt?: string | null
+}
+
+export function refreshRating(): Promise<RatingRefreshResult> {
+  return sendJson<RatingRefreshResult>('/api/rating/refresh', 'POST')
+}
+
+/** 用户竞赛分(未登录/未参赛/查询失败一律双 null,着色退化绝对分档)。 */
+export interface UserContestResult {
+  rating: number | null
+  attendedContestsCount: number | null
+}
+
+/** 会话级缓存(单槽模块变量;平台切换即失效重拉,登录态变化手动 clear)。 */
+let userContestCache: { platform: string; result: UserContestResult } | null = null
+
+export function fetchUserContest(platform: string): Promise<UserContestResult> {
+  if (userContestCache?.platform === platform) {
+    return Promise.resolve(userContestCache.result)
+  }
+  const params = new URLSearchParams({ platform })
+  return getJson<UserContestResult>(`/api/rating/user-contest?${params.toString()}`).then(
+    (result) => {
+      userContestCache = { platform, result }
+      return result
+    },
+  )
+}
+
+/** 清空用户竞赛分会话缓存(登录/登出/在线刷新评分后重拉)。 */
+export function clearUserContestCache(): void {
+  userContestCache = null
 }

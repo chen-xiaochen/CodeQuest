@@ -40,6 +40,13 @@
   --cq-diff-expert: var(--jb-diff-expert, #b35900);
   --cq-diff-other: var(--jb-diff-other, #59636e);
 
+  /* ---- 评分着色五档(1.7.0;秒杀绿/热身蓝/普通紫/吃力黄/劝退红,评分列文字色) ---- */
+  --cq-rating-instant: #1a7f37;
+  --cq-rating-warmup: #0550ae;
+  --cq-rating-normal: #8250df;
+  --cq-rating-strain: #9a6700;
+  --cq-rating-retreat: #cf222e;
+
   /* ---- 代码高亮(highlight.js token,亮色) ---- */
   --cq-hl-keyword: #cf222e;
   --cq-hl-string: #0a3069;
@@ -73,6 +80,12 @@
   --cq-diff-advanced: var(--jb-diff-advanced, #b189ff);
   --cq-diff-expert: var(--jb-diff-expert, #ff9e64);
   --cq-diff-other: var(--jb-diff-other, #9da0a8);
+
+  --cq-rating-instant: #5fb865;
+  --cq-rating-warmup: #79c0ff;
+  --cq-rating-normal: #b189ff;
+  --cq-rating-strain: #e0a33e;
+  --cq-rating-retreat: #f75464;
 
   --cq-hl-keyword: #ff7b72;
   --cq-hl-string: #a5d6ff;

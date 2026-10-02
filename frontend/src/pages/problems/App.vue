@@ -15,8 +15,11 @@
  * 全未登录回落力扣中国并提示;③加载时序——先 GET status 瞬时渲染,再异步 POST
  * refresh 静默恢复重启前登录态;④「平台题库｜本地搜索」子视图切换(本地搜索
  * 复用 SearchPanel,状态本地保持);⑤文案中文化。
+ * WP63(1.7.0 F1):难度评分呈现——行内评分列(五档文字着色:分差基准,无用户
+ * 竞赛分退化绝对分档;显隐/着色模式持久化 localStorage)+ 评分区间本地过滤 +
+ * 评分排序(循环切换)+ 账号区竞赛分徽标与「刷新评分」(在线刷新+重拉列表)。
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import SearchPanel from '../search/SearchPanel.vue'
 import {
@@ -29,20 +32,35 @@ import {
 } from '../../bridge/cq-bridge'
 import {
   ApiError,
+  clearUserContestCache,
   fetchAuthStatus,
   fetchCompanies,
   fetchFavorites,
   fetchPlatforms,
   fetchProblems,
+  fetchUserContest,
   refreshAuthStatus as requestAuthRefresh,
+  refreshRating,
   type AuthStatusItem,
   type CompanySummary,
   type FavoritesResult,
   type PlatformSummary,
   type ProblemListItem,
   type ProblemTag,
+  type UserContestResult,
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
+import {
+  RATING_TONE_LABELS,
+  filterByRating,
+  formatRating,
+  ratingTone,
+  sortByRating,
+  type RatingColorMode,
+  type RatingFields,
+  type RatingSortOrder,
+  type RatingTone,
+} from '../../lib/lcRatingColor'
 import { LC_TAGS, lcTagName } from '../../lib/lcTags'
 import {
   filterByStatus,
@@ -69,6 +87,22 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   easy: '简单',
   medium: '中等',
   hard: '困难',
+}
+
+/** WP63:评分列显隐/着色模式持久化键(localStorage;读写带 try/catch 同 theme.ts 惯例)。 */
+const RATING_COLUMN_KEY = 'cq-problems-rating-column'
+const RATING_COLOR_KEY = 'cq-problems-rating-color-mode'
+/** 着色模式三选(默认分差;分差基准 = 用户竞赛分)。 */
+const RATING_COLOR_MODES: Array<{ value: RatingColorMode; label: string }> = [
+  { value: 'diff', label: '分差' },
+  { value: 'absolute', label: '绝对' },
+  { value: 'off', label: '关闭' },
+]
+/** 排序循环三态(默认序 → 升序 → 降序;本地视图态,不持久化)。 */
+const RATING_SORT_LABELS: Record<RatingSortOrder, string> = {
+  '': '默认序',
+  'rating-asc': '评分↑',
+  'rating-desc': '评分↓',
 }
 
 const bridge = cqBridge()
@@ -120,8 +154,135 @@ function toggleTag(slug: string): void {
   reload()
 }
 
-/** WP37:本地过滤后的可见行(仅作用于已加载项;不发请求、不影响分页游标)。 */
-const visibleItems = computed(() => filterByStatus(items.value, statusFilter.value))
+// ---------------------------------------------------------------------
+// WP63:评分呈现(列显隐/着色模式持久化、区间过滤、排序、用户竞赛分、在线刷新)
+// ---------------------------------------------------------------------
+
+function readRatingSetting<T extends string>(key: string, valid: ReadonlyArray<T>, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key)
+    return valid.includes(value as T) ? (value as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeRatingSetting(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // 隐私模式等 localStorage 不可用场景:仅影响记忆,不影响本次切换
+  }
+}
+
+/** 评分列显隐(默认显示)与着色模式(默认分差),localStorage 持久化。 */
+const showRatingColumn = ref(readRatingSetting(RATING_COLUMN_KEY, ['1', '0'] as const, '1') === '1')
+const ratingColorMode = ref<RatingColorMode>(
+  readRatingSetting(RATING_COLOR_KEY, ['diff', 'absolute', 'off'] as const, 'diff'),
+)
+watch(showRatingColumn, (visible) => writeRatingSetting(RATING_COLUMN_KEY, visible ? '1' : '0'))
+watch(ratingColorMode, (mode) => writeRatingSetting(RATING_COLOR_KEY, mode))
+
+/** 评分区间输入('' = 不限;type=number 时 v-model 自动转数,故并收 number)。 */
+const ratingMin = ref<string | number>('')
+const ratingMax = ref<string | number>('')
+/** 评分排序('' = 默认序;本地排序,仅已加载项)。 */
+const ratingSort = ref<RatingSortOrder>('')
+
+const ratingBounds = computed(() => {
+  const parse = (raw: string | number): number | null => {
+    if (raw === '') return null
+    const value = Number(raw)
+    return Number.isFinite(value) ? value : null
+  }
+  return { min: parse(ratingMin.value), max: parse(ratingMax.value) }
+})
+
+const ratingRangeActive = computed(
+  () => ratingBounds.value.min !== null || ratingBounds.value.max !== null,
+)
+
+function cycleRatingSort(): void {
+  ratingSort.value =
+    ratingSort.value === '' ? 'rating-asc' : ratingSort.value === 'rating-asc' ? 'rating-desc' : ''
+}
+
+/** 当前着色设置下该行档位(off/无分 → null);分差模式无用户竞赛分自动退化绝对档。 */
+function activeRatingTone(item: RatingFields): RatingTone | null {
+  if (ratingColorMode.value === 'off') return null
+  const userRating =
+    ratingColorMode.value === 'diff' ? (userContest.value?.rating ?? null) : null
+  return ratingTone(item.rating ?? null, userRating)
+}
+
+function ratingToneClass(item: RatingFields): string {
+  const tone = activeRatingTone(item)
+  return tone === null ? '' : `rating-num--${tone}`
+}
+
+function ratingTitle(item: RatingFields): string {
+  const tone = activeRatingTone(item)
+  return tone === null ? '无评分' : `评分 ${formatRating(item.rating)}(${RATING_TONE_LABELS[tone]})`
+}
+
+/** 用户竞赛分(着色基准;LC 系平台拉取,失败/双 null 静默降级绝对分档)。 */
+const userContest = ref<UserContestResult | null>(null)
+const ratingRefreshing = ref(false)
+const ratingNotice = ref('')
+const ratingNoticeKind = ref<'ok' | 'error'>('ok')
+let ratingToastTimer: ReturnType<typeof setTimeout> | null = null
+
+/** toast 语义:短暂提示后自动消失(同键新提示覆盖旧计时)。 */
+function showRatingNotice(kind: 'ok' | 'error', text: string): void {
+  ratingNoticeKind.value = kind
+  ratingNotice.value = text
+  if (ratingToastTimer !== null) clearTimeout(ratingToastTimer)
+  ratingToastTimer = setTimeout(() => {
+    ratingNotice.value = ''
+    ratingToastTimer = null
+  }, 4000)
+}
+
+async function loadUserContest(): Promise<void> {
+  if (!isLeetCode.value) {
+    userContest.value = null
+    return
+  }
+  try {
+    userContest.value = await fetchUserContest(platform.value)
+  } catch {
+    userContest.value = null
+  }
+}
+
+/** 在线刷新评分:成功 toast + 清缓存重拉竞赛分 + 重拉列表;失败 toast 错误;进行中防重入。 */
+async function handleRefreshRating(): Promise<void> {
+  if (ratingRefreshing.value) return
+  ratingRefreshing.value = true
+  try {
+    const result = await refreshRating()
+    showRatingNotice('ok', `评分已刷新,共 ${result.count} 条`)
+    clearUserContestCache()
+    await loadUserContest()
+    reload()
+  } catch (cause) {
+    showRatingNotice('error', `刷新评分失败:${describeError(cause)}`)
+  } finally {
+    ratingRefreshing.value = false
+  }
+}
+
+/** WP37/WP63:本地过滤+排序后的可见行(状态 → 评分区间 → 评分排序;仅作用于已加载项)。 */
+const visibleItems = computed(() =>
+  sortByRating(
+    filterByRating(
+      filterByStatus(items.value, statusFilter.value),
+      ratingBounds.value.min,
+      ratingBounds.value.max,
+    ),
+    ratingSort.value,
+  ),
+)
 
 /** 浏览链路登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
 const loginPending = ref(false)
@@ -223,12 +384,14 @@ async function silentRestore(): Promise<void> {
   }
 }
 
-/** 登出结果:回执平台清进行中标记并重拉两接口。 */
+/** 登出结果:回执平台清进行中标记并重拉两接口(竞赛分缓存随登录态失效)。 */
 function handleLogoutResult(payload: unknown): void {
   const result = payload as { platform?: string }
   if (!result || result.platform !== authPending.value) return
   authPending.value = ''
   void reloadAuthAndPlatforms()
+  clearUserContestCache()
+  void loadUserContest()
 }
 
 /** 浏览链路登录入口(1.0.x):Kotlin 弹平台登录对话框,结果经 auth:login-result 回推。 */
@@ -238,7 +401,7 @@ function requestLogin(): void {
   bridge.send(TOPIC_AUTH_LOGIN, { platform: platform.value })
 }
 
-/** 登录结果:重拉两接口 + 当前平台重载列表(登录态已注入 cookie)。 */
+/** 登录结果:重拉两接口 + 当前平台重载列表(登录态已注入 cookie,竞赛分重拉)。 */
 function handleLoginResult(payload: unknown): void {
   const result = payload as { ok?: boolean; platform?: string }
   if (!result) return
@@ -246,6 +409,8 @@ function handleLoginResult(payload: unknown): void {
     authPending.value = ''
   }
   void reloadAuthAndPlatforms()
+  clearUserContestCache()
+  void loadUserContest()
   if (result.platform !== platform.value) return
   loginPending.value = false
   if (result.ok) {
@@ -335,13 +500,15 @@ async function refreshFavorites(): Promise<void> {
   }
 }
 
-/** 平台切换:公司/题单选择与期间归位(两组集合随平台变),再刷新清单与列表。 */
+/** 平台切换:公司/题单选择与期间归位(两组集合随平台变),再刷新清单与列表
+ * (WP63:竞赛分缓存按平台 key 失效,切换即重拉;状态/评分本地筛选随平台保留)。 */
 async function handlePlatformChange(): Promise<void> {
   company.value = ''
   period.value = DEFAULT_PERIOD
   favorite.value = ''
   selectedTags.value = []
   await Promise.all([refreshCompanies(), refreshFavorites()])
+  void loadUserContest()
   reload()
 }
 
@@ -372,6 +539,9 @@ function resetFilters(): void {
   company.value = ''
   favorite.value = ''
   selectedTags.value = []
+  ratingMin.value = ''
+  ratingMax.value = ''
+  ratingSort.value = ''
   reload()
 }
 
@@ -404,6 +574,7 @@ onMounted(async () => {
   if (visiblePlatforms.value.length > 0) {
     platform.value = pickDefaultPlatform(visiblePlatforms.value)
     await Promise.all([refreshCompanies(), refreshFavorites()])
+    void loadUserContest()
     reload()
   }
 
@@ -416,6 +587,10 @@ onUnmounted(() => {
   detachLogoutResult?.()
   detachLoginResult = null
   detachLogoutResult = null
+  if (ratingToastTimer !== null) {
+    clearTimeout(ratingToastTimer)
+    ratingToastTimer = null
+  }
 })
 </script>
 
@@ -431,6 +606,14 @@ onUnmounted(() => {
       >
         <span class="accounts__platform">{{ row.displayName }}</span>
         <span v-if="row.loggedIn && row.userId" class="accounts__user">{{ row.userId }}</span>
+        <!-- WP63:当前平台竞赛分徽标(双 null/未拉到不显示;着色基准) -->
+        <span
+          v-if="row.id === platform && userContest?.rating != null"
+          class="accounts__rating"
+          title="用户竞赛分(评分着色分差基准)"
+        >
+          竞赛分 {{ Math.round(userContest.rating) }}
+        </span>
         <button
           type="button"
           class="accounts__action"
@@ -440,7 +623,26 @@ onUnmounted(() => {
           {{ authPending === row.id ? '处理中…' : row.loggedIn ? '退出' : '登录' }}
         </button>
       </div>
+      <!-- WP63:在线刷新评分(zerotrac 快照 + 用户竞赛分 + 重拉列表;进行中防重入) -->
+      <button
+        type="button"
+        class="accounts__refresh"
+        :disabled="ratingRefreshing"
+        @click="handleRefreshRating"
+      >
+        {{ ratingRefreshing ? '刷新评分中…' : '刷新评分' }}
+      </button>
     </div>
+
+    <!-- WP63:刷新评分 toast(成功/失败短暂提示) -->
+    <p
+      v-if="ratingNotice"
+      class="rating-toast"
+      :class="`rating-toast--${ratingNoticeKind}`"
+      role="status"
+    >
+      {{ ratingNotice }}
+    </p>
 
     <!-- WP49:子视图切换(平台题库｜本地搜索,互斥显示、状态本地保持) -->
     <div class="subviews" role="tablist" aria-label="子视图切换">
@@ -508,6 +710,59 @@ onUnmounted(() => {
             <option value="UNSOLVED">未解决</option>
           </select>
         </label>
+        <!-- WP63:评分列控制——显隐(持久化) + 着色模式三选(默认分差) + 排序循环切换 -->
+        <div class="filters__field filters__field--rating">
+          <span>评分列</span>
+          <div class="rating-ctrl">
+            <label class="rating-ctrl__check">
+              <input v-model="showRatingColumn" type="checkbox" />
+              显示
+            </label>
+            <template v-if="showRatingColumn">
+              <div class="rating-ctrl__chips" role="group" aria-label="评分着色模式">
+                <button
+                  v-for="mode in RATING_COLOR_MODES"
+                  :key="mode.value"
+                  type="button"
+                  class="rating-chip"
+                  :class="{ 'rating-chip--on': ratingColorMode === mode.value }"
+                  :aria-pressed="ratingColorMode === mode.value"
+                  @click="ratingColorMode = mode.value"
+                >
+                  {{ mode.label }}
+                </button>
+              </div>
+              <button type="button" class="rating-chip rating-sort" @click="cycleRatingSort">
+                排序:{{ RATING_SORT_LABELS[ratingSort] }}
+              </button>
+            </template>
+          </div>
+        </div>
+        <!-- WP63:评分区间(本地过滤已加载项,与状态筛选同模式;清空恢复) -->
+        <div v-if="showRatingColumn" class="filters__field">
+          <span>评分区间(仅已加载)</span>
+          <div class="rating-range">
+            <input
+              v-model="ratingMin"
+              type="number"
+              min="0"
+              max="4000"
+              step="1"
+              placeholder="最低"
+              aria-label="评分下限"
+            />
+            <span class="rating-range__sep">–</span>
+            <input
+              v-model="ratingMax"
+              type="number"
+              min="0"
+              max="4000"
+              step="1"
+              placeholder="最高"
+              aria-label="评分上限"
+            />
+          </div>
+        </div>
         <!-- WP57:题单下拉(力扣系平台渲染;学习计划+我的题单两组;与公司下拉互斥) -->
         <label
           v-if="favorites !== null && (favorites.studyPlans.length > 0 || favorites.myFavorites.length > 0)"
@@ -554,8 +809,8 @@ onUnmounted(() => {
         </div>
       </form>
 
-      <p v-if="statusFilter !== ''" class="filter-note">
-        状态筛选仅作用于已加载条目——加载更多可扩大范围。
+      <p v-if="statusFilter !== '' || ratingRangeActive" class="filter-note">
+        状态/评分筛选仅作用于已加载条目——加载更多可扩大范围。
       </p>
 
       <!-- 1.6.0:知识点多选筛选(仅力扣系平台;值 = tag slug,三查询模式后端均支持) -->
@@ -643,6 +898,15 @@ onUnmounted(() => {
             </span>
             <span class="problems__meta">
               <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.map(tagLabel).join(' · ') }}</span>
+              <!-- WP63:评分列(五档文字着色;无分 '-' 不着色;显隐可控) -->
+              <span
+                v-if="showRatingColumn"
+                class="rating-num"
+                :class="ratingToneClass(item)"
+                :title="ratingTitle(item)"
+              >
+                {{ formatRating(item.rating) }}
+              </span>
               <span class="diff-badge" :class="difficultyClass(item.difficulty)">{{ item.difficulty }}</span>
             </span>
           </button>
@@ -651,7 +915,9 @@ onUnmounted(() => {
 
       <div v-if="items.length > 0" class="pager">
         <span class="pager__count">
-          已加载 {{ statusFilter === '' ? items.length : `${visibleItems.length}/${items.length}` }} 条
+          已加载
+          {{ statusFilter === '' && !ratingRangeActive ? items.length : `${visibleItems.length}/${items.length}` }}
+          条
         </span>
         <button
           v-if="hasMore"
@@ -723,6 +989,152 @@ onUnmounted(() => {
 }
 
 .accounts__user {
+  font-weight: 600;
+}
+
+/* WP63:当前平台竞赛分徽标 */
+.accounts__rating {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--cq-accent-soft);
+  color: var(--cq-accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* WP63:「刷新评分」按钮(在线刷新 zerotrac 快照 + 用户竞赛分) */
+.accounts__refresh {
+  padding: 3px 10px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.accounts__refresh:hover:not(:disabled) {
+  border-color: var(--cq-accent);
+}
+
+.accounts__refresh:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* WP63:刷新评分 toast(成功/失败短暂提示,4s 自动消失) */
+.rating-toast {
+  margin: 0 0 10px;
+  padding: 6px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 8px;
+  background: var(--cq-panel);
+  font-size: 12px;
+  color: var(--cq-fg);
+}
+
+.rating-toast--ok {
+  border-color: var(--cq-success);
+  color: var(--cq-success);
+}
+
+.rating-toast--error {
+  border-color: var(--cq-danger);
+  color: var(--cq-danger);
+}
+
+/* WP63:评分控制(显隐 checkbox + 着色模式 chips + 排序循环按钮) */
+.rating-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 27px;
+}
+
+.rating-ctrl__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--cq-fg);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rating-ctrl__chips {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.rating-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rating-chip:hover {
+  border-color: var(--cq-accent);
+}
+
+.rating-chip--on {
+  background: var(--cq-accent);
+  border-color: var(--cq-accent);
+  color: var(--cq-accent-fg);
+}
+
+/* WP63:评分区间输入(两个窄数字框) */
+.rating-range {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rating-range input {
+  width: 64px;
+}
+
+.rating-range__sep {
+  color: var(--cq-muted);
+}
+
+/* WP63:评分列数值(五档文字色;变量定义在 theme.css,亮暗两套) */
+.rating-num {
+  flex: none;
+  min-width: 30px;
+  text-align: right;
+  font-size: 11px;
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  color: var(--cq-muted);
+}
+
+.rating-num--instant {
+  color: var(--cq-rating-instant);
+  font-weight: 600;
+}
+
+.rating-num--warmup {
+  color: var(--cq-rating-warmup);
+  font-weight: 600;
+}
+
+.rating-num--normal {
+  color: var(--cq-rating-normal);
+  font-weight: 600;
+}
+
+.rating-num--strain {
+  color: var(--cq-rating-strain);
+  font-weight: 600;
+}
+
+.rating-num--retreat {
+  color: var(--cq-rating-retreat);
   font-weight: 600;
 }
 
