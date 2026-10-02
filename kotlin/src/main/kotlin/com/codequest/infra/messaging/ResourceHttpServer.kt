@@ -41,6 +41,9 @@ import java.util.logging.Logger
  *   检索端点(WP30,经 [searchApi] 注入后启用):`GET /api/search`、`GET /api/tags`;
  *   评分端点(1.7.0 F1,经 [ratingApi] 注入后启用):`GET /api/rating/status`、
  *   `POST /api/rating/refresh`、`GET /api/rating/user-contest?platform=`;
+ *   复习端点(1.7.0 F3,经 [reviewApi] 注入后启用):`GET /api/review/today`、
+ *   `POST /api/review/problems/{problemId}/add`、`POST /api/review/problems/{problemId}/complete`、
+ *   `GET|PUT /api/review/config`;
  *   自定义 CSS 端点(WP39,经 [customCss] provider 注入):`GET /api/custom.css`
  *   返回 text/css(未设置空体);
  *   其余骨架 404
@@ -64,6 +67,10 @@ class ResourceHttpServer(
     /** 站内提交历史端点(1.7.0 F2,经 [submissionHistoryApi] 注入后启用):
      *  `POST /api/submissions/sync`、`GET /api/submissions/remote?platform=&limit=&offset=`。 */
     private val submissionHistoryApi: SubmissionHistoryApi? = null,
+    /** 间隔重复复习端点(1.7.0 F3,经 [reviewApi] 注入后启用):`GET /api/review/today`、
+     *  `POST /api/review/problems/{problemId}/add`、`POST /api/review/problems/{problemId}/complete`、
+     *  `GET|PUT /api/review/config`。 */
+    private val reviewApi: ReviewApi? = null,
     /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
     private val customCss: () -> String = { "" },
 ) {
@@ -195,6 +202,7 @@ class ResourceHttpServer(
                         { handleLocalDataRoutes(exchange, path, query) },
                         { handleCatalogRoutes(exchange, path, query) },
                         { handleRatingRoutes(exchange, path, query) },
+                        { handleReviewRoutes(exchange, path) },
                     )
                 if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
@@ -397,6 +405,67 @@ class ResourceHttpServer(
         block: suspend (RatingApi) -> ProblemApiResponse,
     ) {
         val api = ratingApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 复习端点路由家族(1.7.0 F3 today/add/complete/config;形态同 [handleRatingRoutes])。 */
+    private fun handleReviewRoutes(
+        exchange: HttpExchange,
+        path: String,
+    ): Boolean {
+        val method = exchange.requestMethod.uppercase()
+        when {
+            path == "/api/review/today" && exchange.isGet() -> {
+                runReviewApi(exchange) { api -> api.today() }
+            }
+
+            path == "/api/review/config" && exchange.isGet() -> {
+                runReviewApi(exchange) { api -> api.getConfig() }
+            }
+
+            // 间隔配置写入(body {"intervals":[...]};非法 400 附默认值提示)
+            path == "/api/review/config" && method == "PUT" -> {
+                val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                runReviewApi(exchange) { api -> api.putConfig(body) }
+            }
+
+            path.startsWith(REVIEW_PROBLEM_PREFIX) && method == "POST" &&
+                (path.endsWith(REVIEW_ADD_SUFFIX) || path.endsWith(REVIEW_COMPLETE_SUFFIX)) -> {
+                val suffix = if (path.endsWith(REVIEW_ADD_SUFFIX)) REVIEW_ADD_SUFFIX else REVIEW_COMPLETE_SUFFIX
+                val problemId =
+                    path
+                        .removePrefix(REVIEW_PROBLEM_PREFIX)
+                        .removeSuffix(suffix)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::urlDecode)
+                if (problemId == null) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, REVIEW_PROBLEM_BAD_REQUEST)
+                } else if (suffix == REVIEW_ADD_SUFFIX) {
+                    runReviewApi(exchange) { api -> api.add(problemId) }
+                } else {
+                    runReviewApi(exchange) { api -> api.complete(problemId) }
+                }
+            }
+
+            else -> {
+                return false
+            }
+        }
+        return true
+    }
+
+    /** 执行 [ReviewApi] 调用并回写应答(形态同 [runRatingApi],1.7.0 F3)。 */
+    private fun runReviewApi(
+        exchange: HttpExchange,
+        block: suspend (ReviewApi) -> ProblemApiResponse,
+    ) {
+        val api = reviewApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
@@ -737,6 +806,19 @@ class ResourceHttpServer(
         /** WP31:题解正文路由中缀(`/solutions/` 夹在 remoteId 与 sid 之间)。 */
         private const val SOLUTIONS_CONTENT_MARKER = "/solutions/"
         private const val CONTEST_DETAIL_PREFIX = "/api/contest/"
+
+        /** 1.7.0 F3:复习按题操作路由前缀(`/api/review/problems/{problemId}/...`)。 */
+        private const val REVIEW_PROBLEM_PREFIX = "/api/review/problems/"
+
+        /** 1.7.0 F3:手动加入复习路由后缀。 */
+        private const val REVIEW_ADD_SUFFIX = "/add"
+
+        /** 1.7.0 F3:手动完成当日复习路由后缀。 */
+        private const val REVIEW_COMPLETE_SUFFIX = "/complete"
+
+        /** 1.7.0 F3:复习按题操作缺 problemId 段错误体。 */
+        private const val REVIEW_PROBLEM_BAD_REQUEST =
+            """{"error":"bad-request","message":"missing problemId path segment"}"""
         private const val SHUTDOWN_DELAY_SECONDS = 0
         private const val STATUS_OK = 200
         private const val STATUS_BAD_REQUEST = 400

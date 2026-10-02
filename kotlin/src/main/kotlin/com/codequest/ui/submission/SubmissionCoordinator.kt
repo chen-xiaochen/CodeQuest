@@ -3,6 +3,8 @@ package com.codequest.ui.submission
 import com.codequest.core.model.AuthExpiredException
 import com.codequest.core.model.Submission
 import com.codequest.core.model.SubmissionResult
+import com.codequest.core.review.ReviewIntervalsSource
+import com.codequest.core.review.ReviewService
 import com.codequest.core.workspace.ChallengeTemplates
 import com.codequest.infra.db.DatabaseManager
 import com.codequest.infra.i18n.PluginBundle
@@ -145,6 +147,11 @@ class SubmissionCoordinator(
                 )
             SubmissionNotifications.notifyCompleted(project, challengeName, submission.verdict)
             broadcastUpdated(submission, challengeName)
+            // 1.7.0 F3:AC 即排/完成间隔复习(平台无关;失败仅告警,不影响提交流程)
+            if (submission.verdict.isSuccessful) {
+                runCatching { reviewService().onAccepted(target.problem.id) }
+                    .onFailure { error -> logger.warning("Review scheduling failed: $error") }
+            }
             // 1.5.0:底部挑战工具窗删除,提交记录并入右窗「题面」工具窗三 tab——
             // 导航改为「激活右窗 + 选中提交记录 tab」,challengeId 定向过滤透传给页面 URL
             project
@@ -236,6 +243,16 @@ class SubmissionCoordinator(
     }
 
     private fun databaseManager(): DatabaseManager = project.getService(DatabaseManager::class.java)
+
+    /** 复习调度服务(无状态,按需构造;仓库随切库指向新句柄,与 databaseManager 同语义)。 */
+    private fun reviewService(): ReviewService {
+        val manager = databaseManager()
+        return ReviewService(
+            store = manager.reviewRepository,
+            intervalsSource =
+                ReviewIntervalsSource { manager.settingsKvRepository.get(ReviewService.SETTINGS_KEY) },
+        )
+    }
 
     companion object {
         /** 提交完成事件 topic(Kotlin → JS,页面收到后重拉 /api/submissions)。 */

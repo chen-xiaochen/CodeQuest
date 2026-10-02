@@ -102,6 +102,14 @@ class CodeQuestHttpServerService(
                         ),
                     remoteSubmissions = { project.getService(DatabaseManager::class.java).remoteSubmissionRepository },
                 ),
+            // 1.7.0 F3:间隔重复复习端点——调度逻辑在 core ReviewService,仓库/设置
+            // 按请求解析(切库即时生效);间隔配置存 settings_kv
+            reviewApi =
+                ReviewApi(
+                    reviews = { project.getService(DatabaseManager::class.java).reviewRepository },
+                    settings = { project.getService(DatabaseManager::class.java).settingsKvRepository },
+                    problems = { project.getService(DatabaseManager::class.java).problemRepository },
+                ),
         )
 
     /** 服务基地址;未启动时为 null。 */

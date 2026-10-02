@@ -67,6 +67,10 @@ class ManagedDatabase(
     val reviewRepository: ExposedReviewRepository
         get() = handle.review
 
+    /** settings_kv 键值仓库(1.7.0 F3);随切库指向新句柄。 */
+    val settingsKvRepository: ExposedSettingsKvRepository
+        get() = handle.settingsKv
+
     val challengeRepository: ChallengeRepository
         get() = handle.challenge
 
@@ -115,6 +119,7 @@ class ManagedDatabase(
         val rating by lazy { ExposedRatingRepository(db) }
         val remoteSubmission by lazy { ExposedRemoteSubmissionRepository(db) }
         val review by lazy { ExposedReviewRepository(db) }
+        val settingsKv by lazy { ExposedSettingsKvRepository(db) }
         val challenge by lazy { ExposedChallengeRepository(db) }
         val solution by lazy { ExposedSolutionRepository(db) }
         val testCase by lazy { ExposedTestCaseRepository(db) }
@@ -174,6 +179,10 @@ class DatabaseManager(
     /** 间隔重复复习排期仓库(1.7.0 F3,WP59);随切库指向新句柄。 */
     val reviewRepository: ExposedReviewRepository
         get() = managed.reviewRepository
+
+    /** settings_kv 键值仓库(1.7.0 F3);随切库指向新句柄。 */
+    val settingsKvRepository: ExposedSettingsKvRepository
+        get() = managed.settingsKvRepository
 
     val challengeRepository: ChallengeRepository
         get() = managed.challengeRepository
