@@ -17,10 +17,14 @@
  * WP64(1.7.0 F3):header「加入复习」按钮——本地主档 id 为确定性
  * `<platform>:<remoteId>` 映射,直接调 add(幂等);已排期(today 三组里查
  * 同 id 行)则两态切换为「已排期至 yyyy-MM-dd」。
+ * WP65(1.7.0 F4):header 题目计时角标——收到题面数据即重置起表(切题自动
+ * 重置);订阅 `submission:updated`(payload WP65 起含 platformId/problemRemoteId),
+ * 命中当前题且 AC → 停表定格 + toast「本题耗时 xx」。会话级,开关
+ * localStorage `cq-problem-timer-enabled`(默认开);网页直接提交不停表,属预期。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
-import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, TOPIC_WEBVIEW_ZOOM, cqBridge } from '../../bridge/cq-bridge'
+import { TOPIC_AUTH_LOGIN, TOPIC_AUTH_LOGIN_RESULT, TOPIC_CHALLENGE_CREATE, TOPIC_CHALLENGE_CREATE_RESULT, TOPIC_NAV_OPEN_URL, TOPIC_SUBMISSION_UPDATED, TOPIC_WEBVIEW_ZOOM, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   addReviewProblem,
@@ -35,6 +39,7 @@ import {
 } from '../../lib/api'
 import { difficultyClass } from '../../lib/difficulty'
 import { formatEpochDay } from '../../lib/epochDay'
+import { createProblemTimer, formatDuration, isAcceptedForProblem, isTimerEnabled } from '../../lib/problemTimer'
 import { renderStatement } from '../../lib/statement'
 
 const detail = ref<ProblemDetail | null>(null)
@@ -131,6 +136,58 @@ async function handleAddReview(): Promise<void> {
   }
 }
 
+/** WP65:题目计时器(会话级,开关 localStorage `cq-problem-timer-enabled` 默认开)。 */
+const timerEnabled = isTimerEnabled()
+const problemTimer = createProblemTimer()
+const timerText = ref('00:00')
+/** AC 停表后的「本题耗时 xx」toast(短暂提示后自动消失)。 */
+const timerNotice = ref('')
+let timerNoticeTimeout: ReturnType<typeof setTimeout> | null = null
+let timerTick: ReturnType<typeof setInterval> | null = null
+
+function refreshTimerText(): void {
+  timerText.value = formatDuration(problemTimer.elapsedMs())
+}
+
+/** 收到题面数据即重置起表(切题/刷新/登录重拉均按最新一次起表)。 */
+function startTimer(): void {
+  if (!timerEnabled) return
+  problemTimer.start()
+  refreshTimerText()
+  if (timerTick === null) {
+    timerTick = setInterval(refreshTimerText, 500)
+  }
+}
+
+/** AC 命中当前题 → 停表定格 + toast;不匹配/非 AC 不动。 */
+function handleSubmissionUpdated(payload: unknown): void {
+  if (!problemTimer.isRunning()) return
+  if (!isAcceptedForProblem(payload, platform, remoteId)) return
+  if (!problemTimer.stop()) return
+  if (timerTick !== null) {
+    clearInterval(timerTick)
+    timerTick = null
+  }
+  refreshTimerText()
+  timerNotice.value = `本题耗时 ${timerText.value}`
+  if (timerNoticeTimeout !== null) clearTimeout(timerNoticeTimeout)
+  timerNoticeTimeout = setTimeout(() => {
+    timerNotice.value = ''
+    timerNoticeTimeout = null
+  }, 4000)
+}
+
+function stopTimer(): void {
+  if (timerTick !== null) {
+    clearInterval(timerTick)
+    timerTick = null
+  }
+  if (timerNoticeTimeout !== null) {
+    clearTimeout(timerNoticeTimeout)
+    timerNoticeTimeout = null
+  }
+}
+
 /** 阅读器历史栈:cursor 为 -1 表示列表根视图(浏览器语义,可前进回正文)。 */
 const readerHistory = ref<SolutionArticle[]>([])
 const readerCursor = ref(-1)
@@ -208,6 +265,8 @@ async function load(): Promise<void> {
   errorCode.value = ''
   try {
     detail.value = await fetchProblemDetail(platform, remoteId)
+    // WP65:收到题面数据即重置起表(失败态不起表,重试成功再起)
+    startTimer()
   } catch (cause) {
     error.value = describeError(cause)
     errorCode.value = cause instanceof ApiError ? cause.code : ''
@@ -331,16 +390,24 @@ onMounted(() => {
   void loadReviewState()
   detachLoginResult = cqBridge().on(TOPIC_AUTH_LOGIN_RESULT, handleLoginResult)
   detachCreateResult = cqBridge().on(TOPIC_CHALLENGE_CREATE_RESULT, handleCreateResult)
+  // WP65:计时器开着才订阅提交事件(关时不起表也不订阅,零开销)
+  if (timerEnabled) {
+    detachSubmissionUpdated = cqBridge().on(TOPIC_SUBMISSION_UPDATED, handleSubmissionUpdated)
+  }
 })
 
 let detachLoginResult: (() => void) | null = null
 let detachCreateResult: (() => void) | null = null
+let detachSubmissionUpdated: (() => void) | null = null
 
 onUnmounted(() => {
   detachLoginResult?.()
   detachLoginResult = null
   detachCreateResult?.()
   detachCreateResult = null
+  detachSubmissionUpdated?.()
+  detachSubmissionUpdated = null
+  stopTimer()
   customStyleEl?.remove()
   customStyleEl = null
 })
@@ -408,6 +475,13 @@ onUnmounted(() => {
         <p class="statement-header__meta">
           <span class="diff-badge" :class="difficultyClass(detail.difficulty)">{{ detail.difficulty }}</span>
           <span class="statement-header__source" :data-source="detail.source">{{ detail.source }}</span>
+          <!-- WP65:题目计时角标(会话级;AC 停表定格,切题重置) -->
+          <span
+            v-if="timerEnabled"
+            class="statement-header__timer"
+            :class="{ 'statement-header__timer--stopped': !problemTimer.isRunning() && timerText !== '00:00' }"
+            title="本题用时(通过后定格)"
+          >{{ timerText }}</span>
           <button
             type="button"
             class="statement-header__start"
@@ -444,6 +518,9 @@ onUnmounted(() => {
           </a>
         </p>
       </header>
+
+      <!-- WP65:AC 停表 toast(本题耗时,4s 自动消失) -->
+      <p v-if="timerNotice" class="timer-toast" role="status">{{ timerNotice }}</p>
 
       <!-- eslint-disable-next-line vue/no-v-html — 内容经 renderStatement 白名单清洗 -->
       <article class="statement" v-html="renderedHtml"></article>
@@ -672,6 +749,33 @@ onUnmounted(() => {
 .statement-header__source[data-source='cache'] {
   color: var(--cq-success);
   border-color: var(--cq-success);
+}
+
+/* WP65:题目计时角标(等宽数字,停表后绿色定格) */
+.statement-header__timer {
+  padding: 1px 8px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--cq-muted);
+}
+
+.statement-header__timer--stopped {
+  color: var(--cq-success);
+  border-color: var(--cq-success);
+}
+
+/* WP65:AC 停表 toast(本题耗时,4s 自动消失) */
+.timer-toast {
+  margin: 0 0 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--cq-success);
+  border-radius: 8px;
+  background: var(--cq-panel);
+  font-size: 12px;
+  color: var(--cq-success);
 }
 
 /* 1.0.x:一键开刷(题面数据自动带入,选语言即建工作区) */

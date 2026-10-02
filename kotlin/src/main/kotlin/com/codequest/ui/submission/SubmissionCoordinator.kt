@@ -1,6 +1,7 @@
 package com.codequest.ui.submission
 
 import com.codequest.core.model.AuthExpiredException
+import com.codequest.core.model.Problem
 import com.codequest.core.model.Submission
 import com.codequest.core.model.SubmissionResult
 import com.codequest.core.review.ReviewIntervalsSource
@@ -23,6 +24,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.logging.Logger
 
 /**
@@ -45,16 +47,16 @@ class SubmissionCoordinator(
 
     private val guard = SubmissionGuard()
 
-    @Volatile
-    private var submissionsBridge: CQBridge? = null
+    /** WP65:多播桥注册(原单槽兼容改造)——submissions 页刷新与题面页计时器订阅同一 topic。 */
+    private val submissionsBridges = SubmissionsBridgeRegistry()
 
-    /** submissions 工具窗口创建内容时挂接桥(随内容销毁 [detachSubmissionsBridge])。 */
+    /** submissions/题面工具窗口创建内容时挂接桥(随内容销毁 [detachSubmissionsBridge])。 */
     fun attachSubmissionsBridge(bridge: CQBridge) {
-        submissionsBridge = bridge
+        submissionsBridges.attach(bridge) { topic, payload -> bridge.postMessage(topic, payload) }
     }
 
     fun detachSubmissionsBridge(bridge: CQBridge) {
-        if (submissionsBridge === bridge) submissionsBridge = null
+        submissionsBridges.detach(bridge)
     }
 
     /**
@@ -146,7 +148,7 @@ class SubmissionCoordinator(
                     hooks = coordinatorHooks(platform, challengeName, progress),
                 )
             SubmissionNotifications.notifyCompleted(project, challengeName, submission.verdict)
-            broadcastUpdated(submission, challengeName)
+            broadcastUpdated(submission, challengeName, target.problem)
             // 1.7.0 F3:AC 即排/完成间隔复习(平台无关;失败仅告警,不影响提交流程)
             if (submission.verdict.isSuccessful) {
                 runCatching { reviewService().onAccepted(target.problem.id) }
@@ -204,24 +206,17 @@ class SubmissionCoordinator(
     // 前端刷新推送
     // ------------------------------------------------------------------
 
-    /** 提交落库后向 submissions 页推 `submission:updated`(桥推送,页面无需轮询)。 */
+    /** 提交落库后向已挂接桥(submissions 页刷新/题面页计时器)多播 `submission:updated`。 */
     private fun broadcastUpdated(
         submission: Submission,
         challengeName: String,
+        problem: Problem,
     ) {
-        val bridge = submissionsBridge ?: return
-        runCatching {
-            val payload =
-                JsonObject(
-                    mapOf(
-                        "challengeId" to JsonPrimitive(submission.challengeId.value),
-                        "submissionId" to JsonPrimitive(submission.id.value),
-                        "challengeName" to JsonPrimitive(challengeName),
-                        "verdict" to Json.encodeToJsonElement(SubmissionResult.serializer(), submission.verdict),
-                    ),
-                ).toString()
-            bridge.postMessage(TOPIC_SUBMISSION_UPDATED, payload)
-        }.onFailure { error -> logger.warning("Failed to push $TOPIC_SUBMISSION_UPDATED: $error") }
+        if (submissionsBridges.isEmpty) return
+        val payload = buildSubmissionUpdatedPayload(submission, challengeName, problem)
+        submissionsBridges.broadcast(TOPIC_SUBMISSION_UPDATED, payload) { error ->
+            logger.warning("Failed to push $TOPIC_SUBMISSION_UPDATED: $error")
+        }
     }
 
     // ------------------------------------------------------------------
@@ -255,7 +250,66 @@ class SubmissionCoordinator(
     }
 
     companion object {
-        /** 提交完成事件 topic(Kotlin → JS,页面收到后重拉 /api/submissions)。 */
+        /** 提交完成事件 topic(Kotlin → JS,页面收到后重拉 /api/submissions;WP65 起题面页计时器亦订阅)。 */
         const val TOPIC_SUBMISSION_UPDATED = "submission:updated"
+    }
+}
+
+/**
+ * `submission:updated` payload(WP65 增补 `platformId`/`problemRemoteId`,
+ * 题面页计时器按 `(platformId, problemRemoteId)` 匹配当前题;既有字段不动)。
+ */
+internal fun buildSubmissionUpdatedPayload(
+    submission: Submission,
+    challengeName: String,
+    problem: Problem,
+): String =
+    JsonObject(
+        mapOf(
+            "challengeId" to JsonPrimitive(submission.challengeId.value),
+            "submissionId" to JsonPrimitive(submission.id.value),
+            "challengeName" to JsonPrimitive(challengeName),
+            "platformId" to JsonPrimitive(problem.platformId.value),
+            "problemRemoteId" to JsonPrimitive(problem.remoteId),
+            "verdict" to Json.encodeToJsonElement(SubmissionResult.serializer(), submission.verdict),
+        ),
+    ).toString()
+
+/**
+ * 桥多播注册表(WP65):[SubmissionCoordinator] 原 `submissionsBridge` 单槽改多播,
+ * submissions 页与题面页桥各自订阅同一 topic。attach 幂等(同桥重复挂接不重复收),
+ * detach 精确摘除;broadcast 遍历发送,单桥失败仅告警不中断其余桥——单注册时
+ * 行为与原单槽逐字节一致(同一 payload 字符串、同一 topic、一次 postMessage)。
+ */
+internal class SubmissionsBridgeRegistry {
+    private class Slot(
+        val key: Any,
+        val send: (String, String) -> Unit,
+    )
+
+    private val slots = CopyOnWriteArrayList<Slot>()
+
+    val isEmpty: Boolean
+        get() = slots.isEmpty()
+
+    fun attach(
+        key: Any,
+        send: (String, String) -> Unit,
+    ) {
+        if (slots.none { it.key === key }) slots.add(Slot(key, send))
+    }
+
+    fun detach(key: Any) {
+        slots.removeAll { it.key === key }
+    }
+
+    fun broadcast(
+        topic: String,
+        payload: String,
+        onFailure: (Throwable) -> Unit = {},
+    ) {
+        for (slot in slots.toList()) {
+            runCatching { slot.send(topic, payload) }.onFailure { onFailure(it) }
+        }
     }
 }

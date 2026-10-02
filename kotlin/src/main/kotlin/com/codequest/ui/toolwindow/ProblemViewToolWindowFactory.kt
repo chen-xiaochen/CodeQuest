@@ -121,6 +121,10 @@ class ProblemViewToolWindowFactory :
             url = navigator.consumePendingUrl() ?: defaultUrl,
             configure = { browser, bridge ->
                 navigator.attach(browser)
+                // WP65:题面页计时器订阅 `submission:updated`(多播注册,随桥销毁摘除)
+                val coordinator = project.getService(SubmissionCoordinator::class.java)
+                coordinator.attachSubmissionsBridge(bridge)
+                Disposer.register(bridge, Disposable { coordinator.detachSubmissionsBridge(bridge) })
                 // 1.0.x:浏览链路登录入口(auth:login,HR 题面 401 场景)
                 AuthLoginBridge.register(project, bridge)
                 // 1.0.x:一键开刷(challenge:create,题面数据全量自动带入)
