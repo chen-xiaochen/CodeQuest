@@ -11,6 +11,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
+import java.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
@@ -20,6 +21,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -159,6 +161,71 @@ class LeetCodeApiTest {
         graphqlResponses["userContestRankingInfo"] = """{"errors":[{"message":"You are not signed in"}],"data":null}"""
 
         assertFailsWith<OJException> { api.fetchUserContestRankingInfo("alice-s") }
+    }
+
+    // -------------------------------------------------------------------
+    // 站内提交历史(1.7.0 F2)
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `submissionList builds offset limit variables and parses entries`() = runBlocking {
+        graphqlResponses["submissionList"] =
+            """
+            {"data":{"submissionList":{"lastKey":"1634678400:20","submissions":[
+              {"id":"1001","title":"Two Sum","titleSlug":"two-sum","statusDisplay":"Accepted",
+               "runtime":"64 ms","memory":"66.3 MB","lang":"kotlin","timestamp":"1634678400"},
+              {"id":"1002","title":"Add Two Numbers","titleSlug":"add-two-numbers","statusDisplay":"Wrong Answer",
+               "runtime":"N/A","memory":"N/A","lang":"python3","timestamp":"1634764800"}]}}}
+            """.trimIndent()
+
+        val page = api.fetchSubmissionPage(offset = 20, limit = 20)
+
+        assertEquals(2, page.submissions.size)
+        assertTrue(page.hasMore) // lastKey 非空 → 还有下一页
+        val first = page.submissions[0]
+        assertEquals("1001", first.remoteId)
+        assertEquals("two-sum", first.titleSlug)
+        assertEquals("AC", first.statusDisplay) // "Accepted" 归一为 record 契约的 "AC"
+        assertEquals(64, first.runtimeMs)
+        assertEquals(67891, first.memoryKb) // 66.3 MB → 66.3 × 1024 四舍五入
+        assertEquals(Instant.ofEpochSecond(1634678400), first.submittedAt)
+        // "N/A" 解析失败降级 null,不抛
+        val second = page.submissions[1]
+        assertEquals("Wrong Answer", second.statusDisplay)
+        assertNull(second.runtimeMs)
+        assertNull(second.memoryKb)
+
+        val record = graphqlRecord("submissionList")
+        assertEquals(LeetCodeGraphQL.SUBMISSION_LIST, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals(20, variablesOf(record)["offset"]!!.jsonPrimitive.content.toInt())
+        assertEquals(20, variablesOf(record)["limit"]!!.jsonPrimitive.content.toInt())
+    }
+
+    @Test
+    fun `submissionList skips dirty rows instead of failing the page`() = runBlocking {
+        // 缺 titleSlug 的脏行跳过;timestamp 缺失的行同样跳过(热力图无法定位)
+        graphqlResponses["submissionList"] =
+            """
+            {"data":{"submissionList":{"lastKey":null,"submissions":[
+              {"id":"1001","title":"No Slug","statusDisplay":"Accepted","runtime":"1 ms","memory":"1 MB",
+               "lang":"kotlin","timestamp":"1634678400"},
+              {"id":"1002","title":"No Time","titleSlug":"no-time","statusDisplay":"Accepted",
+               "runtime":"1 ms","memory":"1 MB","lang":"kotlin"},
+              {"id":"1003","title":"Fine","titleSlug":"fine","statusDisplay":"Wrong Answer",
+               "runtime":"1 ms","memory":"1 MB","lang":"kotlin","timestamp":"1634764800"}]}}}
+            """.trimIndent()
+
+        val page = api.fetchSubmissionPage(offset = 0, limit = 20)
+
+        assertEquals(listOf("1003"), page.submissions.map { it.remoteId })
+        assertFalse(page.hasMore) // lastKey null → 最后一页
+    }
+
+    @Test
+    fun `submissionList unauthenticated surfaces as OJException`() = runBlocking {
+        graphqlResponses["submissionList"] = """{"errors":[{"message":"You are not signed in"}],"data":null}"""
+
+        assertFailsWith<OJException> { api.fetchSubmissionPage(offset = 0, limit = 20) }
     }
 
     // -------------------------------------------------------------------

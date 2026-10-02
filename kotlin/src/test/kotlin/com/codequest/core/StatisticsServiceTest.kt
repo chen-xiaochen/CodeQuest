@@ -2,6 +2,7 @@ package com.codequest.core
 
 import com.codequest.core.model.ChallengeId
 import com.codequest.core.model.PlatformId
+import com.codequest.core.model.RemoteSubmissionRecord
 import com.codequest.core.model.Submission
 import com.codequest.core.model.SubmissionId
 import com.codequest.core.model.SubmissionResult
@@ -17,12 +18,14 @@ import kotlin.test.assertTrue
 
 /**
  * [unit] WP29:StatisticsService 聚合——空库/单日多条/平台过滤/streak 断续与跨月/
- * verdict 口径(仅 Accepted 计 AC)/窗口与汇总口径分离/参数防御。
+ * verdict 口径(仅 Accepted 计 AC)/窗口与汇总口径分离/参数防御;
+ * 1.7.0 F2 追加:remote_submission 合并(并集/同键本地优先/AC 判定/计数)。
  */
 class StatisticsServiceTest {
     private var now: Instant = Instant.parse("2026-08-18T12:00:00Z")
     private val zone = ZoneOffset.UTC
     private val rows = mutableListOf<Submission>()
+    private val remoteRows = mutableListOf<RemoteSubmissionRecord>()
 
     private val service =
         StatisticsService(
@@ -31,9 +34,19 @@ class StatisticsServiceTest {
             zone = zone,
         )
 
+    /** 1.7.0 F2:注入站内历史数据源的合并形态。 */
+    private val mergedService =
+        StatisticsService(
+            submissions = { rows.toList() },
+            clock = { now },
+            zone = zone,
+            remoteSubmissions = RemoteSubmissionQuery { remoteRows.toList() },
+        )
+
     @BeforeTest
     fun setUp() {
         rows.clear()
+        remoteRows.clear()
         now = Instant.parse("2026-08-18T12:00:00Z")
     }
 
@@ -60,6 +73,23 @@ class StatisticsServiceTest {
     )
 
     private fun heatmapCounts(data: StatisticsData): List<Int> = data.heatmap.map { it.count }
+
+    private fun remoteRecord(
+        remoteId: String,
+        day: String,
+        platform: String = "leetcode",
+        statusDisplay: String = "AC",
+    ) = RemoteSubmissionRecord(
+        platformId = PlatformId(platform),
+        remoteId = remoteId,
+        titleSlug = "two-sum",
+        title = "Two Sum",
+        statusDisplay = statusDisplay,
+        lang = "kotlin",
+        runtimeMs = 64,
+        memoryKb = 67891,
+        submittedAt = Instant.parse("${day}T10:00:00Z"),
+    )
 
     // ------------------------------------------------------------------
     // 空库
@@ -218,12 +248,89 @@ class StatisticsServiceTest {
         }
 
     // ------------------------------------------------------------------
+    // 1.7.0 F2:remote_submission 合并口径
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `remote submissions merge into union counts`() =
+        runBlocking {
+            rows += submission("s-1", "2026-08-18") // 本地 AC
+            rows += submission("s-2", "2026-08-17", verdict = SubmissionResult.WrongAnswer)
+            remoteRows += remoteRecord("r-1", "2026-08-17") // 站内 AC
+            remoteRows += remoteRecord("r-2", "2026-08-16", statusDisplay = "Wrong Answer")
+
+            val data = mergedService.statistics(heatmapDays = 3)
+
+            // 并集:2 本地 + 2 站内;AC = 本地 1 + 站内 1
+            assertEquals(4, data.summary.totalSubmissions)
+            assertEquals(2, data.summary.acceptedSubmissions)
+            assertEquals(0.5, data.summary.acceptanceRate)
+            assertEquals(listOf(1, 2, 1), heatmapCounts(data)) // 16/17/18 日各计
+            assertEquals(2, data.remoteSyncedCount)
+        }
+
+    @Test
+    fun `duplicate platform and remote id keeps local verdict priority`() =
+        runBlocking {
+            // 两表同键 (leetcode, remote-s-1):本地 Accepted 优先,站内 WA 条目跳过
+            // (submission 夹具的 remoteSubmissionId = "remote-s-1",与站内记录同键)
+            rows += submission("s-1", "2026-08-18")
+            remoteRows += remoteRecord("remote-s-1", "2026-08-18", statusDisplay = "Wrong Answer")
+
+            val data = mergedService.statistics(heatmapDays = 3)
+
+            assertEquals(1, data.summary.totalSubmissions)
+            assertEquals(1, data.summary.acceptedSubmissions) // 本地完整 verdict 胜出
+            assertEquals(listOf(0, 0, 1), heatmapCounts(data))
+            // 计数为站内历史原始条数(展示「已同步 N 条」,含重合)
+            assertEquals(1, data.remoteSyncedCount)
+        }
+
+    @Test
+    fun `remote accepted judgment is statusDisplay AC only`() =
+        runBlocking {
+            remoteRows += remoteRecord("r-1", "2026-08-18", statusDisplay = "AC")
+            remoteRows += remoteRecord("r-2", "2026-08-18", statusDisplay = "Wrong Answer")
+            remoteRows += remoteRecord("r-3", "2026-08-18", statusDisplay = "Time Limit Exceeded")
+
+            val data = mergedService.statistics(heatmapDays = 3)
+
+            assertEquals(3, data.summary.totalSubmissions)
+            assertEquals(1, data.summary.acceptedSubmissions)
+        }
+
+    @Test
+    fun `platform filter scopes remote rows and remote synced count`() =
+        runBlocking {
+            remoteRows += remoteRecord("r-1", "2026-08-18", platform = "leetcode")
+            remoteRows += remoteRecord("r-2", "2026-08-18", platform = "leetcodecn")
+
+            val all = mergedService.statistics(heatmapDays = 3)
+            assertEquals(2, all.summary.totalSubmissions)
+            assertEquals(2, all.remoteSyncedCount)
+
+            val filtered = mergedService.statistics(platformId = PlatformId("leetcode"), heatmapDays = 3)
+            assertEquals(1, filtered.summary.totalSubmissions)
+            assertEquals(1, filtered.remoteSyncedCount)
+        }
+
+    @Test
+    fun `absent remote source keeps legacy behavior`() =
+        runBlocking {
+            rows += submission("s-1", "2026-08-18")
+
+            val data = service.statistics(heatmapDays = 3)
+
+            assertEquals(1, data.summary.totalSubmissions)
+            assertEquals(0, data.remoteSyncedCount)
+        }
+
+    // ------------------------------------------------------------------
     // 参数防御
     // ------------------------------------------------------------------
 
     @Test
-    fun `non-positive windows are rejected`() {
-        assertFailsWith<IllegalArgumentException> { runBlocking { service.statistics(heatmapDays = 0) } }
+    fun `non-positive windows are rejected`() {        assertFailsWith<IllegalArgumentException> { runBlocking { service.statistics(heatmapDays = 0) } }
         assertFailsWith<IllegalArgumentException> { runBlocking { service.statistics(trendDays = -1) } }
         assertFailsWith<IllegalArgumentException> {
             runBlocking { service.statistics(heatmapDays = StatisticsService.MAX_WINDOW_DAYS + 1) }

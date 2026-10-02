@@ -1,10 +1,13 @@
 package com.codequest.infra.messaging
 
+import com.codequest.core.RemoteSubmissionQuery
 import com.codequest.core.StatisticsData
 import com.codequest.core.StatisticsService
 import com.codequest.core.SubmissionQuery
 import com.codequest.core.model.PlatformId
+import com.codequest.core.model.RemoteSubmissionRecord
 import com.codequest.core.model.Submission
+import com.codequest.infra.db.ExposedRemoteSubmissionRepository
 import com.codequest.infra.db.ExposedSubmissionRepository
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -13,12 +16,14 @@ import java.time.ZoneId
 
 /**
  * 刷题统计数据端点逻辑(WP29,infra 层,风格照抄 [SubmissionsApi]):
- * 本地库 submission 表经 [StatisticsService] 聚合,口径与 submissions 页一致。
+ * 本地库 submission 表经 [StatisticsService] 聚合,口径与 submissions 页一致;
+ * 1.7.0 F2 起注入 [remoteSubmissions] 时合并 `remote_submission` 站内历史
+ * (并集/本地优先/remoteSyncedCount,详见 [StatisticsService])。
  *
  * 端点契约(由 [ResourceHttpServer] 挂载):
  * - `GET /api/stats?platform=&days=`:summary(全量口径,仅平台过滤)+
  *   heatmap(今天往前 days 天含今天的完整日历,零提交日占位)+
- *   trend(今天往前 min(days, 30) 天);
+ *   trend(今天往前 min(days, 30) 天)+ remoteSyncedCount;
  * - `platform` 缺省 = 全部平台;**不是**注册表校验——纯 DB 列过滤,
  *   未知平台如实返回零值(与 submissions 列表同语义,不 404);
  * - `days` 缺省 365(近一年),须为 1..731 的整数,否则 400;
@@ -29,6 +34,7 @@ import java.time.ZoneId
  */
 class StatisticsApi(
     private val submissions: () -> ExposedSubmissionRepository,
+    private val remoteSubmissions: (() -> ExposedRemoteSubmissionRepository)? = null,
     private val json: Json = DEFAULT_JSON,
     private val clock: () -> Instant = Instant::now,
     private val zone: ZoneId = ZoneId.systemDefault(),
@@ -47,7 +53,13 @@ class StatisticsApi(
     }
 
     /** 服务无状态,按请求构造(仓库随切库指向新句柄,同 SubmissionsApi.store 语义)。 */
-    private fun service() = StatisticsService(submissions = SubmissionQuery(::listAll), clock = clock, zone = zone)
+    private fun service() =
+        StatisticsService(
+            submissions = SubmissionQuery(::listAll),
+            clock = clock,
+            zone = zone,
+            remoteSubmissions = remoteSubmissions?.let { RemoteSubmissionQuery(::listAllRemote) },
+        )
 
     /** 分页拉全量提交(listPage 排序确定,offset 游标推进;不足一页即到底)。 */
     private suspend fun listAll(): List<Submission> {
@@ -55,6 +67,17 @@ class StatisticsApi(
         val rows = ArrayList<Submission>()
         while (true) {
             val page = repository.listPage(challengeId = null, limit = FETCH_PAGE, offset = rows.size)
+            rows.addAll(page)
+            if (page.size < FETCH_PAGE) return rows
+        }
+    }
+
+    /** 分页拉全量站内提交历史(形态同 [listAll])。 */
+    private suspend fun listAllRemote(): List<RemoteSubmissionRecord> {
+        val repository = remoteSubmissions?.invoke() ?: return emptyList()
+        val rows = ArrayList<RemoteSubmissionRecord>()
+        while (true) {
+            val page = repository.listPage(platformId = null, limit = FETCH_PAGE, offset = rows.size)
             rows.addAll(page)
             if (page.size < FETCH_PAGE) return rows
         }
@@ -78,6 +101,7 @@ class StatisticsApi(
                 ),
             heatmap = heatmap.map { DailyCountDto(date = it.date.toString(), count = it.count) },
             trend = trend.map { DailyCountDto(date = it.date.toString(), count = it.count) },
+            remoteSyncedCount = remoteSyncedCount,
         )
 
     private fun ok(dto: Any): ProblemApiResponse = ProblemApiResponse(STATUS_OK, json.encodeDto(dto))
@@ -128,6 +152,8 @@ private data class StatsResponseDto(
     val summary: StatsSummaryDto,
     val heatmap: List<DailyCountDto>,
     val trend: List<DailyCountDto>,
+    /** 站内提交历史已同步条数(1.7.0 F2;受平台过滤,含与本地重合条目;未接数据源为 0)。 */
+    val remoteSyncedCount: Int = 0,
 )
 
 @Serializable

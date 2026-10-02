@@ -66,10 +66,12 @@ class CodeQuestHttpServerService(
                 AuthApi(
                     platforms = { AuthPlatformSources.forProject(project) },
                 ),
-            // WP29:统计端点——submission 表经 StatisticsService 聚合(仓库按请求解析,切库即时生效)
+            // WP29:统计端点——submission 表经 StatisticsService 聚合(仓库按请求解析,切库即时生效);
+            // 1.7.0 F2:合并 remote_submission 站内历史(并集/本地优先/remoteSyncedCount)
             statsApi =
                 StatisticsApi(
                     submissions = { project.getService(DatabaseManager::class.java).submissionRepository },
+                    remoteSubmissions = { project.getService(DatabaseManager::class.java).remoteSubmissionRepository },
                 ),
             // WP30:检索端点——本地库三源聚合 + 标签/平台过滤(store 按请求解析,切库即时生效);
             // WP37:列表项附刷题状态(本地聚合,store 按请求解析)
@@ -86,6 +88,19 @@ class CodeQuestHttpServerService(
             ratingApi =
                 RatingApi(
                     ratings = ratingService,
+                ),
+            // 1.7.0 F2:站内提交历史端点——同步经 SPI 注册表解析 SubmissionHistoryCapable
+            // 平台,仓库按请求解析(切库即时生效);同步跑在本服务 pooled 工作线程
+            submissionHistoryApi =
+                SubmissionHistoryApi(
+                    syncService =
+                        com.codequest.infra.submission.SubmissionHistorySyncService(
+                            platforms = com.codequest.spi.OJPlatformRegistry::all,
+                            remoteSubmissions = {
+                                project.getService(DatabaseManager::class.java).remoteSubmissionRepository
+                            },
+                        ),
+                    remoteSubmissions = { project.getService(DatabaseManager::class.java).remoteSubmissionRepository },
                 ),
         )
 

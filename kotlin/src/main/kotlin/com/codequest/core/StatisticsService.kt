@@ -1,6 +1,7 @@
 package com.codequest.core
 
 import com.codequest.core.model.PlatformId
+import com.codequest.core.model.RemoteSubmissionRecord
 import com.codequest.core.model.Submission
 import java.time.Instant
 import java.time.LocalDate
@@ -17,6 +18,16 @@ import java.time.ZoneId
 fun interface SubmissionQuery {
     /** 全量提交(顺序不限;聚合不依赖顺序)。 */
     suspend fun list(): List<Submission>
+}
+
+/**
+ * 站内提交历史数据源端口(1.7.0 F2):跨平台列出 `remote_submission` 全量记录。
+ *
+ * 口径与 [SubmissionQuery] 对称;缺省(null)即不合并站内历史(旧装配形态)。
+ */
+fun interface RemoteSubmissionQuery {
+    /** 全量站内提交记录(顺序不限)。 */
+    suspend fun list(): List<RemoteSubmissionRecord>
 }
 
 /** 汇总卡片(WP29):口径=全量历史,只受平台过滤,不受热力图/趋势窗口影响。 */
@@ -44,13 +55,19 @@ data class StatisticsData(
     val heatmap: List<DailyCount>,
     /** 今天往前 trendDays 天(含今天),升序。 */
     val trend: List<DailyCount>,
+    /** 站内提交历史已同步条数(1.7.0 F2;受平台过滤,含与本地重合的条目;未接数据源为 0)。 */
+    val remoteSyncedCount: Int = 0,
 )
 
 /**
- * 刷题统计聚合用例(WP29,M5):对 submission 表口径做纯内存聚合。
+ * 刷题统计聚合用例(WP29,M5):对 submission 表口径做纯内存聚合;
+ * 1.7.0 F2 起注入 [remoteSubmissions] 时合并 `remote_submission` 站内历史
+ * (streak/热力图/AC 总数取两表并集,同一 (platformId, remoteId) **本地优先**
+ * ——本地条目含代码快照与完整 verdict,站内重合条目跳过)。
  *
  * - AC 判定用 [com.codequest.core.model.SubmissionResult.isSuccessful]
- *   (仅 Accepted;PartialScore 不算完全通过);
+ *   (仅 Accepted;PartialScore 不算完全通过);站内历史按
+ *   `statusDisplay == "AC"` 判 AC(record 契约,平台层已归一);
  * - 「一天」按注入时区把 submittedAt 投到本地日期(本地工具,用户视角的一天);
  * - streak 按提交日期的连续日历天:当天无提交不立即断(从昨天续算),
  *   当天与昨天都无提交才归零——与 GitHub contribution 语义一致;
@@ -63,6 +80,7 @@ class StatisticsService(
     private val submissions: SubmissionQuery,
     private val clock: () -> Instant = Instant::now,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val remoteSubmissions: RemoteSubmissionQuery? = null,
 ) {
     /**
      * 聚合统计。
@@ -82,11 +100,24 @@ class StatisticsService(
         var total = 0
         var accepted = 0
         val byDate = HashMap<LocalDate, Int>()
+        val localKeys = HashSet<Pair<PlatformId, String>>()
         for (submission in submissions.list()) {
             if (platformId != null && submission.platformId != platformId) continue
             total++
             if (submission.verdict.isSuccessful) accepted++
             byDate.merge(LocalDate.ofInstant(submission.submittedAt, zone), 1, Int::plus)
+            localKeys += submission.platformId to submission.remoteSubmissionId
+        }
+        var remoteSynced = 0
+        for (record in remoteSubmissions?.list().orEmpty()) {
+            if (platformId != null && record.platformId != platformId) continue
+            remoteSynced++
+            // 两表同键重合:本地优先(含完整 verdict),站内条目跳过
+            if (record.platformId to record.remoteId !in localKeys) {
+                total++
+                if (record.statusDisplay == AC_STATUS) accepted++
+                byDate.merge(LocalDate.ofInstant(record.submittedAt, zone), 1, Int::plus)
+            }
         }
         return StatisticsData(
             summary =
@@ -99,6 +130,7 @@ class StatisticsService(
                 ),
             heatmap = window(today, heatmapDays, byDate),
             trend = window(today, trendDays, byDate),
+            remoteSyncedCount = remoteSynced,
         )
     }
 
@@ -158,5 +190,8 @@ class StatisticsService(
 
         /** 窗口上限:两年余量,防误传巨型窗口撑爆响应。 */
         const val MAX_WINDOW_DAYS = 731
+
+        /** 站内历史 AC 判定文案(record 契约,平台层已把 "Accepted"/"通过" 归一为 "AC")。 */
+        const val AC_STATUS = "AC"
     }
 }

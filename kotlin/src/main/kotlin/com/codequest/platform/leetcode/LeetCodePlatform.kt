@@ -22,6 +22,8 @@ import com.codequest.spi.ProblemFilter
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.ProblemStatement
 import com.codequest.spi.ProblemSummary
+import com.codequest.spi.RemoteSubmission
+import com.codequest.spi.RemoteSubmissionPage
 import com.codequest.spi.SolutionArticleContent
 import com.codequest.spi.SolutionArticleRef
 import com.codequest.spi.SolutionViewCapable
@@ -29,6 +31,7 @@ import com.codequest.spi.SubmissionCapable
 import com.codequest.spi.SubmissionDetail
 import com.codequest.spi.SubmissionDetailCapable
 import com.codequest.spi.SubmissionHandle
+import com.codequest.spi.SubmissionHistoryCapable
 import com.codequest.spi.SubmitRequest
 import com.codequest.spi.TestEvaluationCapable
 import com.codequest.spi.TestRunRequest
@@ -39,9 +42,10 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现九个能力接口并按服务拆分委托:
+ * (身份差异见 [LeetCodeVariant]),组合实现十个能力接口并按服务拆分委托:
  * auth / problem / company(WP42)/ favorite(WP56)/ submission / solutions /
- * submission detail(WP36)/ test evaluation(WP53)/ user contest(1.7.0 F1)。
+ * submission detail(WP36)/ test evaluation(WP53)/ user contest(1.7.0 F1)/
+ * submission history(1.7.0 F2)。
  */
 class LeetCodePlatform(
     private val variant: LeetCodeVariant,
@@ -57,7 +61,8 @@ class LeetCodePlatform(
     SolutionViewCapable,
     SubmissionDetailCapable,
     TestEvaluationCapable,
-    UserContestCapable {
+    UserContestCapable,
+    SubmissionHistoryCapable {
     private val api = LeetCodeApi(variant, transport)
     private val auth = LeetCodeAuth(variant, api, transport, credentialStore, cookiePrompt)
     private val problemService = LeetCodeProblemService(variant, api)
@@ -140,6 +145,30 @@ class LeetCodePlatform(
         return api.fetchUserContestRankingInfo(userSlug)?.let {
             UserContestRanking(rating = it.rating, attendedContestsCount = it.attendedContestsCount)
         }
+    }
+
+    /** 1.7.0 F2:站内提交历史分页(纯透传映射,未登录走 GraphQL errors 抛领域异常)。 */
+    override suspend fun fetchSubmissionHistory(
+        offset: Int,
+        limit: Int,
+    ): RemoteSubmissionPage {
+        val page = api.fetchSubmissionPage(offset, limit)
+        return RemoteSubmissionPage(
+            submissions =
+                page.submissions.map {
+                    RemoteSubmission(
+                        remoteId = it.remoteId,
+                        titleSlug = it.titleSlug,
+                        title = it.title,
+                        statusDisplay = it.statusDisplay,
+                        lang = it.lang,
+                        runtimeMs = it.runtimeMs,
+                        memoryKb = it.memoryKb,
+                        submittedAt = it.submittedAt,
+                    )
+                },
+            hasMore = page.hasMore,
+        )
     }
 }
 

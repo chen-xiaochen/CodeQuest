@@ -28,6 +28,8 @@ import java.util.logging.Logger
  *   静默恢复 `POST /api/auth/refresh`(WP48);
  *   提交记录端点(WP21 列表 / WP36 详情,经 [submissionsApi] 注入后启用):
  *   `GET /api/submissions`、`GET /api/submission/{id}/detail`;
+ *   站内提交历史端点(1.7.0 F2,经 [submissionHistoryApi] 注入后启用):
+ *   `POST /api/submissions/sync`、`GET /api/submissions/remote?platform=&limit=&offset=`;
  *   测试用例端点(1.5.0,经 [testCasesApi] 注入后启用):`GET|POST /api/testcases`、
  *   `POST /api/testcases/update`、`DELETE /api/testcases?id=`;
  *   竞赛端点(WP23,经 [contestApi] 注入后启用):`GET /api/contests[?platform=]`、
@@ -59,6 +61,9 @@ class ResourceHttpServer(
     /** 评分端点(1.7.0 F1,经 [ratingApi] 注入后启用):`GET /api/rating/status`、
      *  `POST /api/rating/refresh`、`GET /api/rating/user-contest?platform=`。 */
     private val ratingApi: RatingApi? = null,
+    /** 站内提交历史端点(1.7.0 F2,经 [submissionHistoryApi] 注入后启用):
+     *  `POST /api/submissions/sync`、`GET /api/submissions/remote?platform=&limit=&offset=`。 */
+    private val submissionHistoryApi: SubmissionHistoryApi? = null,
     /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
     private val customCss: () -> String = { "" },
 ) {
@@ -253,15 +258,27 @@ class ResourceHttpServer(
         return true
     }
 
-    /** 提交端点路由家族(WP21 列表 / WP36 详情;形态同 [handleContestRoutes])。 */
+    /** 提交端点路由家族(WP21 列表 / WP36 详情 / 1.7.0 F2 站内历史;形态同 [handleContestRoutes])。 */
     private fun handleSubmissionRoutes(
         exchange: HttpExchange,
         path: String,
         query: Map<String, String>,
     ): Boolean {
+        val method = exchange.requestMethod.uppercase()
         when {
             path == "/api/submissions" && exchange.isGet() -> {
                 runSubmissionsApi(exchange) { api -> api.listSubmissions(query) }
+            }
+
+            // 1.7.0 F2:站内提交历史同步(同步在 HTTP 工作线程跑完再返回结果)
+            path == "/api/submissions/sync" && method == "POST" -> {
+                val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+                runSubmissionHistoryApi(exchange) { api -> api.syncSubmissions(body) }
+            }
+
+            // 1.7.0 F2:站内提交历史分页列表(倒序 + total)
+            path == "/api/submissions/remote" && exchange.isGet() -> {
+                runSubmissionHistoryApi(exchange) { api -> api.listRemote(query) }
             }
 
             // WP36:提交详情 `/api/submission/{id}/detail`(id 为本地 submission id,
@@ -508,6 +525,21 @@ class ResourceHttpServer(
         block: suspend (SubmissionsApi) -> ProblemApiResponse,
     ) {
         val api = submissionsApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 执行 [SubmissionHistoryApi] 调用并回写应答(形态同 [runRatingApi],1.7.0 F2)。 */
+    private fun runSubmissionHistoryApi(
+        exchange: HttpExchange,
+        block: suspend (SubmissionHistoryApi) -> ProblemApiResponse,
+    ) {
+        val api = submissionHistoryApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")

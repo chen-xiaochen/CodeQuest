@@ -17,7 +17,10 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import java.time.Instant
+import kotlin.math.roundToInt
 
 /**
  * LeetCode API 封装(WP19):GraphQL / REST 端点到 Kotlin 数据的纯映射层。
@@ -46,7 +49,10 @@ import kotlinx.serialization.json.put
  * - 云端测试(WP53):REST `POST /problems/{slug}/interpret_solution/`
  *   (`{lang, data_input, question_id, typed_code}`)→ `{interpret_id}`,轮询同族
  *   `GET /submissions/detail/{interpretId}/check/` 到 state == SUCCESS
- *   (字段全集 = 旧 LeetCodeRunResult.Success)。
+ *   (字段全集 = 旧 LeetCodeRunResult.Success);
+ * - 站内提交历史(1.7.0 F2):GraphQL `submissionList`(offset/limit,用户全局
+ *   倒序)→ `submissions[]` + `lastKey`(null = 无更多);runtime/memory 为字符串
+ *   原文,解析成毫秒/KB,失败降级 null。
  *
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
@@ -163,6 +169,91 @@ class LeetCodeApi(
                     ?: throw OJException("LeetCode userContestRankingInfo 缺少 attendedContestsCount: $ranking"),
         )
     }
+
+    // -------------------------------------------------------------------
+    // 站内提交历史(1.7.0 F2)
+    // -------------------------------------------------------------------
+
+    /** 站内提交条目(字段 = `remote_submission` 表所需;站方文案已归一,见 [parseSubmission])。 */
+    data class LeetCodeSubmission(
+        val remoteId: String,
+        val titleSlug: String,
+        val title: String,
+        /** "Accepted"/"通过" 已归一为 "AC"(record 契约:AC 判定 = "AC");其余照站方原文。 */
+        val statusDisplay: String,
+        val lang: String,
+        /** 耗时(毫秒);"N/A"/空/解析失败为 null。 */
+        val runtimeMs: Int?,
+        /** 内存(KB);"66.3 MB" → 67891;解析失败为 null。 */
+        val memoryKb: Int?,
+        val submittedAt: Instant,
+    )
+
+    /** 站内提交分页(lastKey 为 null/空 → [hasMore] = false)。 */
+    data class LeetCodeSubmissionPage(
+        val submissions: List<LeetCodeSubmission>,
+        val hasMore: Boolean,
+    )
+
+    /**
+     * 操作 `submissionList` → data.submissionList(1.7.0 F2;用户全局倒序,
+     * 两站点同构)。runtime/memory 字符串解析失败降级 null 不抛;单条缺必需字段
+     * (id/title/titleSlug/statusDisplay/lang/timestamp)则跳过该条——批量历史同步
+     * 不因个别脏行整页失败(协议级错误仍走 errors 信封抛 [OJException])。
+     */
+    suspend fun fetchSubmissionPage(
+        offset: Int,
+        limit: Int,
+    ): LeetCodeSubmissionPage {
+        val variables =
+            buildJsonObject {
+                put("offset", offset)
+                put("limit", limit)
+            }
+        val data = graphql("submissionList", LeetCodeGraphQL.SUBMISSION_LIST, variables)
+        val list =
+            data["submissionList"] as? JsonObject
+                ?: throw OJException("LeetCode submissionList 响应缺少 submissionList 字段: $data")
+        val rows =
+            (list["submissions"] as? JsonArray)
+                .orEmpty()
+                .mapNotNull { it as? JsonObject }
+                .mapNotNull(::parseSubmission)
+        val hasMore =
+            (list["lastKey"] as? JsonPrimitive)
+                ?.takeIf { it !is JsonNull }
+                ?.content
+                ?.isNotEmpty() == true
+        return LeetCodeSubmissionPage(submissions = rows, hasMore = hasMore)
+    }
+
+    /** 单条解析:必需字段缺失返回 null(调用方跳过);"Accepted"/"通过" 归一 "AC"。 */
+    private fun parseSubmission(row: JsonObject): LeetCodeSubmission? {
+        val remoteId = row.pickString("id") ?: row.pickLong("id")?.toString()
+        val titleSlug = row.pickString("titleSlug")
+        val title = row.pickString("title")
+        val statusRaw = row.pickString("statusDisplay")
+        val lang = row.pickString("lang")
+        val timestamp = row.pickLong("timestamp")
+        if (remoteId == null || titleSlug == null || title == null) return null
+        if (statusRaw == null || lang == null || timestamp == null) return null
+        return LeetCodeSubmission(
+            remoteId = remoteId,
+            titleSlug = titleSlug,
+            title = title,
+            statusDisplay = if (statusRaw.equals("Accepted", ignoreCase = true) || statusRaw == "通过") "AC" else statusRaw,
+            lang = lang,
+            runtimeMs = row.pickString("runtime")?.let(::leadingNumber)?.toInt(),
+            memoryKb = row.pickString("memory")?.let(::memoryKb),
+            submittedAt = Instant.ofEpochSecond(timestamp),
+        )
+    }
+
+    /** 取首个空白前的数字("64 ms" → 64.0;"N/A" → null)。 */
+    private fun leadingNumber(text: String): Double? = text.substringBefore(' ').trim().toDoubleOrNull()
+
+    /** "66.3 MB" → KB 整数(四舍五入);解析失败 null。 */
+    private fun memoryKb(text: String): Int? = leadingNumber(text)?.let { (it * KB_PER_MB).roundToInt() }
 
     // -------------------------------------------------------------------
     // 题目列表
@@ -1092,6 +1183,17 @@ private fun kotlinx.serialization.json.JsonObject.pickInt(vararg names: String):
             ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
             ?.let { it.intOrNull ?: it.content.toIntOrNull() }
     }
+
+/** 多候选字段名宽容取首个长整数值(数字/字符串两种承载形态;submissionList 的 id/timestamp)。 */
+private fun kotlinx.serialization.json.JsonObject.pickLong(vararg names: String): Long? =
+    names.firstNotNullOfOrNull { name ->
+        (this[name] as? kotlinx.serialization.json.JsonPrimitive)
+            ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+            ?.let { it.longOrNull ?: it.contentOrNullIfNull()?.toLongOrNull() }
+    }
+
+/** 内存原文 MB → KB 换算系数(站方 memory 恒为 MB 形态)。 */
+private const val KB_PER_MB: Int = 1024
 
 /**
  * 数字字段兼容解析(WP36):LC /check/ 响应的百分位/计数有时以字符串承载
