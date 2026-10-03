@@ -18,6 +18,9 @@
  * WP63(1.7.0 F1):难度评分呈现——行内评分列(五档文字着色:分差基准,无用户
  * 竞赛分退化绝对分档;显隐/着色模式持久化 localStorage)+ 评分区间本地过滤 +
  * 评分排序(循环切换)+ 账号区竞赛分徽标与「刷新评分」(在线刷新+重拉列表)。
+ * WP70(1.8.0 F5):排序扩五档(默认 → 题号 → 难度 → 评分↑ → 评分↓;题号/难度
+ * 走服务端 sortBy 重拉,评分档保持本地排序)+「隐藏已解决」checkbox(本地过滤
+ * 已加载行,localStorage 持久化)。
  * WP64(1.7.0 F3):「复习」第三子视图(ReviewPanel,三分组到期列表 + 间隔配置
  * + 标记完成);tab 徽标 = 今日到期数(挂载时静默拉一次,面板刷新经 count-change
  * 回同步;0 不显示)。
@@ -72,6 +75,7 @@ import { LC_TAGS, lcTagName } from '../../lib/lcTags'
 import {
   filterByStatus,
   statusIconOf,
+  statusOf,
   type ProblemStatusFields,
   type ProblemStatusFilter,
 } from '../../lib/problemStatus'
@@ -105,12 +109,24 @@ const RATING_COLOR_MODES: Array<{ value: RatingColorMode; label: string }> = [
   { value: 'absolute', label: '绝对' },
   { value: 'off', label: '关闭' },
 ]
-/** 排序循环三态(默认序 → 升序 → 降序;本地视图态,不持久化)。 */
-const RATING_SORT_LABELS: Record<RatingSortOrder, string> = {
+/**
+ * WP70:排序循环五态——默认 → 题号 → 难度 → 评分↑ → 评分↓(视图态,不持久化)。
+ * 题号/难度走服务端 sortBy(WP68,仅普通模式);评分↑↓保持本地排序。
+ */
+type SortMode = '' | 'id' | 'difficulty' | 'rating-asc' | 'rating-desc'
+const SORT_LABELS: Record<SortMode, string> = {
   '': '默认序',
+  id: '题号',
+  difficulty: '难度',
   'rating-asc': '评分↑',
   'rating-desc': '评分↓',
 }
+/** 服务端排序档(题号/难度;触发 reload 带 sortBy 参数)。 */
+function isServerSort(mode: SortMode): mode is 'id' | 'difficulty' {
+  return mode === 'id' || mode === 'difficulty'
+}
+/** WP70:「隐藏已解决」持久化键(默认关)。 */
+const HIDE_SOLVED_KEY = 'cq-problems-hide-solved'
 
 const bridge = cqBridge()
 
@@ -230,8 +246,13 @@ watch(ratingColorMode, (mode) => writeRatingSetting(RATING_COLOR_KEY, mode))
 /** 评分区间输入('' = 不限;type=number 时 v-model 自动转数,故并收 number)。 */
 const ratingMin = ref<string | number>('')
 const ratingMax = ref<string | number>('')
-/** 评分排序('' = 默认序;本地排序,仅已加载项)。 */
-const ratingSort = ref<RatingSortOrder>('')
+/** 排序档位(WP70 五态循环;题号/难度 = 服务端排序,评分 = 本地)。 */
+const sortMode = ref<SortMode>('')
+/** WP70:「隐藏已解决」本地过滤(状态非 AC 的行隐藏;未登录无站内状态时按本地提交聚合判定)。 */
+const hideSolved = ref(readRatingSetting(HIDE_SOLVED_KEY, ['1', '0'] as const, '0') === '1')
+watch(hideSolved, (on) => writeRatingSetting(HIDE_SOLVED_KEY, on ? '1' : '0'))
+/** 服务端排序仅普通模式有效(题单/公司模式协议不支持)。 */
+const serverSortAvailable = computed(() => favorite.value === '' && company.value === '')
 
 const ratingBounds = computed(() => {
   const parse = (raw: string | number): number | null => {
@@ -246,10 +267,25 @@ const ratingRangeActive = computed(
   () => ratingBounds.value.min !== null || ratingBounds.value.max !== null,
 )
 
-function cycleRatingSort(): void {
-  ratingSort.value =
-    ratingSort.value === '' ? 'rating-asc' : ratingSort.value === 'rating-asc' ? 'rating-desc' : ''
+/**
+ * WP70:循环切换排序档——题单/公司模式下跳过题号/难度两档(协议不支持,循环里
+ * 直接略过而非显示不可达档位);进入/离开服务端档即 reload 重拉(参数变,分页
+ * 归零),评分档间切换纯本地不发请求。
+ */
+function cycleSort(): void {
+  const fullCycle: SortMode[] = ['', 'id', 'difficulty', 'rating-asc', 'rating-desc']
+  const localCycle: SortMode[] = ['', 'rating-asc', 'rating-desc']
+  const pool = serverSortAvailable.value ? fullCycle : localCycle
+  const previous = sortMode.value
+  const next = pool[(pool.indexOf(previous) + 1) % pool.length]
+  sortMode.value = next
+  if (isServerSort(previous) || isServerSort(next)) reload()
 }
+
+/** 评分本地排序档(sortByRating 入参形态;默认/题号/难度 → '')。 */
+const ratingSortOrder = computed<RatingSortOrder>(() =>
+  sortMode.value === 'rating-asc' || sortMode.value === 'rating-desc' ? sortMode.value : '',
+)
 
 /** 当前着色设置下该行档位(off/无分 → null);分差模式无用户竞赛分自动退化绝对档。 */
 function activeRatingTone(item: RatingFields): RatingTone | null {
@@ -316,16 +352,24 @@ async function handleRefreshRating(): Promise<void> {
   }
 }
 
-/** WP37/WP63:本地过滤+排序后的可见行(状态 → 评分区间 → 评分排序;仅作用于已加载项)。 */
+/** WP37/WP63/WP70:本地过滤+排序后的可见行(隐藏已解决 → 状态 → 评分区间 → 评分排序;仅已加载项)。 */
 const visibleItems = computed(() =>
   sortByRating(
     filterByRating(
-      filterByStatus(items.value, statusFilter.value),
+      filterByStatus(
+        hideSolved.value ? items.value.filter((item) => statusOf(item) !== 'AC') : items.value,
+        statusFilter.value,
+      ),
       ratingBounds.value.min,
       ratingBounds.value.max,
     ),
-    ratingSort.value,
+    ratingSortOrder.value,
   ),
+)
+
+/** WP70:任一本地筛选激活(状态/评分区间/隐藏已解决)——filter-note 与分页计数共用。 */
+const localFilterActive = computed(
+  () => statusFilter.value !== '' || ratingRangeActive.value || hideSolved.value,
 )
 
 /** 浏览链路登录请求进行中(结果回推前置灰按钮,防重复弹窗)。 */
@@ -511,6 +555,11 @@ async function loadPage(append: boolean): Promise<void> {
       favorite: favorite.value || undefined,
       company: favorite.value === '' ? company.value || undefined : undefined,
       period: favorite.value === '' && company.value !== '' ? period.value : undefined,
+      // WP70:服务端排序仅普通模式发送(题单/公司模式协议忽略,不发免歧义)
+      sortBy:
+        favorite.value === '' && company.value === '' && isServerSort(sortMode.value)
+          ? sortMode.value
+          : undefined,
       limit: PAGE_SIZE,
       offset: offset.value,
     })
@@ -559,28 +608,32 @@ async function refreshFavorites(): Promise<void> {
 }
 
 /** 平台切换:公司/题单选择与期间归位(两组集合随平台变),再刷新清单与列表
- * (WP63:竞赛分缓存按平台 key 失效,切换即重拉;状态/评分本地筛选随平台保留)。 */
+ * (WP63:竞赛分缓存按平台 key 失效,切换即重拉;状态/评分本地筛选随平台保留;
+ * WP70:排序档重置默认——服务端排序仅普通模式有效)。 */
 async function handlePlatformChange(): Promise<void> {
   company.value = ''
   period.value = DEFAULT_PERIOD
   favorite.value = ''
   selectedTags.value = []
+  sortMode.value = ''
   await Promise.all([refreshCompanies(), refreshFavorites()])
   void loadUserContest()
   void refreshDailyQuestion()
   reload()
 }
 
-/** WP57:选题单 → 清公司与期间(互斥),favorite 优先于 company。 */
+/** WP57:选题单 → 清公司与期间(互斥),favorite 优先于 company;WP70:排序档重置默认。 */
 function handleFavoriteChange(): void {
   company.value = ''
   period.value = DEFAULT_PERIOD
+  sortMode.value = ''
   reload()
 }
 
-/** WP57:选公司 → 清题单(互斥双向)。 */
+/** WP57:选公司 → 清题单(互斥双向);WP70:排序档重置默认。 */
 function handleCompanyChange(): void {
   favorite.value = ''
+  sortMode.value = ''
   reload()
 }
 
@@ -600,7 +653,7 @@ function resetFilters(): void {
   selectedTags.value = []
   ratingMin.value = ''
   ratingMax.value = ''
-  ratingSort.value = ''
+  sortMode.value = ''
   reload()
 }
 
@@ -833,8 +886,13 @@ onUnmounted(() => {
                   {{ mode.label }}
                 </button>
               </div>
-              <button type="button" class="rating-chip rating-sort" @click="cycleRatingSort">
-                排序:{{ RATING_SORT_LABELS[ratingSort] }}
+              <button
+                type="button"
+                class="rating-chip rating-sort"
+                :title="ratingSortOrder !== '' ? '评分排序仅对已加载条目生效' : undefined"
+                @click="cycleSort"
+              >
+                排序:{{ SORT_LABELS[sortMode] }}
               </button>
             </template>
           </div>
@@ -863,6 +921,14 @@ onUnmounted(() => {
               aria-label="评分上限"
             />
           </div>
+        </div>
+        <!-- WP70:隐藏已解决(本地过滤已加载行:状态非 AC 隐藏;评分列显隐开关旁) -->
+        <div class="filters__field">
+          <span>已解决</span>
+          <label class="hide-solved__check">
+            <input v-model="hideSolved" type="checkbox" />
+            隐藏已解决(仅已加载)
+          </label>
         </div>
         <!-- WP57:题单下拉(力扣系平台渲染;学习计划+我的题单两组;与公司下拉互斥) -->
         <label
@@ -910,8 +976,8 @@ onUnmounted(() => {
         </div>
       </form>
 
-      <p v-if="statusFilter !== '' || ratingRangeActive" class="filter-note">
-        状态/评分筛选仅作用于已加载条目——加载更多可扩大范围。
+      <p v-if="localFilterActive" class="filter-note">
+        状态/评分/隐藏已解决筛选仅作用于已加载条目——加载更多可扩大范围。
       </p>
 
       <!-- 1.6.0:知识点多选筛选(仅力扣系平台;值 = tag slug,三查询模式后端均支持) -->
@@ -954,7 +1020,7 @@ onUnmounted(() => {
         </button>
       </p>
       <p v-else-if="loading && items.length === 0" class="state">正在加载题目…</p>
-      <p v-else-if="!loading && visibleItems.length === 0 && statusFilter !== ''" class="state">
+      <p v-else-if="!loading && visibleItems.length === 0 && localFilterActive" class="state">
         没有已加载条目匹配状态筛选,请加载更多或清除筛选。
       </p>
       <!-- 1.6.0:题单模式空态可辨识(会员计划未订阅/计划已下线),区别于普通筛选无匹配 -->
@@ -1017,7 +1083,7 @@ onUnmounted(() => {
       <div v-if="items.length > 0" class="pager">
         <span class="pager__count">
           已加载
-          {{ statusFilter === '' && !ratingRangeActive ? items.length : `${visibleItems.length}/${items.length}` }}
+          {{ !localFilterActive ? items.length : `${visibleItems.length}/${items.length}` }}
           条
         </span>
         <button
@@ -1209,6 +1275,18 @@ onUnmounted(() => {
 
 .rating-range__sep {
   color: var(--cq-muted);
+}
+
+/* WP70:隐藏已解决 checkbox(评分列显隐开关旁,同 rating-ctrl__check 形态) */
+.hide-solved__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 27px;
+  font-size: 12px;
+  color: var(--cq-fg);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 /* WP63:评分列数值(五档文字色;变量定义在 theme.css,亮暗两套) */

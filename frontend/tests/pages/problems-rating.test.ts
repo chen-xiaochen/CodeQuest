@@ -2,6 +2,8 @@
  * WP63:题库页评分呈现——评分列渲染与五档着色(分差/绝对退化/关闭)、
  * 区间本地过滤、排序循环、列显隐与着色模式 localStorage 持久化、
  * 账号区竞赛分徽标与「刷新评分」(成功重拉/失败 toast/防重入)。
+ * WP70:排序扩五档(默认 → 题号 → 难度 → 评分↑ → 评分↓;题号/难度服务端
+ * sortBy 重拉,评分档本地)+「隐藏已解决」本地过滤(持久化/多条件叠加)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -58,6 +60,7 @@ function ratingAwareHandler(options: {
   refresh?: MockResponse
   platforms?: Array<{ id: string; displayName: string }>
   counts?: { list?: number; userContest?: number; refresh?: number }
+  rows?: Array<Record<string, unknown>>
 } = {}): FetchHandler {
   const platforms = options.platforms ?? [{ id: 'leetcode', displayName: 'LeetCode' }]
   return (url) => {
@@ -69,7 +72,16 @@ function ratingAwareHandler(options: {
     }
     if (url.startsWith('/api/problems')) {
       if (options.counts) options.counts.list = (options.counts.list ?? 0) + 1
-      return { status: 200, body: { platform: 'leetcode', offset: 0, limit: 50, items: RATING_ROWS, hasMore: false } }
+      return {
+        status: 200,
+        body: {
+          platform: 'leetcode',
+          offset: 0,
+          limit: 50,
+          items: options.rows ?? RATING_ROWS,
+          hasMore: false,
+        },
+      }
     }
     if (url.startsWith('/api/rating/user-contest')) {
       if (options.counts) options.counts.userContest = (options.counts.userContest ?? 0) + 1
@@ -86,6 +98,14 @@ function ratingAwareHandler(options: {
 function rowTitles(wrapper: ReturnType<typeof mount>): string[] {
   return wrapper.findAll('.problems__row .problems__title').map((node) => node.text().trim())
 }
+
+/** WP70:隐藏已解决用行——AC/TRIED/UNSOLVED 三态 + 缺省 status(未登录旧响应兜底)。 */
+const HIDE_SOLVED_ROWS = [
+  { remoteId: 's-ac', title: 'SolvedAC', difficulty: 'Easy', url: 'u1', tags: [], rating: 1200, status: 'AC' },
+  { remoteId: 's-tried', title: 'Tried', difficulty: 'Medium', url: 'u2', tags: [], rating: 1800, status: 'TRIED' },
+  { remoteId: 's-unsolved', title: 'Unsolved', difficulty: 'Hard', url: 'u3', tags: [], rating: 2200, status: 'UNSOLVED' },
+  { remoteId: 's-legacy', title: 'LegacyNoStatus', difficulty: 'Easy', url: 'u4', tags: [] },
+]
 
 describe('problems page rating (WP63)', () => {
   it('renders the rating column with diff-tone classes when user contest rating exists', async () => {
@@ -189,26 +209,179 @@ describe('problems page rating (WP63)', () => {
     expect(counts.list).toBe(callsAfterLoad)
   })
 
-  it('cycles rating sort asc → desc → default with unrated rows sinking last', async () => {
-    handler = ratingAwareHandler()
+  it('cycles sort 默认 → 题号 → 难度 → 评分↑ → 评分↓ → 默认; server modes reload with sortBy, rating modes local', async () => {
+    const counts = { list: 0 }
+    const urls: string[] = []
+    const base = ratingAwareHandler({ counts })
+    handler = (url) => {
+      if (url.startsWith('/api/problems')) urls.push(url)
+      return base(url)
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+    const callsAfterLoad = counts.list
+    expect(urls[urls.length - 1]).not.toContain('sortBy=')
+
+    const sortBtn = wrapper.find('.rating-sort')
+    expect(sortBtn.text()).toContain('默认序')
+
+    // → 题号:服务端档,reload 带 sortBy=id
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('题号')
+    expect(counts.list).toBe(callsAfterLoad + 1)
+    expect(urls[urls.length - 1]).toContain('sortBy=id')
+
+    // → 难度:换服务端档,reload 带 sortBy=difficulty
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('难度')
+    expect(counts.list).toBe(callsAfterLoad + 2)
+    expect(urls[urls.length - 1]).toContain('sortBy=difficulty')
+
+    // → 评分↑:离开服务端档,reload 不带 sortBy;本地排序生效,按钮标注「仅已加载」
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('评分↑')
+    expect(sortBtn.attributes('title')).toContain('仅对已加载')
+    expect(counts.list).toBe(callsAfterLoad + 3)
+    expect(urls[urls.length - 1]).not.toContain('sortBy=')
+    expect(rowTitles(wrapper)).toEqual(['Low', 'Mid', 'High', 'NoRating'])
+
+    // → 评分↓:评分档间切换纯本地,零新请求,无分题恒沉底
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('评分↓')
+    expect(counts.list).toBe(callsAfterLoad + 3)
+    expect(rowTitles(wrapper)).toEqual(['High', 'Mid', 'Low', 'NoRating'])
+
+    // → 默认:评分档回默认同样纯本地
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('默认序')
+    expect(counts.list).toBe(callsAfterLoad + 3)
+    expect(rowTitles(wrapper)).toEqual(['Mid', 'Low', 'High', 'NoRating'])
+  })
+
+  it('favorite mode: server sort levels skipped in cycle; entering favorite resets to 默认 without sortBy', async () => {
+    const counts = { list: 0 }
+    const urls: string[] = []
+    const base = ratingAwareHandler({ counts })
+    handler = (url) => {
+      if (url.startsWith('/api/favorites')) {
+        return {
+          status: 200,
+          body: {
+            platform: 'leetcode',
+            studyPlans: [{ slug: 'plan-a', name: '计划A' }],
+            myFavorites: [],
+          },
+        }
+      }
+      if (url.startsWith('/api/problems')) urls.push(url)
+      return base(url)
+    }
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+    const callsAfterLoad = counts.list
+
+    // 普通模式先切到题号档(服务端)
+    const sortBtn = wrapper.find('.rating-sort')
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('题号')
+    expect(urls[urls.length - 1]).toContain('sortBy=id')
+
+    // 选题单(第 4 个 select:平台/难度/状态/题单)→ 排序档重置默认,重拉不带 sortBy
+    await wrapper.findAll('select')[3].setValue('plan-a')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('默认序')
+    expect(counts.list).toBe(callsAfterLoad + 2)
+    expect(urls[urls.length - 1]).toContain('favorite=plan-a')
+    expect(urls[urls.length - 1]).not.toContain('sortBy=')
+
+    // 题单模式循环只走本地三态(默认 → 评分↑ → 评分↓),全程零新请求
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('评分↑')
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('评分↓')
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('默认序')
+    expect(counts.list).toBe(callsAfterLoad + 2)
+  })
+
+  it('resets sort to 默认 on platform switch', async () => {
+    const urls: string[] = []
+    const base = ratingAwareHandler({
+      platforms: [
+        { id: 'leetcode', displayName: 'LeetCode' },
+        { id: 'leetcodecn', displayName: '力扣' },
+      ],
+    })
+    handler = (url) => {
+      if (url.startsWith('/api/problems')) urls.push(url)
+      return base(url)
+    }
     const wrapper = mount(ProblemsApp)
     await flushPromises()
 
     const sortBtn = wrapper.find('.rating-sort')
+    await sortBtn.trigger('click')
+    await flushPromises()
+    expect(sortBtn.text()).toContain('题号')
+    expect(urls[urls.length - 1]).toContain('sortBy=id')
+
+    await wrapper.findAll('select')[0].setValue('leetcodecn')
+    await flushPromises()
     expect(sortBtn.text()).toContain('默认序')
-    const original = rowTitles(wrapper)
+    expect(urls[urls.length - 1]).not.toContain('sortBy=')
+  })
 
-    await sortBtn.trigger('click')
-    expect(sortBtn.text()).toContain('评分↑')
-    expect(rowTitles(wrapper)).toEqual(['Low', 'Mid', 'High', 'NoRating'])
+  it('hides solved rows locally (AC hidden, TRIED/UNSOLVED/status-less kept) and persists the flag', async () => {
+    handler = ratingAwareHandler({ rows: HIDE_SOLVED_ROWS })
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
 
-    await sortBtn.trigger('click')
-    expect(sortBtn.text()).toContain('评分↓')
-    expect(rowTitles(wrapper)).toEqual(['High', 'Mid', 'Low', 'NoRating'])
+    expect(rowTitles(wrapper)).toEqual(['SolvedAC', 'Tried', 'Unsolved', 'LegacyNoStatus'])
 
-    await sortBtn.trigger('click')
-    expect(sortBtn.text()).toContain('默认序')
-    expect(rowTitles(wrapper)).toEqual(original)
+    const box = wrapper.find('.hide-solved__check input')
+    await box.setValue(true)
+    expect(rowTitles(wrapper)).toEqual(['Tried', 'Unsolved', 'LegacyNoStatus'])
+    expect(localStorage.getItem('cq-problems-hide-solved')).toBe('1')
+    // 本地过滤激活 → filter-note 出现
+    expect(wrapper.find('.filter-note').text()).toContain('已加载条目')
+
+    // 取消恢复全部并持久化回 '0'
+    await box.setValue(false)
+    expect(rowTitles(wrapper)).toHaveLength(4)
+    expect(localStorage.getItem('cq-problems-hide-solved')).toBe('0')
+    expect(wrapper.find('.filter-note').exists()).toBe(false)
+  })
+
+  it('restores hide-solved from storage and stacks with status filter + rating range (pager count)', async () => {
+    localStorage.setItem('cq-problems-hide-solved', '1')
+    handler = ratingAwareHandler({ rows: HIDE_SOLVED_ROWS })
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    // 持久化恢复:挂载即隐藏 AC 行,分页计数合并为 x/总数
+    expect(rowTitles(wrapper)).toEqual(['Tried', 'Unsolved', 'LegacyNoStatus'])
+    expect(wrapper.find('.pager__count').text()).toContain('3/4')
+
+    // 叠加状态筛选(未解决)
+    await wrapper.findAll('select')[2].setValue('UNSOLVED')
+    expect(rowTitles(wrapper)).toEqual(['Unsolved', 'LegacyNoStatus'])
+    expect(wrapper.find('.pager__count').text()).toContain('2/4')
+
+    // 再叠加评分区间 ≥2000(本地,多条件合并;无分行被区间排除)
+    const inputs = wrapper.findAll('input[type="number"]')
+    await inputs[0].setValue('2000')
+    expect(rowTitles(wrapper)).toEqual(['Unsolved'])
+    expect(wrapper.find('.pager__count').text()).toContain('1/4')
+    expect(wrapper.find('.filter-note').text()).toContain('已加载条目')
   })
 
   it('shows the contest rating badge on the current platform account row', async () => {

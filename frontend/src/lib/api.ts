@@ -140,6 +140,11 @@ export interface ProblemListQuery {
   favorite?: string
   /** WP42:面试期间 slug(thirty-days/three-months/six-months/more-than-six-months/all)。 */
   period?: string
+  /**
+   * WP70:服务端排序('id' 题号升序 / 'difficulty' 难度序,WP68 协议枚举
+   * FRONTEND_ID/DIFFICULTY);题单/公司模式后端忽略,调用方仅在普通模式传值。
+   */
+  sortBy?: 'id' | 'difficulty'
   limit?: number
   offset?: number
 }
@@ -164,6 +169,9 @@ export function fetchProblems(query: ProblemListQuery): Promise<ProblemListResul
   }
   if (query.period) {
     params.set('period', query.period)
+  }
+  if (query.sortBy) {
+    params.set('sortBy', query.sortBy)
   }
   if (query.limit !== undefined) {
     params.set('limit', String(query.limit))
