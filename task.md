@@ -1,35 +1,3 @@
-# CodeQuest UI 与功能优化 — WP 清单
-
-- 来源计划: `docs/plan/codequest-ui-optimization.md`
-- loopId: `loop-20260803-codequest-ui`
-- 调度序(依赖+优先级): WP1→WP2→WP3→WP4→WP5→WP6→WP7→WP8
-
-## WP1: 前端性能与依赖瘦身 [pending]
-highlight.js 全量→按需语言 + 删 mathjax 死依赖。验收: leetCodeSolutionArticle-*.js bundle < 150KB(当前 1004KB)
-
-## WP2: challengeDescription 去 jQuery [pending]
-移除 jquery-1.9.1 改原生 DOM。验收: 页面渲染/交互行为一致
-
-## WP3: Markdown 渲染管线统一 [pending]
-建议先 WP1。统一前后端渲染引擎。验收: 各 OJ 描述渲染一致
-
-## WP4: 刷题统计可视化 [pending]
-统计 toolwindow + 数据层 + 前端图表/热力图。验收: 数据与 submission 表一致
-
-## WP5: OJ 公共基类抽象 [pending]
-BaseOjService/BaseSubmissionService。验收: 各 OJ 行为不变、重复减少
-
-## WP6: 竞赛功能 [pending]
-LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 竞赛可用
-
-## WP7: 跨题检索与标签 [pending]
-全文检索 + 标签筛选。验收: 可按关键词/标签检索定位
-
-## WP8: 更多 OJ 支持 [pending] [blocked by WP5]
-牛客 NowCoder 等。验收: 新 OJ 可查询/提交
-
----
-
 # CodeQuest Kotlin 重写 M1+M2 — WP 清单(loop-20260814-codequest-rewrite-m1m2)
 
 - 来源计划: `docs/plan/codequest-rewrite-m1-m2.md`
@@ -422,3 +390,139 @@ LeetCode/CodeForces 竞赛列表/详情/提醒/排名。验收: 至少一个 OJ 
 - [x] runIde 沙箱走查：CF 等平台编辑器无「提交测试」键；非挑战文件无浮动栏
 - [x] CHANGELOG 1.3.0 条目 + build.gradle.kts 版本 bump + 构建产物 zip
 - [x] [acceptance] spec §4 六条验收全过（对话框互通/云端测试结果/提交流程/题单下拉/能力门控/定版）
+
+---
+
+# 力扣 P0 四项（评分/历史同步/复习/计时器）— WP 清单
+
+- 来源计划: `docs/plan/lc-p0-features.md`（spec: docs/superpowers/specs/2026-10-02-lc-p0-four-features-design.md, c1ddd3a）
+- loopId: `loop-20261002-lc-p0`
+- 调度序: WP59→WP60→WP61→WP62→WP63→WP64→WP65→WP66
+
+## WP59: 数据库 v3 迁移与三个新仓库 [x] (done @ iter 1;三表 raw DDL 幂等迁移 v2→3、三 Exposed 仓库+wire、16 新测共 771 全绿;commit aa8f797)
+- [ ] `infra/db/Tables.kt` 加三表：`problem_rating(frontend_id PK, rating REAL, updated_at)`、`remote_submission(id PK AUTOINCREMENT, platform_id, remote_id, title_slug, title, status_display, lang, runtime_ms?, memory_kb?, submitted_at, UNIQUE(platform_id, remote_id))`、`review_schedule(problem_id PK, plan_dates, history_dates, updated_at)`（两列均为 epoch 秒数组 JSON）
+- [ ] schema v3 迁移（照 v2 先例）：建三表 + schema_version bump，重复执行幂等
+- [ ] `ExposedRatingRepository`（upsert 全量、loadAll）、`ExposedRemoteSubmissionRepository`（upsert 单条、existsBy(platform,remoteId)、分页 listPage、countByPlatform）、`ExposedReviewRepository`（findByProblem、upsert、listAll）
+- [ ] [unit] 三仓库集成测试（照 `SubmissionRepositoryIntegrationTest` 模式：save/load/unique 冲突/分页排序）
+- [ ] [unit] 迁移幂等测试（v2 库升级 v3 不丢数据）
+
+## WP60: 实现后端评分体系 [x] (done @ iter 2;zerotrac 真实拉取 2596 条内置+RatingService 三态加载/refresh 原子+UserContestCapable SPI(userContestRanking 字段名对齐插件实证)+/api/problems persistAndRespond 单点装饰三模式;+19 测共 790 全绿;commit 73c8c25)
+依赖 WP59
+- [ ] 打包资源 `kotlin/src/main/resources/rating/leetcode-ratings.json`：拉取 zerotrac data.json 精简为 `{frontendId: rating}` 映射（一次性脚本或手动），附下载说明注释（URL + 日期）
+- [ ] `infra/rating/RatingService`：启动加载（DB 非空优先，否则内置资源）→ 内存 Map；`refresh()` 拉 zerotrac → upsert DB → 重载；失败透传错误不破坏 DB
+- [ ] `ProblemSummary` 加 `frontendQuestionId: String? = null`；LC 列表解析（`LeetCodeApi` 列表项→`toSummary`）填充，其他平台 null
+- [ ] REST：`GET /api/rating/status`、`POST /api/rating/refresh`（ResourceHttpServer 挂路由）
+- [ ] `LeetCodeApi` 加 GraphQL `userContestRankingInfo`（LeetCodeGraphQL.kt 常量）→ `GET /api/rating/user-contest`（失败/无数据返回 null 不抛错）
+- [ ] `/api/problems` 三模式（普通/公司/题单）装配处：按 frontendQuestionId 查内存 Map，行 JSON 加 `rating` 字段
+- [ ] [unit] RatingService 加载优先级（DB 优先/内置兜底/空）与 refresh upsert 单测（fake 传输）
+- [ ] [unit] userContestRankingInfo 样例 JSON 解析（有分/无数据/未登录）
+- [ ] [unit] /api/problems 装配 rating 装饰单测；三 REST 端点 HttpTest（照 SubmissionsApiHttpTest）
+
+## WP61: 实现站内提交历史同步 [x] (done @ iter 3;SubmissionHistoryCapable SPI+submissionList GraphQL(协议按任务给定结构,插件实无此实现,测试锁 query 文本,真实站验证留 WP66)+SyncService 吃完整页再停/200 页上限+sync 端点(400/404/502)+统计并集本地优先+remoteSyncedCount;+18 测共 807 全绿;commit 673dc02)
+依赖 WP59
+- [ ] SPI 新增 `SubmissionHistoryCapable`：`suspend fun fetchSubmissionHistory(offset, limit): RemoteSubmissionPage`（模型 RemoteSubmissionPage/RemoteSubmission 按 spec §2.1）
+- [ ] `LeetCodeApi` 加 GraphQL `submissionList`（offset/limit 分页，字段 id/title/titleSlug/statusDisplay/runtime/memory/lang/timestamp）；LeetCodePlatform（两 variant）实现能力
+- [ ] `SubmissionHistorySyncService`（infra）：倒序分页拉（页 20）逐条 upsert，遇已存 (platform_id, remote_id) 停止；上限 200 页；返回 `{synced, total}`；pooled 线程执行
+- [ ] REST：`POST /api/submissions/sync`（body platformId；无能力平台 400）、`GET /api/submissions/remote?platform=&limit=&offset=`
+- [ ] `StatisticsService` 合并 `submission`+`remote_submission`：streak/热力图/AC 总数取并集，(platform_id, remote_id) 重复时本地优先；统计响应加 `remoteSyncedCount`
+- [ ] [unit] 同步增量停止与页上限（fake api：首条已存即停/第 N 页已存截断/超 200 页保护）
+- [ ] [unit] submissionList 样例 JSON 解析（多形态 statusDisplay）
+- [ ] [unit] 统计合并口径（并集/去重本地优先/AC 判定 status_display=AC）
+- [ ] [integration] sync 端点 HttpTest（不支持平台 400/同步计数返回）
+
+## WP62: 实现间隔重复复习调度 [x] (done @ iter 4;ReviewService(端口注入 core 零 infra)+settings_kv 间隔配置+AC 触发点(runCatching 不阻断)+today/add/complete/config 四端点;+21 测共 828 全绿;commit 6c688d7;首 Teamee 429 中断留主代码,续做 Teamee 核验+修 4 处编译缺陷+补 HttpTest 零损失恢复)
+依赖 WP59
+- [ ] `core/review/ReviewService`：`onAccepted(problemId)`（plan 空→按间隔生成；非空→移除今天及过去、history 追加今天）、`addManual(problemId)`（明天零点起全量排）、间隔读 settings_kv `review_intervals`（默认 "1,4,7,14,28,60"，非法回退默认）；零点=系统默认时区
+- [ ] `SubmissionCoordinator.runSubmission` AC 后（broadcastUpdated 旁）调 `onAccepted(target.problem.id)`——平台无关
+- [ ] REST：`GET /api/review/today`（overdue/today/upcoming 分组+totalTracked）、`POST /api/review/problems/{id}/add`、`/complete`
+- [ ] [unit] ReviewService：首 AC 排期/再 AC 完成移除/过期判定/手动加入/间隔配置解析与非法回退/跨零点边界
+- [ ] [unit] 三端点 HttpTest
+
+## WP63: 实现前端评分呈现 [x] (done @ iter 5;评分列+五档着色(lcRatingColor.ts 独立模块,CSS 变量亮暗双套)+排序循环钮+区间本地过滤+竞赛分徽标/刷新按钮/会话缓存;+27 vitest 共 200 过+build 绿;commit 14c713f;App.vue 行布局适配,新控件避开 select 断言既有测试零改)
+依赖 WP60
+- [ ] 题库表格加「评分」列（数值，列排序；rating null 显示 "-"）
+- [ ] 分差五档着色（评分列文字色；阈值常量绿<-200/蓝<-50/紫<50/黄<200/红≥200）；无用户竞赛分退化绝对分档（<1400/1400-1799/1800-2199/2200-2599/≥2600）；着色模式与列显隐存 localStorage
+- [ ] 筛选行评分区间（min/max 数字输入，本地过滤已加载行，同状态列模式）
+- [ ] 账号区显示竞赛分（/api/rating/user-contest 会话缓存）+「刷新评分」按钮（POST refresh 后重拉列表）
+- [ ] 前端类型与 api.ts：ratingStatus/refresh/userContest 请求函数
+- [ ] [unit] vitest：五档着色映射（分差/绝对退化/无分）、区间过滤、列排序、localStorage 持久化
+- [ ] [acceptance] `npm run test && npm run build` 全绿
+
+## WP64: 实现前端复习子视图与加入复习 [x] (done @ iter 6;ReviewPanel 三分组+徽标/间隔配置/标记完成+统计页同步按钮(remoteSyncedCount)+题面页两态按钮(problemId=<platform>:<remoteId> 确定性映射)+授权最小 Kotlin diff(ReviewRowDto.remoteId+nav 桥需);+8 vitest 共 208 过+build 绿+ReviewApiHttpTest 绿;commit 81b4add)
+依赖 WP60 与 WP62
+- [ ] 题库页「复习」子视图入口（对齐本地搜索子视图切换模式）：已过期(红)/今日/未来分组列表，行点击 nav:openProblem；入口徽标=今日到期数
+- [ ] 子视图内间隔配置输入（写 settings_kv 经 REST）与「标记完成」操作
+- [ ] 统计页「站内历史：已同步 N 条」+「同步历史」按钮（POST /api/submissions/sync，进度/结果 toast）
+- [ ] 题面页 header「加入复习」按钮（已排期显示「已排期至 x」）
+- [ ] [unit] vitest：子视图分组渲染、徽标计数、按钮状态（未排期/已排期）
+- [ ] [acceptance] `npm run test && npm run build` 全绿
+
+## WP65: 实现题目计时器 [x] (done @ iter 7;SubmissionsBridgeRegistry 多播(签名不变单注册逐字节一致)+payload 增补匹配键、problemTimer.ts 可测模块+题面页角标/AC 停表 toast/开关;有据偏差:ProblemViewToolWindowFactory +4 行桥挂接(spec §4 明文要求);Kotlin +8 测共 836/前端 +19 测共 227 双绿;commit 5d7d86c)
+- [ ] Kotlin：`SubmissionCoordinator` 桥单槽改多播列表（attach/detach 兼容旧签名，broadcast 遍历 postMessage）；payload 增补 `platformId`+`problemRemoteId`（runSubmission 持有 target.problem），challengeId 等既有字段不动
+- [ ] 前端 problem-view 页：header 计时角标 mm:ss（≥1h 显示 h:mm:ss），收到题面数据重置起表；订阅 submission:updated，(platformId, problemRemoteId) 匹配且 verdict=Accepted → 停表定格+toast 耗时
+- [ ] 开关 enableTimer（localStorage 默认开）
+- [ ] [unit] 多播桥单测（单注册行为与现状一致/多注册遍历/已注册页仍收到）；桥 payload 字段单测
+- [ ] [unit] vitest：计时格式化、起停逻辑（匹配/不匹配 challenge、enableTimer 关闭）
+- [ ] [acceptance] `npm run test && npm run build` 全绿
+
+## WP66: 集成验收与定版 1.7.0 [x] (done @ iter 8;lastKey 修复(真实站 A/B:修复版 200/带 null 字面量 403 实锤)+防回归断言;clean 全量门禁 836+227 双绿 zip 26.9MB;沙箱 11 项端点探测(zerotrac 真实刷新 2596/rating 题号关联实证/sync 401→502 透传如设计);手动清单三态 docs/lc-p0-manual-checklist.md;CHANGELOG+1.7.0 bump;commit 9236731)
+依赖 WP63-WP65
+- [ ] `./gradlew test check buildPlugin` 全绿；前端 `npm run test && npm run build` 全绿
+- [ ] runIde 沙箱走查：题库页评分列+着色（登录后分差档/未登录绝对档）+区间筛选+刷新评分按钮
+- [ ] runIde 沙箱走查：同步历史按钮拉回站内提交，统计页 streak/热力图/AC 计数随之修正
+- [ ] runIde 沙箱走查：开刷提交 AC → 复习子视图出现该题明日到期；题面页「加入复习」可用；次日到期徽标（可改系统时间或调间隔验证）
+- [ ] runIde 沙箱走查：切题计时重置、AC 停表定格+toast；提交记录页（submissions）刷新行为不变（多播回归）
+- [ ] CHANGELOG 1.7.0 条目 + build.gradle.kts 版本 bump
+- [ ] [acceptance] spec §7 风险项全过：zerotrac 失败不破坏 DB、无竞赛分退化、bridge 多播回归、同步上限保护
+
+---
+
+# 力扣 P1 三项（每日一题/竞赛回顾/排序+隐藏已解决）— WP 清单
+
+- 来源计划: `docs/plan/lc-p1-features.md`（spec: docs/superpowers/specs/2026-10-03-lc-p1-features-design.md, 23cc0ac）
+- loopId: `loop-20261003-lc-p1`
+- 调度序: WP67→WP68→WP69→WP70→WP71
+
+## WP67: 后端每日一题与 LC 竞赛能力 [x] (done @ iter 1;DailyQuestionCapable+ContestCapable 仅 CN(LeetCodeCnPlatform 子类,COM is not 天然区分)+三项协议真实站实测锁定(todayRecord 数组+Referer/operationName 可过已 loop 层 curl 复证/contest 字段 title_slug 与 spec 预估不符按实锁定/不存在 slug HTTP200+body error);+21 测共 857 全绿;commit 6abe770)
+- [ ] SPI 新增 `DailyQuestionCapable`（`suspend fun fetchDailyQuestion(): DailyQuestion?`，模型 DailyQuestion(date/frontendQuestionId/title/titleSlug/difficulty/tags)）——仅 `LeetCodePlatform` CN 变体实现；协议 CN GraphQL `questionOfToday`（查询文本进 LeetCodeGraphQL.kt；translatedTitle 优先作 title；解析失败/字段缺失返回 null 降级，未登录 errors 信封不抛给上层）
+- [ ] `LeetCodeApi` 加 `contestHistory(pageNum=1, pageSize=10)`（CN GraphQL；字段 title/titleSlug/startTime/duration——**startTime 单位与字段形态真实站实测锁定**）；`LeetCodePlatform` CN 变体实现 `ContestCapable.contests()`：phase 按 startTime+duration 与 now 推导（BEFORE/CODING/FINISHED 映射进现有五值枚举，注入 clock 测边界）；ContestSummary(remoteId=titleSlug, url=leetcode.cn/contest/{slug}/)；joinable 恒 false
+- [ ] `contestDetail(remoteId)`：CN REST `GET /contest/api/info/{titleSlug}/` → questions → `ContestProblemRef(remoteId=question title_slug, index="Q{n}", title)`——字段名真实站实测锁定（插件 recentContestData 模块可 grep 参考，疑为 question__title/question__title_slug 下划线形态）；竞赛不存在抛 OJException；题目拉取失败降级空列表（照 CF 先例）
+- [ ] REST：`GET /api/daily-question?platform=`（当日进程内缓存 volatile (date,payload)，跨日失效；无能力平台 404 照 /api/contests 探测惯例；挂 ResourceHttpServer 照 RatingApi 先例）
+- [ ] [unit] questionOfToday 三态（正常含翻译优先/字段缺失 null/errors 信封 null）
+- [ ] [unit] contestHistory 解析 + phase 推导边界（注入 clock：赛前/赛中/赛后跨界三例）+ startTime 单位锁定断言
+- [ ] [unit] contest/api/info 解析（正常/字段缺失降级空表/不存在抛 OJException）
+- [ ] [integration] /api/daily-question HttpTest（200/缓存同日命中/无能力 404）+ /api/contests?platform=leetcodecn 与 leetcode（COM）能力探测（CN 实现/COM 404）HttpTest
+- [ ] 平台能力归属测试（CN is ContestCapable+DailyQuestionCapable；COM is not）
+
+## WP68: 后端排序 sortBy 透传 [x] (done @ iter 2;ProblemFilter.sortBy+双站枚举实测锁定(CN V1 filters.orderBy/COM V2 sortBy.sortField 共用 FRONTEND_ID/DIFFICULTY,猜测值 FRONTEND_QUESTION_ID 被实测否定)+白名单回退+/api/problems 参数映射;+5 测共 862 全绿;commit ef668bd)
+依赖 WP67
+- [ ] `ProblemFilter` 加 `sortBy: String? = null`（协议枚举名透传；SPI 语义：实现忽略不支持值，照 tags 先例 KDoc 声明）
+- [ ] `LeetCodeApi` 列表查询：sortBy 非空时替换写死的 CUSTOM ASCENDING——**协议枚举值真实站实测锁定**（预期 FRONTEND_QUESTION_ID/DIFFICULTY 类形态，curl leetcode.cn graphql 验证），未知/空值照旧 CUSTOM；请求参数快照测试（id→枚举A/difficulty→枚举B/空→CUSTOM）+ 防回归断言
+- [ ] REST `/api/problems` 加 `sortBy` 参数（值域 `id`/`difficulty` 映射协议枚举，非法值忽略回默认序；题单/公司模式照旧忽略——协议不支持）
+- [ ] [unit] LeetCodeApiTest 请求快照三态；ProblemApi sortBy 参数 HttpTest（透传/非法回退/题单模式忽略）
+- [ ] [unit] 其他平台（CF/AtCoder 等 FakeOJTransport）sortBy 被忽略无回归
+
+## WP69: 前端每日一题卡片与竞赛 tab 接入 [x] (done @ iter 3;今日题目常驻横幅(降级静默)+fetchDailyQuestion/fetchContestDetail+竞赛详情展开点题(核对发现原无点题交互,新增 platform.value 参数化 CF/LC 共用,LC payload 显式断言)+LC 提醒订阅通用可用;+8 vitest 共 235 过+build 绿;commit 0d9d73a)
+依赖 WP67
+- [ ] 题库页（frontend/src/pages/problems/App.vue）力扣 CN 平台时顶部常驻「今日题目」卡片：日期+题号+标题+难度徽标+标签 chips，点击 nav:openProblem(platformId=leetcodecn, remoteId=titleSlug)；非 CN/失败/404 静默不渲染（照 myFavorites 降级惯例）
+- [ ] api.ts：fetchDailyQuestion(platform) + DailyQuestion 类型
+- [ ] 竞赛 tab：核对 LC 平台接入（fetchContestPlatforms 能力探测自动出现）；竞赛行字段补齐共用模板（标题+开始时间本地化+时长+状态徽标，CF/LC 同受益）；详情题目行 Q 序号+标题，点题开题面——**实测核对 contest 页点题对 LC 平台的 platform 参数传递**（remoteId=titleSlug 与题库同源）
+- [ ] 竞赛提醒订阅对 LC 平台可用性核对（contest_reminders 通用零改动，UI 上确认可订阅，不可用如实记录）
+- [ ] [unit] vitest：卡片渲染条件三态+字段+点击导航 payload；竞赛行字段渲染；LC 平台出现于竞赛平台下拉
+- [ ] [acceptance] `npm run test && npm run build` 全绿（基线 227 不破坏）
+
+## WP70: 前端排序五档与隐藏已解决 [x] (done @ iter 4;五档循环不换控件(题号/难度服务端 reload 带 sortBy,评分本地标注仅已加载,题单/公司模式跳过服务端档)+隐藏已解决复用 statusOf 本地过滤+localStorage+三条件叠加;+4 vitest 共 239 过+build 绿;commit be8ae26)
+依赖 WP68
+- [ ] 扩展排序循环按钮档位：默认 → 题号 → 难度 → 评分↑ → 评分↓（题号/难度带 sortBy 参数 reload 服务端排序；评分两档保持本地排序标注「仅已加载」；切换平台/筛选重置默认）
+- [ ] 「隐藏已解决」checkbox（筛选行评分列开关旁）：本地过滤已加载行（状态徽标非 AC 隐藏，复用现有状态判定函数；未登录仅按本地提交判定）；localStorage 键 `cq-problems-hide-solved` 默认关；与评分区间/状态筛选叠加（filter-note 计数合并）
+- [ ] [unit] vitest：五档循环切换与 reload/本地分流、sortBy 参数传递、隐藏已解决过滤（AC 保留/非 AC 隐藏/未登录判定）、localStorage 持久化、叠加计数
+- [ ] [acceptance] `npm run test && npm run build` 全绿
+
+## WP71: 集成验收与定版 1.8.0 [x] (done @ iter 5;clean 门禁 862+239 双绿 zip 28,245,763B;沙箱 7 组端点真实数据(每日一题 1.65s 首拉/450x 缓存/官方站交叉一致,竞赛 10 条真实+Q1-Q4,sortBy 两档顺序实变)+Playwright UI 两项;手动清单 docs/lc-p1-manual-checklist.md;CHANGELOG+1.8.0 bump;commit 327cb63)
+依赖 WP69-WP70
+- [ ] `./gradlew clean test check buildPlugin` 全绿；前端 `npm run test && npm run build` 全绿（记录数字与 zip 产物）
+- [ ] runIde 沙箱端点探测：`GET /api/daily-question?platform=leetcodecn`（真实拉取记录字段）、`?platform=leetcode`（404/COM 无能力）、`GET /api/contests?platform=leetcodecn`（真实竞赛列表记录条数与 phase）、`GET /api/contest/{真实slug}?platform=leetcodecn`（详情题目）、`GET /api/problems?platform=leetcodecn&sortBy=id` 与 `sortBy=difficulty`（列表真实顺序变化对比）；沙箱进程杀净 0 残留；起不来如实标留人工
+- [ ] runIde 沙箱：题库页每日一题卡片渲染（Playwright/或留人工）、竞赛 tab LC 平台下拉与行字段
+- [ ] CHANGELOG 1.8.0 条目 + build.gradle.kts 版本 bump
+- [ ] 手动清单 `docs/lc-p1-manual-checklist.md`（三态+spec §6 风险结论表）
+- [ ] [acceptance] spec §6 五条风险全过：每日一题降级不致败/竞赛字段实测锁定/sortBy 枚举实测+回退/竞赛行模板共用/phase 时区统一 Instant
