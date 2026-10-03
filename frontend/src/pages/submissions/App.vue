@@ -11,13 +11,15 @@
  * Refresh 按钮兜底)。
  * WP50:文案全面中文化(判定文案在 lib/verdict.ts,与 PluginBundle_zh 对齐)。
  */
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
 import { TOPIC_SUBMISSION_UPDATED, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
+  fetchRemoteSubmissions,
   fetchSubmissionDetail,
   fetchSubmissions,
+  type RemoteSubmissionItem,
   type SubmissionDetailResult,
   type SubmissionListItem,
 } from '../../lib/api'
@@ -34,6 +36,11 @@ const hasMore = ref(false)
 const loading = ref(false)
 const error = ref('')
 
+// 站内提交历史(WP61 同步落库的 remote_submission):混合展示的附属数据源。
+const remoteItems = ref<RemoteSubmissionItem[]>([])
+const remoteHasMore = ref(false)
+let remoteOffset = 0
+
 /** 当前展开详情面板的行(单展开互斥;再点同一行收起)。 */
 const expandedId = ref<string | null>(null)
 
@@ -47,6 +54,9 @@ const panels = reactive<Record<string, PanelState>>({})
 /** URL query 携带 challengeId 时过滤单一工作区(提交完成后的定向视图)。 */
 const params = new URLSearchParams(window.location.search)
 const challengeId = params.get('challengeId')?.trim() || ''
+
+// challengeId 定向视图不掺站内历史(其无 challenge 概念,保持纯本地现状)。
+const remoteEnabled = !challengeId
 
 function describeError(cause: unknown): string {
   if (cause instanceof ApiError) {
@@ -67,6 +77,7 @@ async function loadPage(append: boolean): Promise<void> {
     items.value = append ? [...items.value, ...result.items] : result.items
     hasMore.value = result.hasMore
     offset.value += result.items.length
+    await loadRemotePage()
   } catch (cause) {
     error.value = describeError(cause)
   } finally {
@@ -74,11 +85,82 @@ async function loadPage(append: boolean): Promise<void> {
   }
 }
 
+/** 站内历史分页(与本地页同步推进);附属数据:失败静默降级纯本地视图。 */
+async function loadRemotePage(): Promise<void> {
+  if (!remoteEnabled) return
+  try {
+    const result = await fetchRemoteSubmissions({ limit: PAGE_SIZE, offset: remoteOffset })
+    // 防御:缺 remoteId 的畸形条目丢弃(旧 mock/协议漂移不产生幻影行)
+    const page = result.items.filter((r) => r != null && r.remoteId != null)
+    remoteItems.value = [...remoteItems.value, ...page]
+    remoteOffset += page.length
+    remoteHasMore.value = remoteOffset < (result.total ?? 0)
+  } catch {
+    remoteHasMore.value = false
+  }
+}
+
 function reload(): void {
   items.value = []
   offset.value = 0
   hasMore.value = false
+  remoteItems.value = []
+  remoteOffset = 0
+  remoteHasMore.value = false
   void loadPage(false)
+}
+
+// ---------------------------------------------------------------------------
+// 混合展示:本地 + 站内历史合并行(提交时间倒序;同 (platform, remoteId) 本地优先)
+// ---------------------------------------------------------------------------
+
+type MergedRow =
+  | { kind: 'local'; key: string; item: SubmissionListItem }
+  | { kind: 'remote'; key: string; item: RemoteSubmissionItem }
+
+const rows = computed<MergedRow[]>(() => {
+  const byKey = new Map<string, MergedRow>()
+  for (const remote of remoteItems.value) {
+    byKey.set(`${remote.platformId}:${remote.remoteId}`, {
+      kind: 'remote',
+      key: `${remote.platformId}:${remote.remoteId}`,
+      item: remote,
+    })
+  }
+  // 本地条目后写覆盖同键站内行(本地含代码快照与完整 verdict)
+  for (const local of items.value) {
+    byKey.set(`${local.platformId}:${local.remoteSubmissionId}`, {
+      kind: 'local',
+      key: `${local.platformId}:${local.remoteSubmissionId}`,
+      item: local,
+    })
+  }
+  return [...byKey.values()].sort(
+    (a, b) => Date.parse(b.item.submittedAt) - Date.parse(a.item.submittedAt),
+  )
+})
+
+/** 「加载更多」两源任一未尽即可续。 */
+const canLoadMore = computed(() => hasMore.value || (remoteEnabled && remoteHasMore.value))
+
+/** 站内判定文案 → 徽标(AC 绿;常见失败档映射既有色;未知中性)。 */
+function remoteStatusMeta(statusDisplay: string): { label: string; tone: string } {
+  const norm = statusDisplay.trim()
+  if (norm === 'AC') return { label: '通过', tone: 'accepted' }
+  const known: Record<string, { label: string; tone: string }> = {
+    'Wrong Answer': { label: '答案错误', tone: 'rejected' },
+    'Time Limit Exceeded': { label: '超出时间限制', tone: 'limit' },
+    'Memory Limit Exceeded': { label: '超出内存限制', tone: 'limit' },
+    'Runtime Error': { label: '运行时错误', tone: 'crash' },
+    'Compile Error': { label: '编译错误', tone: 'crash' },
+  }
+  return known[norm] ?? { label: norm || '未知', tone: 'neutral' }
+}
+
+/** 站内提交详情外链(仅力扣两变体有同步数据)。 */
+function remoteViewUrl(item: RemoteSubmissionItem): string {
+  const domain = item.platformId === 'leetcodecn' ? 'leetcode.cn' : 'leetcode.com'
+  return `https://${domain}/submissions/detail/${item.remoteId}/`
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +176,11 @@ function toggleDetail(id: string): void {
   if (panels[id] === undefined) {
     void loadDetail(id)
   }
+}
+
+/** 站内行展开:轻量内联信息(无详情拉取、无 Code 态——无本地代码快照)。 */
+function toggleRemote(key: string): void {
+  expandedId.value = expandedId.value === key ? null : key
 }
 
 async function loadDetail(id: string): Promise<void> {
@@ -218,12 +305,13 @@ onUnmounted(() => {
       {{ error }}
       <button type="button" class="state__retry" @click="reload">重试</button>
     </p>
-    <p v-else-if="loading && items.length === 0" class="state">正在加载提交记录…</p>
-    <p v-else-if="!loading && items.length === 0" class="state">
+    <p v-else-if="loading && rows.length === 0" class="state">正在加载提交记录…</p>
+    <p v-else-if="!loading && rows.length === 0" class="state">
       还没有提交记录。在编辑器中使用「提交到 OJ」后,结果会出现在这里。
+      <template v-if="remoteEnabled"><br />提示:统计页「同步历史」可拉取站内提交,拉取后在此混合展示。</template>
     </p>
 
-    <table v-if="items.length > 0" class="submissions" aria-label="提交记录列表">
+    <table v-if="rows.length > 0" class="submissions" aria-label="提交记录列表">
       <thead>
         <tr>
           <th>题目</th>
@@ -235,7 +323,9 @@ onUnmounted(() => {
         </tr>
       </thead>
       <tbody>
-        <template v-for="item in items" :key="item.id">
+        <template v-for="row in rows" :key="row.key">
+          <template v-if="row.kind === 'local'">
+            <template v-for="item in [row.item]" :key="item.id">
           <tr
             class="submissions__row"
             :class="{ 'submissions__row--expanded': expandedId === item.id }"
@@ -376,14 +466,91 @@ onUnmounted(() => {
               </div>
             </td>
           </tr>
+            </template>
+          </template>
+          <template v-else>
+            <tr
+              class="submissions__row submissions__row--remote"
+              :class="{ 'submissions__row--expanded': expandedId === row.key }"
+              :aria-expanded="expandedId === row.key"
+              @click="toggleRemote(row.key)"
+            >
+              <td class="submissions__problem">
+                <span class="submissions__name">{{ row.item.title }}</span>
+                <span class="submissions__meta">
+                  {{ row.item.platformId }} · #{{ row.item.remoteId }}
+                  <span class="submissions__remote-badge">站内</span>
+                </span>
+              </td>
+              <td>{{ row.item.lang }}</td>
+              <td>
+                <span
+                  class="verdict-badge"
+                  :class="`verdict-badge--${remoteStatusMeta(row.item.statusDisplay).tone}`"
+                >
+                  {{ remoteStatusMeta(row.item.statusDisplay).label }}
+                </span>
+              </td>
+              <td class="submissions__num">{{ formatMillis(row.item.runtimeMs) }}</td>
+              <td class="submissions__num">{{ formatMemoryKb(row.item.memoryKb) }}</td>
+              <td class="submissions__time">{{ formatTimestamp(row.item.submittedAt) }}</td>
+            </tr>
+            <tr v-if="expandedId === row.key" class="detail-row">
+              <td colspan="6" class="detail-row__cell" @click.stop>
+                <div class="detail detail--remote">
+                  <dl class="detail__meta">
+                    <div class="detail__meta-item">
+                      <dt>题目</dt>
+                      <dd>{{ row.item.title }}({{ row.item.titleSlug }})</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>判定</dt>
+                      <dd>
+                        <span
+                          class="verdict-badge"
+                          :class="`verdict-badge--${remoteStatusMeta(row.item.statusDisplay).tone}`"
+                        >
+                          {{ remoteStatusMeta(row.item.statusDisplay).label }}
+                        </span>
+                      </dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>耗时</dt>
+                      <dd>{{ formatMillis(row.item.runtimeMs) }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>内存</dt>
+                      <dd>{{ formatMemoryKb(row.item.memoryKb) }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>语言</dt>
+                      <dd>{{ row.item.lang }}</dd>
+                    </div>
+                    <div class="detail__meta-item">
+                      <dt>提交时间</dt>
+                      <dd>{{ formatTimestamp(row.item.submittedAt) }}</dd>
+                    </div>
+                  </dl>
+                  <a
+                    class="detail__view-url"
+                    :href="remoteViewUrl(row.item)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    在 {{ row.item.platformId }} 查看 ↗
+                  </a>
+                </div>
+              </td>
+            </tr>
+          </template>
         </template>
       </tbody>
     </table>
 
-    <div v-if="items.length > 0" class="pager">
-      <span class="pager__count">已加载 {{ items.length }} 条</span>
+    <div v-if="rows.length > 0" class="pager">
+      <span class="pager__count">已加载 {{ rows.length }} 条</span>
       <button
-        v-if="hasMore"
+        v-if="canLoadMore"
         type="button"
         class="pager__more"
         :disabled="loading"
@@ -754,5 +921,21 @@ onUnmounted(() => {
 .pager__more:disabled {
   opacity: 0.6;
   cursor: default;
+}
+/* 站内历史行:来源徽标 + 轻微底色区分本地行(亮暗走 CSS 变量)。 */
+.submissions__remote-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--cq-muted);
+  background: var(--cq-panel);
+  border: 1px solid var(--cq-border);
+}
+
+.submissions__row--remote .submissions__name {
+  color: var(--cq-muted);
 }
 </style>

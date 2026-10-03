@@ -22,8 +22,8 @@ import kotlinx.serialization.json.Json
  *   body 非法/缺 platformId → 400;平台未注册 → 404;注册平台无
  *   [SubmissionHistoryCapable] 能力 → 400;拉取异常 → 502(已入库部分保留);
  * - `GET /api/submissions/remote?platform=&limit=&offset=`:`remote_submission`
- *   表分页列表(提交时间倒序)+ total;platform 必填,limit 缺省 50(1..100),
- *   offset 缺省 0,非法 → 400。
+ *   表分页列表(提交时间倒序)+ total;platform **可缺省**(缺省=跨平台全量,
+ *   提交记录页混合展示用),limit 缺省 50(1..100),offset 缺省 0,非法 → 400。
  */
 class SubmissionHistoryApi(
     private val syncService: SubmissionHistorySyncService,
@@ -61,11 +61,9 @@ class SubmissionHistoryApi(
         )
     }
 
-    /** `GET /api/submissions/remote?platform=&limit=&offset=`。 */
+    /** `GET /api/submissions/remote?platform=&limit=&offset=`;platform 缺省=跨平台全量页。 */
     suspend fun listRemote(query: Map<String, String>): ProblemApiResponse {
-        val platformId =
-            query["platform"]?.trim()?.takeIf { it.isNotEmpty() }
-                ?: return badRequest("missing required query param: platform")
+        val platformParam = query["platform"]?.trim()?.takeIf { it.isNotEmpty() }
         val limit =
             query["limit"]?.let { text ->
                 text.toIntOrNull()?.takeIf { it in 1..MAX_LIMIT } ?: return badRequest("limit must be an integer in 1..$MAX_LIMIT")
@@ -75,11 +73,17 @@ class SubmissionHistoryApi(
                 text.toIntOrNull()?.takeIf { it >= 0 } ?: return badRequest("offset must be an integer >= 0")
             } ?: 0
         val repository = remoteSubmissions()
-        val items = repository.listPage(PlatformId(platformId), limit = limit, offset = offset)
-        val total = repository.countByPlatform(PlatformId(platformId))
+        val platformFilter = platformParam?.let(::PlatformId)
+        val items = repository.listPage(platformFilter, limit = limit, offset = offset)
+        val total =
+            if (platformFilter != null) {
+                repository.countByPlatform(platformFilter)
+            } else {
+                repository.countAll()
+            }
         return ok(
             RemoteSubmissionListResponseDto(
-                platform = platformId,
+                platform = platformParam,
                 total = total,
                 offset = offset,
                 limit = limit,
@@ -167,7 +171,8 @@ private data class SyncResponseDto(
 
 @Serializable
 private data class RemoteSubmissionListResponseDto(
-    val platform: String,
+    /** 过滤平台;缺省(跨平台全量)为 null。 */
+    val platform: String? = null,
     val total: Long,
     val offset: Int,
     val limit: Int,

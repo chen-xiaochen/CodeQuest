@@ -386,6 +386,49 @@ export function fetchSubmissions(query: SubmissionListQuery): Promise<Submission
 }
 
 // ---------------------------------------------------------------------------
+// 站内提交历史(remote_submission 表,WP61 同步落库;混合展示消费)
+// ---------------------------------------------------------------------------
+
+/** 站内提交历史条目(字段即 RemoteSubmissionRecord 表口径)。 */
+export interface RemoteSubmissionItem {
+  platformId: string
+  remoteId: string
+  titleSlug: string
+  title: string
+  /** 站内判定文案("AC"/"Wrong Answer"…);AC 判定 = "AC"。 */
+  statusDisplay: string
+  lang: string
+  runtimeMs?: number | null
+  memoryKb?: number | null
+  /** ISO-8601 即时字符串。 */
+  submittedAt: string
+}
+
+export interface RemoteSubmissionListResult {
+  /** 过滤平台;跨平台全量时为 null。 */
+  platform?: string | null
+  total: number
+  offset: number
+  limit: number
+  items: RemoteSubmissionItem[]
+}
+
+/** 站内提交历史分页(提交时间倒序);platform 缺省=跨平台全量。 */
+export function fetchRemoteSubmissions(query: { platform?: string; limit?: number; offset?: number }): Promise<RemoteSubmissionListResult> {
+  const params = new URLSearchParams()
+  if (query.platform && query.platform.trim().length > 0) {
+    params.set('platform', query.platform.trim())
+  }
+  if (query.limit !== undefined) {
+    params.set('limit', String(query.limit))
+  }
+  if (query.offset !== undefined && query.offset > 0) {
+    params.set('offset', String(query.offset))
+  }
+  return getJson<RemoteSubmissionListResult>(`/api/submissions/remote?${params.toString()}`)
+}
+
+// ---------------------------------------------------------------------------
 // 1.5.0:测试用例(右窗「测试用例」页,按挑战过滤的本地库 CRUD)
 // ---------------------------------------------------------------------------
 

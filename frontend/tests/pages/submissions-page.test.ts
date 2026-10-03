@@ -130,7 +130,9 @@ describe('submissions page', () => {
     await flushPromises()
 
     expect(wrapper.findAll('.submissions tbody tr').length).toBe(2)
-    expect(fetchCalls[1]).toContain('offset=1')
+    // 混合展示:loadPage 附带站内历史请求,本地列表断言按端点过滤(合法更新)
+    const localCalls = fetchCalls.filter((url) => !url.includes('/api/submissions/remote'))
+    expect(localCalls[1]).toContain('offset=1')
   })
 
   it('refetches the first page on submission:updated bridge push', async () => {
@@ -138,7 +140,9 @@ describe('submissions page', () => {
 
     const wrapper = mount(SubmissionsApp)
     await flushPromises()
-    expect(fetchCalls.length).toBe(1)
+    // 混合展示:本地列表调用计数按端点过滤(站内历史请求不计,合法更新)
+    const localCallCount = () => fetchCalls.filter((url) => !url.includes('/api/submissions/remote')).length
+    expect(localCallCount()).toBe(1)
 
     // Kotlin 侧 postMessage → window.__cqBridge.emit(信封)
     window.__cqBridge!.emit({
@@ -147,7 +151,7 @@ describe('submissions page', () => {
     })
     await flushPromises()
 
-    expect(fetchCalls.length).toBe(2)
+    expect(localCallCount()).toBe(2)
     expect(wrapper.findAll('.submissions tbody tr').length).toBe(1)
   })
 

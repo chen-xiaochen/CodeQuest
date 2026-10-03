@@ -171,8 +171,12 @@ class SubmissionHistoryApiHttpTest {
         val page2 = getJson("/api/submissions/remote?platform=leetcode&limit=1&offset=1")
         assertEquals("r-1", page2["items"]!!.jsonArray.toList()[0].jsonObject["remoteId"]!!.jsonPrimitive.content)
 
-        // platform 必填 / 参数非法 400
-        assertEquals(400, get("/api/submissions/remote").first)
+        // platform 缺省=跨平台全量(混合展示用):3 条跨两平台、total=3、platform 字段缺省
+        val cross = getJson("/api/submissions/remote?limit=10")
+        assertEquals("3", cross["total"]!!.jsonPrimitive.content)
+        assertEquals(3, cross["items"]!!.jsonArray.toList().size)
+
+        // 参数非法 400
         assertEquals(400, get("/api/submissions/remote?platform=leetcode&limit=0").first)
         assertEquals(400, get("/api/submissions/remote?platform=leetcode&offset=-1").first)
     }

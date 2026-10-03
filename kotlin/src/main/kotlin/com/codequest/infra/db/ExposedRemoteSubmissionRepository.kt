@@ -80,6 +80,12 @@ class ExposedRemoteSubmissionRepository(
                 .where { RemoteSubmissions.platformId eq platformId.value }
                 .count()
         }
+
+    /** 跨平台全量计数(提交记录页混合展示的跨平台分页 total)。 */
+    suspend fun countAll(): Long =
+        db.read {
+            RemoteSubmissions.selectAll().count()
+        }
 }
 
 private fun ResultRow.toRemoteSubmission() =
