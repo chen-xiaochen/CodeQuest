@@ -86,6 +86,31 @@ const ROWS = [
 ]
 
 describe('problems page', () => {
+  it('shows knowledge tags as Chinese chips, skipping unmapped English tags', async () => {
+    mockListPage([
+      {
+        remoteId: 'niche-tag-problem',
+        title: 'Niche Tags',
+        difficulty: 'Medium',
+        url: 'u',
+        tags: [
+          { name: 'Dynamic Programming', nameCn: null }, // LC_TAGS 中文名映射
+          { name: 'Some Niche Topic', nameCn: null }, // 无中文映射 → 不展示
+          { name: 'Monotonic Stack', nameCn: '单调栈' }, // nameCn 优先
+        ],
+      },
+    ])
+    const wrapper = mount(ProblemsApp)
+    await flushPromises()
+
+    const chips = wrapper.findAll('.problems__tag')
+    expect(chips.length).toBe(2)
+    expect(chips[0].text()).toBe('动态规划')
+    expect(chips[1].text()).toBe('单调栈')
+    expect(wrapper.text()).not.toContain('Some Niche Topic')
+    expect(wrapper.text()).not.toContain('Dynamic Programming')
+  })
+
   it('renders list rows with title, difficulty badge tone and tags', async () => {
     mockListPage(ROWS)
     const wrapper = mount(ProblemsApp)
@@ -96,8 +121,11 @@ describe('problems page', () => {
     expect(rows[0].text()).toContain('Two Sum')
     expect(rows[0].text()).toContain('two-sum')
     expect(rows[0].find('.diff-badge--easy').exists()).toBe(true)
-    // 1.6.0:tag 展示中文优先(nameCn ?? name)
-    expect(rows[0].text()).toContain('数组 · Hash Table')
+    // 1.9.x:知识点中文 chips——nameCn 优先,缺失按英文名查 LC_TAGS 中文名('Hash Table'→'哈希表')
+    const chips = rows[0].findAll('.problems__tag')
+    expect(chips.length).toBe(2)
+    expect(chips[0].text()).toBe('数组')
+    expect(chips[1].text()).toBe('哈希表')
     expect(rows[1].find('.diff-badge--hard').exists()).toBe(true)
   })
 

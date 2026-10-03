@@ -199,9 +199,17 @@ function openDailyQuestion(): void {
   bridge.send(TOPIC_NAV_OPEN_PROBLEM, { platformId: 'leetcodecn', remoteId: question.titleSlug })
 }
 
-/** 行内/结果行标签展示名:中文优先,英文兜底。 */
-function tagLabel(tag: ProblemTag): string {
-  return tag.nameCn || tag.name
+/** 行内知识点展示名:中文优先——nameCn 缺失时按英文名查 LC_TAGS 中文名;
+ *  无中文映射的 niche 英文标签跳过(与筛选面板「仅收录带中文名的精选主题」同口径)。 */
+const ZH_BY_EN: ReadonlyMap<string, string> = new Map(LC_TAGS.map((tag) => [tag.en.trim().toLowerCase(), tag.zh]))
+
+function knowledgeTags(tags: ProblemTag[]): string[] {
+  const labels: string[] = []
+  for (const tag of tags) {
+    const zh = tag.nameCn || ZH_BY_EN.get(tag.name.trim().toLowerCase())
+    if (zh) labels.push(zh)
+  }
+  return labels
 }
 
 function toggleTag(slug: string): void {
@@ -1057,14 +1065,21 @@ onUnmounted(() => {
               </svg>
               <template v-else-if="statusIconOf(item).kind === 'ac'">✓</template>
             </span>
-            <span class="problems__remote">{{ item.remoteId }}</span>
-            <span class="problems__title">
-              {{ item.title }}
-              <!-- 1.6.0:副标题(另一语言形态,CN 中文主标题 + 英文辅;缺失侧不渲染) -->
-              <span v-if="item.titleSecondary" class="problems__title-alt">{{ item.titleSecondary }}</span>
+            <span class="problems__main">
+              <span class="problems__headline">
+                <span class="problems__remote">{{ item.remoteId }}</span>
+                <span class="problems__title">
+                  {{ item.title }}
+                  <!-- 1.6.0:副标题(另一语言形态,CN 中文主标题 + 英文辅;缺失侧不渲染) -->
+                  <span v-if="item.titleSecondary" class="problems__title-alt">{{ item.titleSecondary }}</span>
+                </span>
+              </span>
+              <!-- 知识点中文 chips(一行不够自动换多行;无中文映射的英文标签不展示) -->
+              <span v-if="knowledgeTags(item.tags).length > 0" class="problems__tags">
+                <span v-for="label in knowledgeTags(item.tags)" :key="label" class="problems__tag">{{ label }}</span>
+              </span>
             </span>
             <span class="problems__meta">
-              <span v-if="item.tags.length > 0" class="problems__tags">{{ item.tags.map(tagLabel).join(' · ') }}</span>
               <!-- WP63:评分列(五档文字着色;无分 '-' 不着色;显隐可控) -->
               <span
                 v-if="showRatingColumn"
@@ -1556,7 +1571,7 @@ onUnmounted(() => {
 .problems__row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   width: 100%;
   text-align: left;
@@ -1577,6 +1592,7 @@ onUnmounted(() => {
    AC = 绿底白✓(实心圆) / TRIED = 主题色空心圆 / 🔒 会员 / 1.2.1:UNSOLVED = 灰色细空心圆 */
 .status-icon {
   display: inline-flex;
+  margin-top: 3px;
   align-items: center;
   justify-content: center;
   flex: 0 0 16px;
@@ -1691,20 +1707,45 @@ onUnmounted(() => {
   color: var(--cq-accent-fg);
 }
 
+/* 行主体:左侧标题+知识点两行栈(flex:1 吃满),右侧评分/难度固定列不参与压缩 */
+.problems__main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.problems__headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* 右列:固定宽内容(评分+难度徽标),永不溢出/换行——修复挤压错位 */
 .problems__meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
+/* 知识点中文 chips:一行不够自动换多行(用户反馈 1.9.x) */
 .problems__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 5px;
+}
+
+.problems__tag {
+  padding: 0 7px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
   font-size: 11px;
+  line-height: 18px;
   color: var(--cq-muted);
-  max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
