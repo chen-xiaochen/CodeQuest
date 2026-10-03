@@ -3,9 +3,10 @@ package com.codequest.ui.challenge
 import com.codequest.core.model.TestCase
 
 /**
- * 提交测试链路纯函数核(WP55):dataInput 拼装与错误分支文案键选择。
+ * 提交测试链路纯函数核(WP55):dataInput 拼装与错误分支文案键选择;
+ * WP74 增全示例测试的示例组装(exampleTestcases 保序过滤空白 + join)与空示例分支。
  *
- * 与平台/IntelliJ 均解耦,单测见 `TestRunPrepTest`;云端测试编排(网络/对话框)
+ * 与平台/IntelliJ 均解耦,单测见 `TestRunPrepTest`;云端测试编排(网络/结果展示)
  * 归 [CloudTestCoordinator],动作壳归 `ChallengeEditorActions`。
  */
 object TestRunPrep {
@@ -14,6 +15,15 @@ object TestRunPrep {
 
     /** 拉取工作区全部用例拼平台测试输入:各用例 input 原样以 \n 连接。 */
     fun dataInput(cases: List<TestCase>): String = cases.joinToString(DATA_INPUT_SEPARATOR) { it.input }
+
+    /**
+     * 全示例测试(WP74)用例集:题面 [com.codequest.spi.ProblemStatement.exampleTestcases]
+     * 原样保序过滤空白元素——每项本身是一组完整用例输入(多行含换行),空白项无测试意义。
+     */
+    fun exampleCases(exampleTestcases: List<String>): List<String> = exampleTestcases.filter { it.isNotBlank() }
+
+    /** 全示例测试(WP74)dataInput:过滤后的示例按原序以 \n 连接(空判定见 [exampleCases] 为空)。 */
+    fun exampleDataInput(exampleTestcases: List<String>): String = exampleCases(exampleTestcases).joinToString(DATA_INPUT_SEPARATOR)
 
     /** 提交测试发起前的确定性拒绝分支(文案键见 [messageKey];参数由调用方补)。 */
     enum class Refusal {
@@ -25,6 +35,9 @@ object TestRunPrep {
 
         /** 工作区没有任何测试用例。 */
         NO_TEST_CASES,
+
+        /** 题面没有(非空白)示例用例——全示例测试无从发起。 */
+        NO_EXAMPLES,
 
         /** 平台未实现 TestEvaluationCapable({0} = 平台展示名)。 */
         PLATFORM_NOT_TESTABLE,
@@ -42,6 +55,7 @@ object TestRunPrep {
             Refusal.NOT_CHALLENGE_FILE -> "submission.error.notChallengeFile"
             Refusal.MISSING_REGION_MARKERS -> "submission.error.regionMarkersMissing"
             Refusal.NO_TEST_CASES -> "testRun.error.noCases"
+            Refusal.NO_EXAMPLES -> "testRun.error.noExamples"
             Refusal.PLATFORM_NOT_TESTABLE -> "testRun.error.platformNotTestable"
             Refusal.NOT_LOGGED_IN -> "testRun.error.notLoggedIn"
             Refusal.QUESTION_ID_MISSING -> "testRun.error.questionIdMissing"

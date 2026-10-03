@@ -164,4 +164,19 @@ class TestRunResultStateTest {
         val cePayload = Json.parseToJsonElement(TestRunResultState.resultPayload("c-1", ce, emptyList())).jsonObject
         assertEquals("compile", cePayload["errorKind"]!!.jsonPrimitive.content)
     }
+
+    @Test
+    fun `result payload carries mode only when given - WP74 examples distinction`() {
+        val result = TestRunResult(correctCount = 2, totalCount = 3)
+        val plain =
+            Json.parseToJsonElement(TestRunResultState.resultPayload("c-1", result, emptyList()))
+                .jsonObject
+        assertFalse("mode" in plain)
+
+        val examples =
+            Json.parseToJsonElement(
+                TestRunResultState.resultPayload("c-1", result, emptyList(), mode = CloudTestCoordinator.PAYLOAD_MODE_EXAMPLES),
+            ).jsonObject
+        assertEquals("examples", examples["mode"]!!.jsonPrimitive.content)
+    }
 }

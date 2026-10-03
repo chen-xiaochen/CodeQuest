@@ -168,6 +168,8 @@ interface TestRunPayload {
   rows: TestRunRow[]
   errorKind?: 'compile' | 'runtime'
   errorText?: string
+  /** WP74:全示例测试携带 'examples'(标题「全部示例」区分);缺省 = 工作区用例的「提交测试」。 */
+  mode?: string
 }
 
 const result = ref<TestRunPayload | null>(null)
@@ -284,9 +286,9 @@ onUnmounted(() => {
       </ul>
     </template>
 
-    <!-- 云端测试结果(桥 testrun:result 推送;编辑器「提交测试」触发) -->
+    <!-- 云端测试结果(桥 testrun:result 推送;编辑器「提交测试/全示例测试」触发,mode 区分标题) -->
     <section class="results" aria-label="云端测试结果">
-      <h2 class="results__title">云端测试结果</h2>
+      <h2 class="results__title">{{ result?.mode === 'examples' ? '全部示例测试结果' : '云端测试结果' }}</h2>
 
       <p v-if="!result" class="state">编辑器里点「提交测试」,云端测试结果会显示在这里。</p>
 

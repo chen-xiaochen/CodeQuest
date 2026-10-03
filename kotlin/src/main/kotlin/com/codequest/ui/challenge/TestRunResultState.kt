@@ -68,14 +68,16 @@ object TestRunResultState {
 
     /**
      * 桥推送 payload(1.5.0,`testrun:result`,右窗「测试用例」页结果区协议):
-     * `{challengeId, passed, total, rows:[{input,expected,actual,passed}], errorKind?, errorText?}`——
+     * `{challengeId, passed, total, rows:[{input,expected,actual,passed}], errorKind?, errorText?, mode?}`——
      * `passed` 行级可 null(平台信息不足以判定);`errorKind`("compile"/"runtime")与
-     * `errorText` 仅在 CE/RE 时携带,页面以全文区替代表格。
+     * `errorText` 仅在 CE/RE 时携带,页面以全文区替代表格;`mode`(WP74)仅全示例
+     * 测试携带("examples"),页面据此以「全部示例」标题区分工作区用例的「提交测试」。
      */
     fun resultPayload(
         challengeId: String,
         result: TestRunResult,
         inputs: List<String>,
+        mode: String? = null,
     ): String =
         buildJsonObject {
             put("challengeId", challengeId)
@@ -101,5 +103,6 @@ object TestRunResultState {
                 put("errorKind", if (result.compileError?.isNotBlank() == true) "compile" else "runtime")
                 put("errorText", text)
             }
+            mode?.let { put("mode", it) }
         }.toString()
 }

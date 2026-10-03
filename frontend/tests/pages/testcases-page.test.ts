@@ -142,6 +142,8 @@ describe('testcases page', () => {
   it('renders pushed summary table from testrun:result bridge event', async () => {
     const wrapper = await mountWithChallenge()
 
+    expect(wrapper.find('.results__title').text()).toBe('云端测试结果')
+
     window.__cqBridge?.emit(
       JSON.stringify({
         topic: TOPIC_TESTRUN_RESULT,
@@ -162,6 +164,32 @@ describe('testcases page', () => {
     expect(wrapper.findAll('.results__table tbody tr')).toHaveLength(2)
     expect(wrapper.find('.mark--pass').text()).toBe('通过')
     expect(wrapper.find('.mark--fail').text()).toBe('失败')
+  })
+
+  it('titles example-run results distinctly when mode=examples pushed', async () => {
+    const wrapper = await mountWithChallenge()
+
+    window.__cqBridge?.emit(
+      JSON.stringify({
+        topic: TOPIC_TESTRUN_RESULT,
+        payload: JSON.stringify({
+          challengeId: 'c-1',
+          passed: 2,
+          total: 3,
+          mode: 'examples',
+          rows: [
+            { input: '[2,7,11,15]\n9', expected: '[0,1]', actual: '[0,1]', passed: true },
+            { input: '[3,2,4]\n6', expected: '[1,0]', actual: '[1,0]', passed: true },
+            { input: '[3,3]\n6', expected: '[2,0]', actual: '[0,2]', passed: false },
+          ],
+        }),
+      }),
+    )
+    await flushPromises()
+
+    expect(wrapper.find('.results__title').text()).toBe('全部示例测试结果')
+    expect(wrapper.find('.results__summary').text()).toContain('2/3')
+    expect(wrapper.findAll('.results__table tbody tr')).toHaveLength(3)
   })
 
   it('renders compile error text instead of table when errorText pushed', async () => {

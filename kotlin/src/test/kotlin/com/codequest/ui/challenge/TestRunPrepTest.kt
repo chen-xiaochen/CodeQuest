@@ -6,6 +6,7 @@ import com.codequest.core.model.TestCaseId
 import com.codequest.core.model.TestCaseSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * [unit] WP55:提交测试链路纯函数——dataInput 拼装(逐用例输入以 \n 连接,原版
@@ -63,5 +64,36 @@ class TestRunPrepTest {
             "testRun.error.questionIdMissing",
             TestRunPrep.messageKey(TestRunPrep.Refusal.QUESTION_ID_MISSING),
         )
+        assertEquals("testRun.error.noExamples", TestRunPrep.messageKey(TestRunPrep.Refusal.NO_EXAMPLES))
+    }
+
+    // ------------------------------------------------------------------
+    // WP74:全示例测试——exampleTestcases 组装(保序 join/空白过滤/空判定)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `example cases keep their order and join with newline`() {
+        assertEquals(
+            "[2,7,11,15]\n9\n[3,2,4]\n6\n[3,3]\n6",
+            TestRunPrep.exampleDataInput(listOf("[2,7,11,15]\n9", "[3,2,4]\n6", "[3,3]\n6")),
+        )
+    }
+
+    @Test
+    fun `single example passes through as dataInput`() {
+        assertEquals("[1,2,7,11]\n9", TestRunPrep.exampleDataInput(listOf("[1,2,7,11]\n9")))
+    }
+
+    @Test
+    fun `blank example elements are filtered before join`() {
+        assertEquals(listOf("a", "c"), TestRunPrep.exampleCases(listOf("a", " ", "\n", "", "c")))
+        assertEquals("a\nc", TestRunPrep.exampleDataInput(listOf("a", " ", "\n", "", "c")))
+    }
+
+    @Test
+    fun `empty or all-blank example lists mean no examples`() {
+        assertTrue(TestRunPrep.exampleCases(emptyList()).isEmpty())
+        assertTrue(TestRunPrep.exampleCases(listOf("", " \n")).isEmpty())
+        assertEquals("", TestRunPrep.exampleDataInput(listOf("", " ")))
     }
 }

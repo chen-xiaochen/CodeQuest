@@ -147,5 +147,11 @@
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="CodeQuest.ChallengeEditor.FloatingToolbar" anchor="last"/>
         </action>
+        <!-- WP74:浮动工具栏第四键「全示例测试」——题面全部示例一次云测
+             (数据源 exampleTestcases,与「提交测试」同壳;门控同云测键) -->
+        <action id="CodeQuest.ChallengeEditor.RunExamplesTest"
+                class="com.codequest.ui.challenge.RunExamplesTestAction">
+            <add-to-group group-id="CodeQuest.ChallengeEditor.FloatingToolbar" anchor="last"/>
+        </action>
     </actions>
 </idea-plugin>
