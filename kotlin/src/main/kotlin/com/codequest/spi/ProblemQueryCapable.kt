@@ -36,6 +36,13 @@ data class ProblemFilter(
     val difficulty: Difficulty? = null,
     /** 标签名过滤(平台侧标签原文);空列表表示不过滤。 */
     val tags: List<String> = emptyList(),
+    /**
+     * 排序字段(1.8.0 F3):**协议枚举名透传**(如 LC 的 `FRONTEND_ID`/`DIFFICULTY`),
+     * 由端点层把对外值域映射成本枚举名;null 表示平台默认序。SPI 语义照 tags 先例:
+     * 平台不支持排序(CF/AtCoder 等列表 API 无排序概念)或值不在自身协议枚举集内时,
+     * 由实现忽略并回退默认序。
+     */
+    val sortBy: String? = null,
     val limit: Int = DEFAULT_LIMIT,
     val offset: Int = 0,
 ) {

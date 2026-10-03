@@ -167,6 +167,52 @@ class ProblemApiHttpTest {
     }
 
     // ------------------------------------------------------------------
+    // sortBy 排序参数(1.8.0 F3)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `problems endpoint maps sortBy param values to protocol sort fields`() {
+        getJson("/api/problems?platform=leetcode&sortBy=id&limit=1")
+
+        // 值域映射:id → FRONTEND_ID(题号)/ difficulty → DIFFICULTY(难度)
+        val first =
+            transport.recorded
+                .first { it.method == "POST_GRAPHQL" && it.body!!.contains("problemsetQuestionListV2") }
+        val variables = Json.parseToJsonElement(first.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("FRONTEND_ID", variables["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content)
+
+        getJson("/api/problems?platform=leetcode&sortBy=difficulty&limit=1")
+        val last =
+            transport.recorded
+                .last { it.method == "POST_GRAPHQL" && it.body!!.contains("problemsetQuestionListV2") }
+        val secondVariables = Json.parseToJsonElement(last.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("DIFFICULTY", secondVariables["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `problems endpoint falls back to default order for unknown or missing sortBy`() {
+        getJson("/api/problems?platform=leetcode&sortBy=bogus&limit=1")
+
+        // 非法值=不透传(默认序):COM 侧兜底恒 CUSTOM(旧实现逐字事实)
+        val request =
+            transport.recorded
+                .first { it.method == "POST_GRAPHQL" && it.body!!.contains("problemsetQuestionListV2") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("CUSTOM", variables["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `problems endpoint ignores sortBy in favorite mode`() {
+        getJson("/api/problems?platform=leetcode&favorite=my-favorites&sortBy=id&limit=1")
+
+        // 题单模式排序照旧 CUSTOM(协议不支持服务端排序输入,与 keyword 同规则忽略)
+        val request =
+            transport.recorded.first { it.method == "POST_GRAPHQL" && it.body!!.contains("favoriteQuestionList") }
+        val variables = Json.parseToJsonElement(request.body!!).jsonObject["variables"]!!.jsonObject
+        assertEquals("CUSTOM", variables["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content)
+    }
+
+    // ------------------------------------------------------------------
     // /api/companies 与公司题单(WP42)
     // ------------------------------------------------------------------
 

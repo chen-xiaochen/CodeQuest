@@ -37,7 +37,9 @@ import java.util.logging.Logger
  *
  * 端点契约(由 [ResourceHttpServer] 挂载,详细文档见 WP20 报告):
  * - `GET /api/platforms`:支持题目查询的平台(id + displayName)
- * - `GET /api/problems?platform=&keyword=&difficulty=&tags=&limit=&offset=`:列表 + 落库
+ * - `GET /api/problems?platform=&keyword=&difficulty=&tags=&sortBy=&limit=&offset=`:列表 +
+ *   落库;sortBy 值域 id/difficulty(1.8.0 F3,非法/缺省=默认序;公司/题单模式忽略——
+ *   协议不支持排序)
  * - `GET /api/companies?platform=`:公司标签清单(WP42,CompanyQueryCapable 平台)
  * - `GET /api/favorites?platform=`:题单清单(WP56,FavoriteQueryCapable 平台)——
  *   内置学习计划组 + 我的题单组(接口探测失败降级空表,不阻塞学习计划组)
@@ -404,6 +406,10 @@ class ProblemApi(
                     .split(',')
                     .map { it.trim() }
                     .filter { it.isNotEmpty() },
+            // 1.8.0 F3:排序值域映射协议枚举名(非法/缺省 null=默认序)。仅普通列表模式
+            // 透传——公司/题单模式走各自的显式字段挑选(CompanyProblemQuery 无 sortBy、
+            // 题单 ProblemFilter 只带 difficulty/tags),协议不支持排序,天然忽略。
+            sortBy = query["sortBy"]?.trim()?.lowercase()?.let(SORT_BY_FIELDS::get),
             limit = limit,
             offset = offset,
         )
@@ -482,6 +488,13 @@ class ProblemApi(
         private const val DEFAULT_RETRY_AFTER_SECONDS = 1L
 
         private const val DEFAULT_LIMIT = 50
+
+        /**
+         * 1.8.0 F3:`sortBy` 查询参数值域 → LC 协议枚举名(与 platform/leetcode
+         * LeetCodeApi 的 QuestionOrderByEnum/QuestionSortFieldEnumV2 实测值同名约定,
+         * 双站枚举名一致故单表);其余平台 SPI 侧忽略(照 tags 先例)。
+         */
+        private val SORT_BY_FIELDS = mapOf("id" to "FRONTEND_ID", "difficulty" to "DIFFICULTY")
 
         /** 单次列表上限:与 LeetCode 单页协议上限一致(平台内部自行分页游走)。 */
         private const val MAX_LIMIT = 100

@@ -29,8 +29,8 @@ import kotlin.math.roundToInt
  *
  * 端点与协议事实沿用旧 Scala 实现(LeetCodeApi.scala):
  * - 登录态:`globalData` 查询 → `data.userStatus.isSignedIn`;
- * - 题目列表:CN `problemsetQuestionList`(skip/limit/filters)、COM `problemsetQuestionListV2`
- *   (skip/limit/searchKeyword/filtersV2 结构 + sortBy);
+ * - 题目列表:CN `problemsetQuestionList`(skip/limit/filters + orderBy 排序)、COM
+ *   `problemsetQuestionListV2`(skip/limit/searchKeyword/filtersV2 结构 + sortBy);
  * - 题目详情:`questionData`(titleSlug → content,HTML);
  * - 提交:REST `POST /problems/{slug}/submit/`(`{lang, question_id, typed_code}`,
  *   snake_case 信封),响应 `{submission_id}`;
@@ -283,7 +283,8 @@ class LeetCodeApi(
     /**
      * 题目列表分页查询。[skip]/[limit] 对应旧实现的 offset/limit;
      * [filter] 的 keyword → searchKeywords(CN)/searchKeyword(COM)、
-     * difficulty → EASY/MEDIUM/HARD、tags → 标签 slug 列表(协议事实同旧实现)。
+     * difficulty → EASY/MEDIUM/HARD、tags → 标签 slug 列表(协议事实同旧实现);
+     * sortBy → CN filters.orderBy / COM sortBy.sortField(白名单,见 [sortField])。
      */
     suspend fun fetchQuestionPage(
         filter: ProblemFilter,
@@ -305,6 +306,24 @@ class LeetCodeApi(
             else -> null
         }
 
+    /**
+     * 排序字段白名单过滤(1.8.0 F3,2026-10-03 双站实测锁定):
+     * - CN `problemsetQuestionList` 的 `filters.orderBy: QuestionOrderByEnum` 与 COM
+     *   `problemsetQuestionListV2` 的 `sortBy.sortField: QuestionSortFieldEnumV2`
+     *   共用同名枚举值 `FRONTEND_ID`(题号)/`DIFFICULTY`(Easy→Hard;实测 CN V2 同构);
+     *   其余合法值 `AC_RATE`/`FREQUENCY`(V2 另有 `CUSTOM`)本插件无入口,不透传;
+     * - 实测方向:两枚举均无 `_ASCENDING` 后缀形态(报错列类型名),CN V1 无方向控制
+     *   (FRONTEND_ID 恒升序/1,2,3、DIFFICULTY 恒 Easy 在前),COM V2 另有
+     *   `sortOrder: SortOrderEnum`(ASCENDING/DESCENDING),本实现恒 ASCENDING
+     *   (排序档位无方向切换);`FRONTEND_QUESTION_ID`/`TITLE`/`QUESTION_ID` 等
+     *   常见命名两站均 400(Expected type 枚举名),故白名单外回退 null。
+     */
+    private fun sortField(sortBy: String?): String? =
+        when (sortBy) {
+            SORT_FIELD_FRONTEND_ID, SORT_FIELD_DIFFICULTY -> sortBy
+            else -> null
+        }
+
     private suspend fun fetchQuestionPageCn(
         filter: ProblemFilter,
         skip: Int,
@@ -321,6 +340,8 @@ class LeetCodeApi(
                         filter.keyword?.let { put("searchKeywords", it) }
                         filter.difficulty?.let { difficultyFilterValue(it.value) }?.let { put("difficulty", it) }
                         if (filter.tags.isNotEmpty()) put("tags", stringArray(filter.tags))
+                        // 1.8.0 F3:排序透传(白名单内才发,否则默认序;见 sortField KDoc)
+                        sortField(filter.sortBy)?.let { put("orderBy", it) }
                     },
                 )
             }
@@ -445,7 +466,9 @@ class LeetCodeApi(
                 put(
                     "sortBy",
                     buildJsonObject {
-                        put("sortField", "CUSTOM")
+                        // 1.8.0 F3:sortBy 透传(白名单内替换,未知/空照旧 CUSTOM;sortOrder
+                        // 恒 ASCENDING——排序档位无方向切换;见 sortField KDoc)
+                        put("sortField", sortField(filter.sortBy) ?: SORT_FIELD_CUSTOM)
                         put("sortOrder", "ASCENDING")
                     },
                 )
@@ -1274,6 +1297,16 @@ class LeetCodeApi(
 
         /** LeetCode 单次题目列表请求上限(协议限制 100)。 */
         const val MAX_PAGE_SIZE: Int = 100
+
+        /**
+         * 排序协议枚举值(1.8.0 F3 实测,见 [sortField] KDoc):端点层把对外值域
+         * (`id`/`difficulty`)映射到这两个名字透传(值形态即协议枚举名,SPI 契约)。
+         */
+        const val SORT_FIELD_FRONTEND_ID: String = "FRONTEND_ID"
+        const val SORT_FIELD_DIFFICULTY: String = "DIFFICULTY"
+
+        /** COM V2 无排序输入时的兜底值(旧实现逐字事实,隐藏已解等筛选下的默认序)。 */
+        private const val SORT_FIELD_CUSTOM: String = "CUSTOM"
 
         /** 错误响应截断长度(WP36 详情解析失败信息)。 */
         private const val SNIPPET: Int = 200

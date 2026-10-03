@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import java.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -437,6 +438,28 @@ class LeetCodeApiTest {
         assertEquals(listOf("array"), filters["tags"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
 
+    /** 1.8.0 F3:CN V1 filters.orderBy 快照(枚举为 2026-10-03 实测,见 LeetCodeApi.sortField KDoc)。 */
+    @Test
+    fun `cn question list maps sortBy to filters orderBy and omits when unsupported`() = runBlocking {
+        graphqlResponses["problemsetQuestionList"] =
+            """{"data":{"problemsetQuestionList":{"total":0,"hasMore":false,"questions":[]}}}"""
+
+        fun lastFilters(): JsonObject =
+            recorded
+                .last { it.path == "/graphql/" && envelopeOf(it)["operationName"]!!.jsonPrimitive.content == "problemsetQuestionList" }
+                .let { variablesOf(it)["filters"]!!.jsonObject }
+
+        cnApi.fetchQuestionPage(ProblemFilter(sortBy = "FRONTEND_ID"), skip = 0, limit = 1)
+        assertEquals("FRONTEND_ID", lastFilters()["orderBy"]!!.jsonPrimitive.content)
+        cnApi.fetchQuestionPage(ProblemFilter(sortBy = "DIFFICULTY"), skip = 0, limit = 1)
+        assertEquals("DIFFICULTY", lastFilters()["orderBy"]!!.jsonPrimitive.content)
+        // null/未知值:不发 orderBy=默认序(未知枚举真实站 400,白名单外回退)
+        cnApi.fetchQuestionPage(ProblemFilter(), skip = 0, limit = 1)
+        assertNull(lastFilters()["orderBy"])
+        cnApi.fetchQuestionPage(ProblemFilter(sortBy = "FRONTEND_QUESTION_ID"), skip = 0, limit = 1)
+        assertNull(lastFilters()["orderBy"])
+    }
+
     // -------------------------------------------------------------------
     // 题目列表:COM 站点(V2 结构)
     // -------------------------------------------------------------------
@@ -473,6 +496,28 @@ class LeetCodeApiTest {
         val v2 = variablesOf(lastV2)["filters"]!!.jsonObject
         assertEquals(listOf("MEDIUM"), v2["difficultyFilter"]!!.jsonObject["difficulties"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertEquals(listOf("dp"), v2["topicFilter"]!!.jsonObject["topicSlugs"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+
+    /** 1.8.0 F3:COM V2 sortBy.sortField 三态快照(枚举 2026-10-03 双站实测,见 LeetCodeApi.sortField KDoc)。 */
+    @Test
+    fun `com question list maps sortBy to sortField snapshot with CUSTOM fallback`() = runBlocking {
+        graphqlResponses["problemsetQuestionListV2"] =
+            """{"data":{"problemsetQuestionListV2":{"totalLength":0,"questions":[]}}}"""
+
+        fun lastSortField(): String =
+            recorded
+                .last { it.path == "/graphql/" && envelopeOf(it)["operationName"]!!.jsonPrimitive.content == "problemsetQuestionListV2" }
+                .let { variablesOf(it)["sortBy"]!!.jsonObject["sortField"]!!.jsonPrimitive.content }
+
+        api.fetchQuestionPage(ProblemFilter(sortBy = LeetCodeApi.SORT_FIELD_FRONTEND_ID), skip = 0, limit = 1)
+        assertEquals(LeetCodeApi.SORT_FIELD_FRONTEND_ID, lastSortField())
+        api.fetchQuestionPage(ProblemFilter(sortBy = LeetCodeApi.SORT_FIELD_DIFFICULTY), skip = 0, limit = 1)
+        assertEquals(LeetCodeApi.SORT_FIELD_DIFFICULTY, lastSortField())
+        // null 与未知值照旧 CUSTOM(FRONTEND_QUESTION_ID 等常见命名真实站 400,白名单外回退)
+        api.fetchQuestionPage(ProblemFilter(), skip = 0, limit = 1)
+        assertEquals("CUSTOM", lastSortField())
+        api.fetchQuestionPage(ProblemFilter(sortBy = "FRONTEND_QUESTION_ID"), skip = 0, limit = 1)
+        assertEquals("CUSTOM", lastSortField())
     }
 
     // -------------------------------------------------------------------
