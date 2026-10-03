@@ -113,6 +113,9 @@ class CodeQuestHttpServerService(
             // 1.8.0 F1:每日一题端点——经 SPI 注册表解析 DailyQuestionCapable 平台
             // (仅 leetcodecn),当日进程内缓存
             dailyQuestionApi = DailyQuestionApi(),
+            // 1.9.0 F1/F2:收藏写/题目提示端点——经 SPI 注册表按能力探测解析平台
+            // (LC 两变体),纯透传不落库
+            favoriteWriteApi = FavoriteWriteApi(),
         )
 
     /** 服务基地址;未启动时为 null。 */

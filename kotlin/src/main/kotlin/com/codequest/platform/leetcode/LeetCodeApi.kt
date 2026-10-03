@@ -1,5 +1,6 @@
 package com.codequest.platform.leetcode
 
+import com.codequest.core.model.AuthExpiredException
 import com.codequest.core.model.OJException
 import com.codequest.spi.CodeSnippet
 import com.codequest.spi.DailyQuestion
@@ -54,7 +55,18 @@ import kotlin.math.roundToInt
  *   (字段全集 = 旧 LeetCodeRunResult.Success);
  * - 站内提交历史(1.7.0 F2):GraphQL `submissionList`(offset/limit,用户全局
  *   倒序)→ `submissions[]` + `lastKey`(null = 无更多);runtime/memory 为字符串
- *   原文,解析成毫秒/KB,失败降级 null。
+ *   原文,解析成毫秒/KB,失败降级 null;
+ * - 收藏写(1.9.0 F1):mutation `addQuestionToFavorite`/`removeQuestionFromFavorite`
+ *   (`{favoriteIdHash, questionId}` → `{ok, error}`;questionId 为 **String!** 非
+ *   ID!,2026-10-03 CN 实测)+ 默认夹定位 `favoritesLists` idHash 变体(FavoriteNode
+ *   无 isDefaultFavorite 标记,按 name=="Favorite" 认定,插件源锁定);
+ * - 题目提示(1.9.0 F2):GraphQL `questionHints` → `data.question.hints` 字符串
+ *   数组(双站匿名可查,失败降级空表)。
+ *
+ * 收藏初始态降级声明(1.9.0 F1,spec §1.2 如实记录):`questionData` 的
+ * QuestionNode **无收藏态字段**——isFavorited/isFavorite/favorite/favorited/
+ * isInMyFavorites 2026-10-03 CN 匿名实测全部「Cannot query field」,故
+ * ProblemStatement 不透出收藏态,前端中性星标 + 首次点击后本地记忆。
  *
  * 所有请求携带 `x-csrftoken` + `Referer`(csrftoken 取自 `/api/home/` 种下的 cookie,
  * 缺失时为空串,与旧实现一致)。非 2xx 已由 [OJTransport] 翻译为领域异常;
@@ -788,6 +800,115 @@ class LeetCodeApi(
     }
 
     // -------------------------------------------------------------------
+    // 收藏写(1.9.0 F1)
+    // -------------------------------------------------------------------
+
+    /** 默认收藏夹 idHash 的进程内缓存(见 [fetchDefaultFavoriteIdHash])。 */
+    @Volatile
+    private var cachedDefaultFavoriteIdHash: String? = null
+
+    /**
+     * 定位默认收藏夹 idHash(1.9.0 F1)——GraphQL `favoritesLists` 的 idHash
+     * 变体查询(见 [LeetCodeGraphQL.FAVORITES_LISTS_ID_HASH])。协议实测
+     * (2026-10-03 双站匿名):
+     * - FavoriteNode **无 isDefaultFavorite 标记字段**(CN 实测「Cannot query
+     *   field」),默认夹按 `name == "Favorite"` 认定——插件源事实
+     *   (leetcode-extension-main leetcode.ts getUser:`private_favorites.find(
+     *   name === "Favorite").id_hash`,两站共用);无同名夹 fallback 首个含
+     *   idHash 的夹(站方命名漂移兜底,spec §1.2「缺失则 fallback 首夹」);
+     * - 匿名请求合法返回空 allFavorites 数组 → **空列表视为未登录**抛
+     *   [AuthExpiredException](登录态下默认夹恒存在,插件源同样以此为先决)。
+     *
+     * **进程内缓存**:首次定位后 @Volatile 缓存,后续写操作零额外往返;
+     * 登录态变化(AuthApi refresh/logout)**不失效**——idHash 随账号走,换号
+     * 场景由 IDE 重启或 [invalidateDefaultFavoriteCache](测试用)收敛,接受。
+     */
+    suspend fun fetchDefaultFavoriteIdHash(): String {
+        cachedDefaultFavoriteIdHash?.let { return it }
+        val data = graphql("favoritesLists", LeetCodeGraphQL.FAVORITES_LISTS_ID_HASH, buildJsonObject { })
+        val favorites = data.child("favoritesLists")["allFavorites"]?.jsonArray
+        val nodes = favorites.orEmpty().mapNotNull { it as? JsonObject }
+        val idHash =
+            nodes
+                .firstOrNull { it.pickString("name") == DEFAULT_FAVORITE_NAME }
+                ?.pickString("idHash")
+                ?: nodes.firstNotNullOfOrNull { it.pickString("idHash") }
+                ?: throw AuthExpiredException(
+                    "LeetCode 收藏夹列表为空或均缺 idHash(未登录,匿名请求返回空数组;详见 fetchDefaultFavoriteIdHash KDoc)",
+                )
+        cachedDefaultFavoriteIdHash = idHash
+        return idHash
+    }
+
+    /** 清空默认夹 idHash 缓存(测试钩子;生产路径无消费方,见 KDoc 取舍)。 */
+    internal fun invalidateDefaultFavoriteCache() {
+        cachedDefaultFavoriteIdHash = null
+    }
+
+    /**
+     * 加入默认收藏夹 mutation `addQuestionToFavorite`(1.9.0 F1;协议事实见
+     * [LeetCodeGraphQL.ADD_QUESTION_TO_FAVORITE]):`{favoriteIdHash, questionId}`
+     * (questionId 为数字主档 id,ProblemStatement.questionId 同源),响应
+     * `{ok, error}`——ok=false 抛 [OJException](附站方 error 文案),未登录
+     * 走 errors 信封同样抛 [OJException](CN 实测「用户未登录」信封,REST
+     * 消费方按 502 回滚;transport 层 HTTP 401/403 抛的 [AuthExpiredException]
+     * 原样透传不上抛转换)。重复加入站方幂等 ok=true 不视为失败。
+     */
+    suspend fun addToDefaultFavorite(questionId: String): Unit =
+        mutateFavorite("addQuestionToFavorite", LeetCodeGraphQL.ADD_QUESTION_TO_FAVORITE, questionId)
+
+    /**
+     * 从默认收藏夹移除 mutation `removeQuestionFromFavorite`(1.9.0 F1;骨架同
+     * [addToDefaultFavorite])。**幂等语义**:题目不在夹中站方返回 ok=true 视为
+     * 成功(插件源 starProblem 同一链路,spec §1.1 声明);其余错误形态同
+     * [addToDefaultFavorite]。
+     */
+    suspend fun removeFromDefaultFavorite(questionId: String): Unit =
+        mutateFavorite("removeQuestionFromFavorite", LeetCodeGraphQL.REMOVE_QUESTION_FROM_FAVORITE, questionId)
+
+    /** 收藏写公共骨架:定位默认夹 → mutation → ok=false/缺字段抛 [OJException]。 */
+    private suspend fun mutateFavorite(
+        operationName: String,
+        query: String,
+        questionId: String,
+    ) {
+        val variables =
+            buildJsonObject {
+                put("favoriteIdHash", fetchDefaultFavoriteIdHash())
+                put("questionId", questionId)
+            }
+        val data = graphql(operationName, query, variables)
+        val node =
+            data[operationName] as? JsonObject
+                ?: throw OJException("LeetCode $operationName 响应缺少 $operationName 字段: $data")
+        if (node["ok"]?.jsonPrimitive?.content != "true") {
+            val error = node.pickString("error").orEmpty()
+            throw OJException("LeetCode $operationName 站方拒绝(ok=false${if (error.isEmpty()) "" else ": $error"})")
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // 题目提示(1.9.0 F2)
+    // -------------------------------------------------------------------
+
+    /**
+     * 题目提示(`questionHints` → data.question.hints,1.9.0 F2;协议事实见
+     * [LeetCodeGraphQL.QUESTION_HINTS])。2026-10-03 双站匿名实测:two-sum 3 条
+     * (元素可含 `<code>` HTML 实体,原样透出),add-two-numbers 空数组。
+     * **任何失败形态(errors 信封/question 缺失/网络异常)降级空表不抛**
+     * (SPI ProblemHintsCapable 契约:提示是附属能力,前端「无提示」兜底)。
+     */
+    suspend fun fetchHints(titleSlug: String): List<String> =
+        runCatching {
+            val variables =
+                buildJsonObject {
+                    put("titleSlug", titleSlug)
+                }
+            val data = graphql("questionHints", LeetCodeGraphQL.QUESTION_HINTS, variables)
+            (data["question"] as? JsonObject)?.get("hints").stringListOrEmpty()
+        }.getOrDefault(emptyList())
+
+    // -------------------------------------------------------------------
     // 题目详情
     // -------------------------------------------------------------------
 
@@ -1307,6 +1428,9 @@ class LeetCodeApi(
 
         /** COM V2 无排序输入时的兜底值(旧实现逐字事实,隐藏已解等筛选下的默认序)。 */
         private const val SORT_FIELD_CUSTOM: String = "CUSTOM"
+
+        /** 默认收藏夹名(1.9.0 F1,插件源 getUser 事实:name === "Favorite";无标记字段,见 fetchDefaultFavoriteIdHash KDoc)。 */
+        private const val DEFAULT_FAVORITE_NAME: String = "Favorite"
 
         /** 错误响应截断长度(WP36 详情解析失败信息)。 */
         private const val SNIPPET: Int = 200

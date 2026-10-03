@@ -433,6 +433,82 @@ internal object LeetCodeGraphQL {
         }
         """.trimIndent()
 
+    // ------------------------------------------------------------------
+    // 收藏写 / 题目提示(1.9.0 F1/F2,协议 2026-10-03 双站实测 + 插件源锁定)
+    // ------------------------------------------------------------------
+
+    /**
+     * 收藏夹清单——默认夹定位变体(1.9.0 F1):仅取 idHash/name 两字段,与
+     * [FAVORITES_LISTS]/[FAVORITES_LISTS_CN](WP56 清单用,锁定不动)同端点
+     * 不同 selection。两站点同构(双站匿名 schema 实测 idHash/name 均合法,
+     * 匿名请求合法返回空 allFavorites 数组)。
+     *
+     * **无默认夹标记字段**:`isDefaultFavorite` 在 FavoriteNode 不存在
+     * (2026-10-03 https://leetcode.cn/graphql 实测「Cannot query field」);
+     * 默认夹按 name=="Favorite" 认定(插件源 getUser 事实),见
+     * [LeetCodeApi.fetchDefaultFavoriteIdHash]。
+     */
+    val FAVORITES_LISTS_ID_HASH: String =
+        """
+        query favoritesLists {
+          favoritesLists {
+            allFavorites {
+              idHash
+              name
+            }
+          }
+        }
+        """.trimIndent()
+
+    /**
+     * 加入默认收藏夹 mutation(1.9.0 F1)。2026-10-03 实测:
+     * - CN(https://leetcode.cn/graphql 匿名 schema 校验)questionId 为
+     *   **String!**——spec 预估的 `ID!` 被拒(「Variable of type ID! used in
+     *   position expecting type String」),变量声明必须 String!;
+     * - 字段名/响应形态对齐插件源(leetcode-extension-main leetcode.ts
+     *   starProblem,两站共用同一 mutation,仅 HTTP 客户端按 isCN 分支):
+     *   `{favoriteIdHash: String!, questionId: String!}` → `{ok error}`
+     *   (插件还取 favoriteIdHash/questionId/__typename,本插件无消费不取);
+     * - CN 未登录:HTTP 200 + errors 信封「用户未登录」+ data null;COM 匿名
+     *   403(Cloudflare)——COM 形态取自插件源(未登录无法在线实测)。
+     */
+    val ADD_QUESTION_TO_FAVORITE: String =
+        """
+        mutation addQuestionToFavorite(${'$'}favoriteIdHash: String!, ${'$'}questionId: String!) {
+          addQuestionToFavorite(favoriteIdHash: ${'$'}favoriteIdHash, questionId: ${'$'}questionId) {
+            ok
+            error
+          }
+        }
+        """.trimIndent()
+
+    /** 移除默认收藏夹 mutation(1.9.0 F1;骨架/协议事实同 [ADD_QUESTION_TO_FAVORITE],插件源同一 starProblem 分支)。 */
+    val REMOVE_QUESTION_FROM_FAVORITE: String =
+        """
+        mutation removeQuestionFromFavorite(${'$'}favoriteIdHash: String!, ${'$'}questionId: String!) {
+          removeQuestionFromFavorite(favoriteIdHash: ${'$'}favoriteIdHash, questionId: ${'$'}questionId) {
+            ok
+            error
+          }
+        }
+        """.trimIndent()
+
+    /**
+     * 题目提示(1.9.0 F2;操作名 questionHints、根字段 question(titleSlug))。
+     * 2026-10-03 双站匿名实测:two-sum 返回 3 条字符串(可含 `<code>` 等 HTML
+     * 实体,原样透出),add-two-numbers 为空数组;查询文本对齐插件源
+     * (leetcode-extension-main leetcode.cn.ts getSolutionHints,operationName
+     * questionHints + variables {titleSlug})。
+     */
+    val QUESTION_HINTS: String =
+        """
+        query questionHints(${'$'}titleSlug: String!) {
+          question(titleSlug: ${'$'}titleSlug) {
+            hints
+          }
+        }
+        """.trimIndent()
+
     /**
      * 学习计划详情(studyPlanV2Detail,1.6.0;两站点同构,匿名可用)。
      *

@@ -1,5 +1,6 @@
 package com.codequest.platform.leetcode
 
+import com.codequest.core.model.AuthExpiredException
 import com.codequest.core.model.OJException
 import com.codequest.infra.http.HttpOJTransport
 import com.codequest.infra.http.OJHttpClient
@@ -827,6 +828,125 @@ class LeetCodeApiTest {
     }
 
     // -------------------------------------------------------------------
+    // 收藏写 / 题目提示(1.9.0 F1/F2;协议 2026-10-03 双站实测,见 LeetCodeGraphQL KDoc)
+    // -------------------------------------------------------------------
+
+    /** 默认夹定位三态:name=="Favorite" 认定(无标记字段,插件源锁定)/无同名 fallback 首夹/空列表=未登录。 */
+    @Test
+    fun `default favorite hash picks Favorite-named folder then falls back to first`() = runBlocking {
+        // ① 无 isDefaultFavorite 标记字段(2026-10-03 CN 实测「Cannot query field」),
+        // 默认夹按 name=="Favorite" 认定(插件源 getUser 事实)
+        graphqlResponses["favoritesLists"] =
+            """{"data":{"favoritesLists":{"allFavorites":[
+               {"idHash":"hash-algo","name":"Algorithms"},
+               {"idHash":"hash-default","name":"Favorite"}]}}}"""
+
+        assertEquals("hash-default", api.fetchDefaultFavoriteIdHash())
+
+        val record = graphqlRecord("favoritesLists")
+        assertEquals(LeetCodeGraphQL.FAVORITES_LISTS_ID_HASH, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+
+        // ② 无同名夹:站方命名漂移兜底,fallback 首个含 idHash 的夹
+        api.invalidateDefaultFavoriteCache()
+        graphqlResponses["favoritesLists"] =
+            """{"data":{"favoritesLists":{"allFavorites":[
+               {"idHash":"hash-first","name":"收藏夹"}]}}}"""
+        assertEquals("hash-first", api.fetchDefaultFavoriteIdHash())
+
+        // ③ 空列表(匿名请求合法形态)→ 未登录领域异常(登录态下默认夹恒存在)
+        api.invalidateDefaultFavoriteCache()
+        graphqlResponses["favoritesLists"] = """{"data":{"favoritesLists":{"allFavorites":[]}}}"""
+        assertFailsWith<AuthExpiredException> { api.fetchDefaultFavoriteIdHash() }
+    }
+
+    @Test
+    fun `add favorite mutation sends protocol variables and accepts ok`() = runBlocking {
+        graphqlResponses["favoritesLists"] = FAVORITES_ID_HASH_SAMPLE
+        // 响应为插件源 starProblem 取字段超集(ok/error + favoriteIdHash/questionId/__typename)
+        graphqlResponses["addQuestionToFavorite"] =
+            """{"data":{"addQuestionToFavorite":{"ok":true,"error":null,
+               "favoriteIdHash":"hash-default","questionId":"1","__typename":"Mutation"}}}"""
+
+        api.addToDefaultFavorite("1")
+
+        val record = graphqlRecord("addQuestionToFavorite")
+        assertEquals(LeetCodeGraphQL.ADD_QUESTION_TO_FAVORITE, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("favoritesLists", graphqlRecord("favoritesLists").let { envelopeOf(it)["operationName"]!!.jsonPrimitive.content })
+        val variables = variablesOf(record)
+        assertEquals("hash-default", variables["favoriteIdHash"]!!.jsonPrimitive.content)
+        // questionId 为 String!(2026-10-03 实测:ID! 变量声明被 schema 拒绝)
+        assertEquals("1", variables["questionId"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `remove favorite mutation mirrors add and accepts ok`() = runBlocking {
+        graphqlResponses["favoritesLists"] = FAVORITES_ID_HASH_SAMPLE
+        graphqlResponses["removeQuestionFromFavorite"] =
+            """{"data":{"removeQuestionFromFavorite":{"ok":true,"error":null}}}"""
+
+        api.removeFromDefaultFavorite("1")
+
+        val record = graphqlRecord("removeQuestionFromFavorite")
+        assertEquals(LeetCodeGraphQL.REMOVE_QUESTION_FROM_FAVORITE, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("hash-default", variablesOf(record)["favoriteIdHash"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `favorite mutation ok false surfaces as OJException with site error`() = runBlocking {
+        graphqlResponses["favoritesLists"] = FAVORITES_ID_HASH_SAMPLE
+        graphqlResponses["addQuestionToFavorite"] =
+            """{"data":{"addQuestionToFavorite":{"ok":false,"error":"收藏失败"}}}"""
+
+        val error = assertFailsWith<OJException> { api.addToDefaultFavorite("1") }
+
+        assertTrue(error.message!!.contains("收藏失败"))
+    }
+
+    @Test
+    fun `favorite mutation unauthenticated errors envelope surfaces as OJException`() = runBlocking {
+        // 2026-10-03 CN 匿名实测形态:HTTP 200 + errors 信封「用户未登录」+ data null
+        graphqlResponses["favoritesLists"] = FAVORITES_ID_HASH_SAMPLE
+        graphqlResponses["addQuestionToFavorite"] =
+            """{"errors":[{"message":"用户未登录"}],"data":{"addQuestionToFavorite":null}}"""
+
+        assertFailsWith<OJException> { api.addToDefaultFavorite("1") }
+    }
+
+    /** hints 三态:正常多条(HTML 原样)/空数组/失败降级空表不抛。 */
+    @Test
+    fun `questionHints parses string array with html kept verbatim`() = runBlocking {
+        // 2026-10-03 two-sum 匿名实测形态:3 条,元素含 <code> HTML 实体,原样透出
+        graphqlResponses["questionHints"] =
+            """{"data":{"question":{"hints":[
+               "A really brute force way would be to search for all possible pairs of numbers but that would be too slow.",
+               "So, if we fix one of the numbers, say <code>x</code>, we have to scan the entire array to find the next number <code>y</code>.",
+               "The second train of thought is, without changing the array, can we use additional space somehow?"]}}}"""
+
+        val hints = api.fetchHints("two-sum")
+
+        assertEquals(3, hints.size)
+        assertTrue(hints[1].contains("<code>x</code>"))
+        val record = graphqlRecord("questionHints")
+        assertEquals(LeetCodeGraphQL.QUESTION_HINTS, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("two-sum", variablesOf(record)["titleSlug"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `questionHints empty array and failures degrade to empty list`() = runBlocking {
+        // 无提示题(2026-10-03 add-two-numbers 实测):空数组合法
+        graphqlResponses["questionHints"] = """{"data":{"question":{"hints":[]}}}"""
+        assertTrue(api.fetchHints("add-two-numbers").isEmpty())
+
+        // 失败三形态(errors 信封/question 缺失/data null)一律降级空表不抛(SPI 契约)
+        graphqlResponses["questionHints"] = """{"errors":[{"message":"boom"}],"data":null}"""
+        assertTrue(api.fetchHints("two-sum").isEmpty())
+        graphqlResponses["questionHints"] = """{"data":{"question":null}}"""
+        assertTrue(api.fetchHints("two-sum").isEmpty())
+        graphqlResponses["questionHints"] = """{"data":null}"""
+        assertTrue(api.fetchHints("two-sum").isEmpty())
+    }
+
+    // -------------------------------------------------------------------
     // 提交(REST)与轮询(REST)
     // -------------------------------------------------------------------
 
@@ -883,6 +1003,12 @@ class LeetCodeApiTest {
     }
 
     private companion object {
+        /** favoritesLists idHash 变体样例(2026-10-03 双站匿名 schema 实测字段形态;数据为登录态虚构)。 */
+        private const val FAVORITES_ID_HASH_SAMPLE =
+            """{"data":{"favoritesLists":{"allFavorites":[
+               {"idHash":"hash-algo","name":"Algorithms"},
+               {"idHash":"hash-default","name":"Favorite"}]}}}"""
+
         /** contest/api/info 真实响应样例(2026-10-03,weekly-contest-521;仅保留消费字段)。 */
         private const val CONTEST_INFO_SAMPLE =
             """

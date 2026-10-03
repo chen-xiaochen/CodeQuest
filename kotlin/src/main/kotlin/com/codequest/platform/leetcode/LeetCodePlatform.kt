@@ -16,6 +16,7 @@ import com.codequest.spi.DailyQuestionCapable
 import com.codequest.spi.FavoriteList
 import com.codequest.spi.FavoriteProblemPage
 import com.codequest.spi.FavoriteQueryCapable
+import com.codequest.spi.FavoriteWriteCapable
 import com.codequest.spi.LoginSession
 import com.codequest.spi.OJCredentialStore
 import com.codequest.spi.OJPlatform
@@ -24,6 +25,7 @@ import com.codequest.spi.OJRuntime
 import com.codequest.spi.OJTransport
 import com.codequest.spi.PlatformInfo
 import com.codequest.spi.ProblemFilter
+import com.codequest.spi.ProblemHintsCapable
 import com.codequest.spi.ProblemQueryCapable
 import com.codequest.spi.ProblemStatement
 import com.codequest.spi.ProblemSummary
@@ -47,10 +49,11 @@ import kotlinx.coroutines.flow.Flow
 
 /**
  * LeetCode 平台适配器(WP19):同一实现承载 leetcode.com / leetcode.cn 两变体
- * (身份差异见 [LeetCodeVariant]),组合实现十个能力接口并按服务拆分委托:
+ * (身份差异见 [LeetCodeVariant]),组合实现十二个能力接口并按服务拆分委托:
  * auth / problem / company(WP42)/ favorite(WP56)/ submission / solutions /
  * submission detail(WP36)/ test evaluation(WP53)/ user contest(1.7.0 F1)/
- * submission history(1.7.0 F2)。
+ * submission history(1.7.0 F2)/ favorite write + hints(1.9.0 F1/F2,主类内
+ * 薄委托——两变体共用,收藏/提示非 CN 专属)。
  *
  * 1.8.0 起 CN 变体的竞赛回顾/每日一题由子类 [LeetCodeCnPlatform] 追加实现
  * (COM 站无对应 API,能力探测按实例类型区分,基础能力类保持不变)。
@@ -70,7 +73,9 @@ open class LeetCodePlatform(
     SubmissionDetailCapable,
     TestEvaluationCapable,
     UserContestCapable,
-    SubmissionHistoryCapable {
+    SubmissionHistoryCapable,
+    FavoriteWriteCapable,
+    ProblemHintsCapable {
     private val api = LeetCodeApi(variant, transport)
     private val auth = LeetCodeAuth(variant, api, transport, credentialStore, cookiePrompt)
     private val problemService = LeetCodeProblemService(variant, api)
@@ -154,6 +159,20 @@ open class LeetCodePlatform(
             UserContestRanking(rating = it.rating, attendedContestsCount = it.attendedContestsCount)
         }
     }
+
+    /**
+     * 1.9.0 F1:收藏写(题面页星标)——主类实现,两变体共用(收藏非 CN 专属,
+     * 与 ContestCapable/DailyQuestionCapable 的 CN 子类追加不同)。默认夹定位
+     * 与幂等语义见 [LeetCodeApi.addToDefaultFavorite];未登录抛
+     * [com.codequest.core.model.AuthExpiredException](REST 401 提示重登)。
+     */
+    override suspend fun addToDefaultFavorite(questionId: String) = api.addToDefaultFavorite(questionId)
+
+    /** 1.9.0 F1:收藏移除,幂等语义(不在夹中视为成功)见 SPI KDoc。 */
+    override suspend fun removeFromDefaultFavorite(questionId: String) = api.removeFromDefaultFavorite(questionId)
+
+    /** 1.9.0 F2:题目提示(懒加载折叠数据源;API 层失败降级空表,两变体共用)。 */
+    override suspend fun fetchHints(remoteId: String): List<String> = api.fetchHints(remoteId)
 
     /** 1.7.0 F2:站内提交历史分页(纯透传映射,未登录走 GraphQL errors 抛领域异常)。 */
     override suspend fun fetchSubmissionHistory(

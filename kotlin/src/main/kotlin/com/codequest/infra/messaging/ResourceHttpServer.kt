@@ -46,6 +46,8 @@ import java.util.logging.Logger
  *   `GET|PUT /api/review/config`;
  *   每日一题端点(1.8.0 F1,经 [dailyQuestionApi] 注入后启用):
  *   `GET /api/daily-question?platform=`;
+ *   收藏写/提示端点(1.9.0 F1/F2,经 [favoriteWriteApi] 注入后启用):
+ *   `POST /api/favorite/toggle`、`GET /api/problem/{remoteId}/hints?platform=`;
  *   自定义 CSS 端点(WP39,经 [customCss] provider 注入):`GET /api/custom.css`
  *   返回 text/css(未设置空体);
  *   其余骨架 404
@@ -76,6 +78,9 @@ class ResourceHttpServer(
     /** 每日一题端点(1.8.0 F1,经 [dailyQuestionApi] 注入后启用):
      *  `GET /api/daily-question?platform=`(当日进程内缓存)。 */
     private val dailyQuestionApi: DailyQuestionApi? = null,
+    /** 收藏写与提示端点(1.9.0 F1/F2,经 [favoriteWriteApi] 注入后启用):
+     *  `POST /api/favorite/toggle`、`GET /api/problem/{remoteId}/hints?platform=`。 */
+    private val favoriteWriteApi: FavoriteWriteApi? = null,
     /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
     private val customCss: () -> String = { "" },
 ) {
@@ -209,6 +214,7 @@ class ResourceHttpServer(
                         { handleRatingRoutes(exchange, path, query) },
                         { handleReviewRoutes(exchange, path) },
                         { handleDailyQuestionRoutes(exchange, path, query) },
+                        { handleFavoriteWriteRoutes(exchange, path) },
                     )
                 if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
@@ -218,9 +224,10 @@ class ResourceHttpServer(
     }
 
     /**
-     * `/api/problem/` 家族路由(WP20 详情 / WP26 列表 / WP31 正文;三者共享
-     * 前缀,匹配顺序:正文(含 `/solutions/` 中缀)→ 列表(`/solutions` 后缀)
-     * → 详情(其余))。非 GET 或前缀不匹配返回 false 交回上层。
+     * `/api/problem/` 家族路由(WP20 详情 / WP26 列表 / WP31 正文 / 1.9.0 F2
+     * 提示;共享前缀,匹配顺序:正文(含 `/solutions/` 中缀)→ 列表
+     * (`/solutions` 后缀)→ 提示(`/hints` 后缀,1.9.0 F2)→ 详情(其余))。
+     * 非 GET 或前缀不匹配返回 false 交回上层。
      */
     private fun handleProblemRoutes(
         exchange: HttpExchange,
@@ -252,6 +259,21 @@ class ResourceHttpServer(
                     respondJson(exchange, STATUS_BAD_REQUEST, BAD_REQUEST_RESPONSE)
                 } else {
                     runSolutionsApi(exchange) { api -> api.listSolutions(remoteId, query) }
+                }
+            }
+
+            // 1.9.0 F2:题目提示 `/api/problem/{remoteId}/hints`(懒加载,剧透控制)
+            path.endsWith(HINTS_ROUTE_SUFFIX) -> {
+                val remoteId =
+                    path
+                        .removePrefix(PROBLEM_DETAIL_PREFIX)
+                        .removeSuffix(HINTS_ROUTE_SUFFIX)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(::urlDecode)
+                if (remoteId.isNullOrEmpty()) {
+                    respondJson(exchange, STATUS_BAD_REQUEST, BAD_REQUEST_RESPONSE)
+                } else {
+                    runFavoriteWriteApi(exchange) { api -> api.hints(remoteId, query) }
                 }
             }
 
@@ -498,6 +520,32 @@ class ResourceHttpServer(
         block: suspend (DailyQuestionApi) -> ProblemApiResponse,
     ) {
         val api = dailyQuestionApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 收藏写端点路由(1.9.0 F1 单端点;形态同 [handleDailyQuestionRoutes])。 */
+    private fun handleFavoriteWriteRoutes(
+        exchange: HttpExchange,
+        path: String,
+    ): Boolean {
+        if (path != FAVORITE_TOGGLE_ROUTE || exchange.requestMethod.uppercase() != "POST") return false
+        val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+        runFavoriteWriteApi(exchange) { api -> api.toggle(body) }
+        return true
+    }
+
+    /** 执行 [FavoriteWriteApi] 调用并回写应答(形态同 [runRatingApi],1.9.0 F1/F2)。 */
+    private fun runFavoriteWriteApi(
+        exchange: HttpExchange,
+        block: suspend (FavoriteWriteApi) -> ProblemApiResponse,
+    ) {
+        val api = favoriteWriteApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
@@ -837,6 +885,12 @@ class ResourceHttpServer(
 
         /** WP31:题解正文路由中缀(`/solutions/` 夹在 remoteId 与 sid 之间)。 */
         private const val SOLUTIONS_CONTENT_MARKER = "/solutions/"
+
+        /** 1.9.0 F2:题目提示路由后缀(拼在 remoteId 之后)。 */
+        private const val HINTS_ROUTE_SUFFIX = "/hints"
+
+        /** 1.9.0 F1:收藏写单端点(POST,body `{platformId, questionId, add}`)。 */
+        private const val FAVORITE_TOGGLE_ROUTE = "/api/favorite/toggle"
         private const val CONTEST_DETAIL_PREFIX = "/api/contest/"
 
         /** 1.7.0 F3:复习按题操作路由前缀(`/api/review/problems/{problemId}/...`)。 */
