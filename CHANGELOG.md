@@ -1,3 +1,10 @@
+## 1.8.0 - 2026-10-03
+### Added
+- 力扣中国每日一题:题库页(CN 平台)顶部「今日题目」常驻横幅卡片——日期+题号+标题+难度徽标(复用 diff-badge)+标签 chips,点击与题库行同源直达题面(nav:openProblem 携 titleSlug)。数据走 CN 站 `questionOfToday` GraphQL(2026-10-03 实测:`todayRecord` 为单元素数组,需 Referer/Origin 头,translatedTitle 优先作中文标题),新 SPI `DailyQuestionCapable` 三态降级(拉取失败/字段缺失返回 null),新端点 `GET /api/daily-question?platform=`(当日 volatile 进程内缓存跨日失效;无能力平台 404,降级 200 全字段 null);前端非 CN/404/全 null 照题单能力探测惯例静默不渲染,挂载+平台切换时刷新,卡片隐藏不致败题库页。
+- 力扣竞赛回顾(仅 CN 变体):`LeetCodeContestService` 承载 `ContestCapable`——`contestHistory`(2026-10-03 实测:startTime/duration 均秒级)推导 phase 窗口(BEFORE/CODING/FINISHED,clock 注入),`contest/api/info` 解析题目行(snake_case,不存在抛领域异常、题目缺失降级空表、joinable 恒 false);竞赛 tab LC 平台经能力探测自动出现,行内「题目」详情展开与 CF 共用单槽(Q 序号+标题,点题 nav:openProblem 携 titleSlug),phase 中文映射对 LC 三值子集兼容。
+- 题库排序五档+隐藏已解决:排序循环按钮扩为 默认→题号→难度→评分↑→评分↓——题号/难度为服务端档,`/api/problems` 新增 `sortBy` 查询参数(id/difficulty 映射协议枚举,2026-10-03 双站实测锁定白名单:CN V1 `filters.orderBy` / COM V2 `sortBy.sortField` 共用 FRONTEND_ID/DIFFICULTY,未知值回退默认或 CUSTOM;公司/题单模式天然忽略),进入/离开服务端档即 reload 带参且分页归零;评分↑↓为本地排序(仅对已加载行,按钮 title 标注);题单/公司模式循环跳过服务端两档,平台/题单/公司切换与重置均归位默认档。筛选行新增「隐藏已解决」checkbox(本地过滤已加载行,复用 statusOf 判定非 AC 隐藏,未登录无站内状态按本地提交聚合兜底 UNSOLVED 保留;localStorage 持久化默认关,与状态/评分区间叠加生效于 filter-note 提示与分页 x/总计数及空态)。
+- REST 端点新增:`GET /api/daily-question?platform=`(其余竞赛端点为 WP23 既有,本次补 LC 平台实现)。
+
 ## 1.7.0 - 2026-10-02
 ### Added
 - 题库页 zerotrac 难度评分:新增「评分」列(数值排序,无分显示 "-"),按用户竞赛分分差五档着色(绿<-200/蓝<-50/紫<50/黄<200/红≥200;无竞赛分自动退化绝对分档 <1400/1400-1799/1800-2199/2200-2599/≥2600,不着色情形保持中性),评分区间 min/max 数字过滤(本地过滤已加载行,同状态列模式),着色模式与列显隐存 localStorage;账号区显示竞赛分徽标(/api/rating/user-contest 会话缓存)+「刷新评分」按钮。数据源 `https://zerotrac.github.io/leetcode_problem_rating/data.json`,内置 2026-10 快照 2596 题兜底(`rating/leetcode-ratings.json`),启动 DB 优先/内置回退,在线刷新失败只提示不破坏 DB(schema v3 新表 `problem_rating`)。
