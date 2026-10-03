@@ -2,6 +2,8 @@ package com.codequest.platform.leetcode
 
 import com.codequest.core.model.OJException
 import com.codequest.spi.CodeSnippet
+import com.codequest.spi.DailyQuestion
+import com.codequest.spi.DailyQuestionTag
 import com.codequest.spi.OJTransport
 import com.codequest.spi.ProblemFilter
 import com.codequest.spi.TagInfo
@@ -954,6 +956,127 @@ class LeetCodeApi(
             title = node["title"]?.jsonPrimitive?.content.orEmpty(),
             slug = node["slug"]?.jsonPrimitive?.content ?: articleSlug,
             content = content,
+        )
+    }
+
+    // -------------------------------------------------------------------
+    // 每日一题 / 竞赛回顾(1.8.0 F1/F2,CN 站点)
+    // -------------------------------------------------------------------
+
+    /**
+     * 每日一题(`questionOfToday` → data.todayRecord 首元素,1.8.0 F1;CN 站点)。
+     * todayRecord 为数组(2026-10-03 实测单元素);translatedTitle 非空优先作
+     * title;**三态一律降级 null 不抛上层**:errors 信封 / data 缺失 /
+     * 必需字段(date/questionFrontendId/title/titleSlug)缺失——每日一题是
+     * 附属能力,消费方(REST/前端卡片)静默降级。
+     */
+    suspend fun fetchDailyQuestion(): DailyQuestion? =
+        runCatching {
+            val data = graphql("questionOfToday", LeetCodeGraphQL.QUESTION_OF_TODAY, buildJsonObject { })
+            val record =
+                (data["todayRecord"] as? JsonArray)?.firstOrNull() as? JsonObject
+                    ?: return@runCatching null
+            val question = record["question"] as? JsonObject ?: return@runCatching null
+            DailyQuestion(
+                date = record.pickString("date") ?: return@runCatching null,
+                frontendQuestionId = question.pickString("questionFrontendId") ?: return@runCatching null,
+                title = question.pickString("translatedTitle", "title") ?: return@runCatching null,
+                titleSlug = question.pickString("titleSlug") ?: return@runCatching null,
+                difficulty = question.pickString("difficulty").orEmpty(),
+                tags =
+                    question["topicTags"]?.jsonArray.orEmpty().mapNotNull { element ->
+                        val tag = element as? JsonObject ?: return@mapNotNull null
+                        DailyQuestionTag(
+                            name = tag.pickString("name") ?: return@mapNotNull null,
+                            slug = tag.pickString("slug") ?: return@mapNotNull null,
+                        )
+                    },
+            )
+        }.getOrNull()
+
+    /** 竞赛条目(contestHistory;startTime/duration 秒级 epoch)。 */
+    data class LeetCodeContest(
+        val title: String,
+        val titleSlug: String,
+        val startTimeSeconds: Long,
+        val durationSeconds: Long,
+    )
+
+    /**
+     * 竞赛列表(`contestHistory` → data.contestHistory.contests,1.8.0 F2;
+     * CN 站点,按开始时间倒序的近期回顾)。startTime/duration 为**秒级** epoch
+     * (2026-10-03 实测:1790476200/5400);单条缺必需字段跳过(批量语义,
+     * 个别脏行不致败整页,与 [fetchSubmissionPage] 同口径)。
+     */
+    suspend fun fetchContestHistory(
+        pageNum: Int = 1,
+        pageSize: Int = 10,
+    ): List<LeetCodeContest> {
+        val variables =
+            buildJsonObject {
+                put("pageNum", pageNum)
+                put("pageSize", pageSize)
+            }
+        val data = graphql("contestHistory", LeetCodeGraphQL.CONTEST_HISTORY, variables)
+        val contests = data.child("contestHistory")["contests"]?.jsonArray ?: return emptyList()
+        return contests.mapNotNull { element ->
+            val contest = element as? JsonObject ?: return@mapNotNull null
+            LeetCodeContest(
+                title = contest.pickString("title").orEmpty(),
+                titleSlug = contest.pickString("titleSlug") ?: return@mapNotNull null,
+                startTimeSeconds = contest.pickLong("startTime") ?: return@mapNotNull null,
+                durationSeconds = contest.pickLong("duration") ?: return@mapNotNull null,
+            )
+        }
+    }
+
+    /** 竞赛详情题目行(contest/api/info;字段为 snake_case,2026-10-03 实测锁定)。 */
+    data class LeetCodeContestQuestion(
+        val titleSlug: String,
+        /** 站点语言标题(CN 中文 title;english_title 仅作缺失回退不透出)。 */
+        val title: String,
+    )
+
+    /** 竞赛详情(contest/api/info 映射;时间字段同秒级)。 */
+    data class LeetCodeContestInfo(
+        val title: String,
+        val titleSlug: String,
+        val startTimeSeconds: Long,
+        val durationSeconds: Long,
+        val questions: List<LeetCodeContestQuestion>,
+    )
+
+    /**
+     * 竞赛详情(REST `GET /contest/api/info/{titleSlug}/`,1.8.0 F2;CN 站点)。
+     * 2026-10-03 实测:竞赛不存在时 HTTP 仍 200 + `{"error":"竞赛不存在"}`
+     * (非 4xx),以 error 字段判缺失抛 [OJException];questions 数组缺失/形态
+     * 异常降级空列表(照 CF standings 先例,不致败详情),单题缺 title_slug/
+     * title 跳过。
+     */
+    suspend fun fetchContestInfo(contestSlug: String): LeetCodeContestInfo {
+        val raw = transport.get(variant.id, variant.contestInfoUrl(contestSlug), csrfHeaders())
+        val body = json.parseToJsonElement(raw).jsonObject
+        if (body["error"] != null) throw OJException("LeetCode 竞赛不存在: $contestSlug")
+        val contest = body["contest"] as? JsonObject
+        val startTime = contest?.pickLong("start_time")
+        val duration = contest?.pickLong("duration")
+        // contest 缺失与时间字段缺失合并为同一失败形态(协议异常,详情无法组装)
+        if (contest == null || startTime == null || duration == null) {
+            throw OJException("LeetCode 竞赛详情缺少 contest/start_time/duration 字段: $contestSlug")
+        }
+        return LeetCodeContestInfo(
+            title = contest.pickString("title").orEmpty(),
+            titleSlug = contest.pickString("title_slug") ?: contestSlug,
+            startTimeSeconds = startTime,
+            durationSeconds = duration,
+            questions =
+                (body["questions"] as? JsonArray).orEmpty().mapNotNull { element ->
+                    val question = element as? JsonObject ?: return@mapNotNull null
+                    LeetCodeContestQuestion(
+                        titleSlug = question.pickString("title_slug") ?: return@mapNotNull null,
+                        title = question.pickString("title", "english_title") ?: return@mapNotNull null,
+                    )
+                },
         )
     }
 

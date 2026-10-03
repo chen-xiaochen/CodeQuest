@@ -110,6 +110,9 @@ class CodeQuestHttpServerService(
                     settings = { project.getService(DatabaseManager::class.java).settingsKvRepository },
                     problems = { project.getService(DatabaseManager::class.java).problemRepository },
                 ),
+            // 1.8.0 F1:每日一题端点——经 SPI 注册表解析 DailyQuestionCapable 平台
+            // (仅 leetcodecn),当日进程内缓存
+            dailyQuestionApi = DailyQuestionApi(),
         )
 
     /** 服务基地址;未启动时为 null。 */

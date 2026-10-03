@@ -384,6 +384,55 @@ internal object LeetCodeGraphQL {
         }
         """.trimIndent()
 
+    // ------------------------------------------------------------------
+    // 每日一题 / 竞赛回顾(1.8.0 F1/F2,CN 站点)
+    // ------------------------------------------------------------------
+
+    /**
+     * 每日一题(questionOfToday,CN 站点;1.8.0 F1)。
+     * 2026-10-03 实测(https://leetcode.cn/graphql/,需 Referer/Origin 头):
+     * `todayRecord` 为**数组**(单元素),date 为 yyyy-MM-dd,question 内
+     * translatedTitle 为中文标题(优先作 title);userStatus 字段无消费方不取。
+     */
+    val QUESTION_OF_TODAY: String =
+        """
+        query questionOfToday {
+          todayRecord {
+            date
+            question {
+              questionFrontendId
+              title
+              translatedTitle
+              titleSlug
+              difficulty
+              topicTags {
+                name
+                slug
+              }
+            }
+          }
+        }
+        """.trimIndent()
+
+    /**
+     * 竞赛列表(contestHistory,CN 站点;1.8.0 F2)。
+     * 2026-10-03 实测:startTime/duration 均**秒级**(如 1790476200/5400),
+     * 按开始时间倒序、仅含已结束场次的近期回顾(匿名可查,不含未来赛)。
+     */
+    val CONTEST_HISTORY: String =
+        """
+        query contestHistory(${'$'}pageNum: Int!, ${'$'}pageSize: Int!) {
+          contestHistory(pageNum: ${'$'}pageNum, pageSize: ${'$'}pageSize) {
+            contests {
+              title
+              titleSlug
+              startTime
+              duration
+            }
+          }
+        }
+        """.trimIndent()
+
     /**
      * 学习计划详情(studyPlanV2Detail,1.6.0;两站点同构,匿名可用)。
      *

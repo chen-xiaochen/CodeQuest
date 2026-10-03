@@ -2,6 +2,8 @@ package com.codequest.platform.leetcode
 
 import com.codequest.core.model.PlatformId
 import com.codequest.spi.AuthCapable
+import com.codequest.spi.ContestCapable
+import com.codequest.spi.DailyQuestionCapable
 import com.codequest.spi.OJPlatformRegistry
 import com.codequest.spi.OJRuntime
 import com.codequest.spi.ProblemQueryCapable
@@ -11,6 +13,7 @@ import com.codequest.spi.TestEvaluationCapable
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -63,5 +66,25 @@ class LeetCodePlatformTest {
         assertEquals(setOf("leetcode", "leetcodecn"), submittable.map { (it as com.codequest.spi.OJPlatform).id.value }.toSet())
         assertEquals(2, OJPlatformRegistry.allWith<AuthCapable>().size)
         assertTrue(OJPlatformRegistry.find(PlatformId("leetcodecn")) != null)
+    }
+
+    /**
+     * 1.8.0 F1/F2:竞赛/每日一题能力仅 CN 变体(子类 LeetCodeCnPlatform)承载——
+     * COM 站无对应 API,能力探测(/api/contests、/api/daily-question)按实例
+     * 类型区分,COM 必须 `is not`。
+     */
+    @Test
+    fun `contest and daily question capabilities attach to cn variant only`() {
+        withFakeRuntime()
+
+        val all = OJPlatformRegistry.all()
+        val com = all.first { it.id.value == "leetcode" }
+        val cn = all.first { it.id.value == "leetcodecn" }
+
+        assertTrue(cn is ContestCapable, "leetcodecn 缺少 ContestCapable")
+        assertTrue(cn is DailyQuestionCapable, "leetcodecn 缺少 DailyQuestionCapable")
+        assertFalse(com is ContestCapable, "leetcode 不应实现 ContestCapable")
+        assertFalse(com is DailyQuestionCapable, "leetcode 不应实现 DailyQuestionCapable")
+        assertEquals(1, OJPlatformRegistry.allWith<ContestCapable>().size)
     }
 }

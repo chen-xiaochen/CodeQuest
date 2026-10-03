@@ -274,6 +274,130 @@ class LeetCodeApiTest {
     }
 
     // -------------------------------------------------------------------
+    // 每日一题 / 竞赛回顾(1.8.0 F1/F2,CN 站点)
+    // -------------------------------------------------------------------
+
+    @Test
+    fun `questionOfToday parses with translated title preferred`() = runBlocking {
+        // 2026-10-03 真实站响应形态:todayRecord 为数组,question 带 translatedTitle
+        graphqlResponses["questionOfToday"] =
+            """
+            {"data":{"todayRecord":[{"date":"2026-10-03","userStatus":null,
+              "question":{"questionFrontendId":"32","title":"Longest Valid Parentheses",
+              "translatedTitle":"最长有效括号","titleSlug":"longest-valid-parentheses","difficulty":"Hard",
+              "topicTags":[{"name":"Stack","slug":"stack"},{"name":"括号序列","slug":"bracket-sequences"}]}}]}}
+            """.trimIndent()
+
+        val question = cnApi.fetchDailyQuestion()
+
+        assertEquals("2026-10-03", question!!.date)
+        assertEquals("32", question.frontendQuestionId)
+        assertEquals("最长有效括号", question.title) // translatedTitle 优先
+        assertEquals("longest-valid-parentheses", question.titleSlug)
+        assertEquals("Hard", question.difficulty)
+        assertEquals(2, question.tags.size)
+        assertEquals("Stack", question.tags[0].name)
+        assertEquals("bracket-sequences", question.tags[1].slug)
+
+        val record = graphqlRecord("questionOfToday")
+        assertEquals(LeetCodeGraphQL.QUESTION_OF_TODAY, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals("questionOfToday", envelopeOf(record)["operationName"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `questionOfToday falls back to english title and degrades on missing fields`() = runBlocking {
+        graphqlResponses["questionOfToday"] =
+            """
+            {"data":{"todayRecord":[{"date":"2026-10-03","question":{"questionFrontendId":"32",
+              "title":"Longest Valid Parentheses","translatedTitle":null,"titleSlug":"longest-valid-parentheses",
+              "difficulty":"Hard","topicTags":[]}}]}}
+            """.trimIndent()
+
+        assertEquals("Longest Valid Parentheses", cnApi.fetchDailyQuestion()!!.title)
+
+        // 必需字段缺失 → null(todayRecord 空 / question 缺 / titleSlug 缺三形态)
+        graphqlResponses["questionOfToday"] = """{"data":{"todayRecord":[]}}"""
+        assertNull(cnApi.fetchDailyQuestion())
+        graphqlResponses["questionOfToday"] = """{"data":{"todayRecord":[{"date":"2026-10-03","question":null}]}}"""
+        assertNull(cnApi.fetchDailyQuestion())
+        graphqlResponses["questionOfToday"] =
+            """{"data":{"todayRecord":[{"date":"2026-10-03","question":{"titleSlug":null}}]}}"""
+        assertNull(cnApi.fetchDailyQuestion())
+    }
+
+    @Test
+    fun `questionOfToday errors envelope degrades to null`() = runBlocking {
+        // errors 信封(api 层收口抛 OJException)在每日一题路径被吞,降级 null 不抛上层
+        graphqlResponses["questionOfToday"] = """{"errors":[{"message":"boom"}],"data":null}"""
+
+        assertNull(cnApi.fetchDailyQuestion())
+    }
+
+    @Test
+    fun `contestHistory parses with epoch-second start time and duration`() = runBlocking {
+        // 2026-10-03 真实站响应形态:startTime/duration 秒级(1790476200 = 2026-09-27T02:30Z)
+        graphqlResponses["contestHistory"] =
+            """
+            {"data":{"contestHistory":{"contests":[
+              {"title":"第 521 场周赛","titleSlug":"weekly-contest-521","startTime":1790476200,"duration":5400},
+              {"title":"第 192 场双周赛","titleSlug":"biweekly-contest-192","startTime":1790433000,"duration":5400}]}}}
+            """.trimIndent()
+
+        val contests = cnApi.fetchContestHistory(pageNum = 1, pageSize = 10)
+
+        assertEquals(2, contests.size)
+        assertEquals("第 521 场周赛", contests[0].title)
+        assertEquals("weekly-contest-521", contests[0].titleSlug)
+        // startTime 单位锁定:秒级 epoch(毫秒形态应为 1790476200000)
+        assertEquals(1790476200L, contests[0].startTimeSeconds)
+        assertEquals(5400L, contests[0].durationSeconds)
+
+        val record = graphqlRecord("contestHistory")
+        assertEquals(LeetCodeGraphQL.CONTEST_HISTORY, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        assertEquals(1, variablesOf(record)["pageNum"]!!.jsonPrimitive.content.toInt())
+        assertEquals(10, variablesOf(record)["pageSize"]!!.jsonPrimitive.content.toInt())
+    }
+
+    @Test
+    fun `contestInfo parses questions and maps nonexistent slug to OJException`() = runBlocking {
+        restHandler = { request ->
+            when {
+                request.method == "GET" && request.path == "/contest/api/info/weekly-contest-521/" -> CONTEST_INFO_SAMPLE
+                request.method == "GET" && request.path == "/contest/api/info/not-exist/" -> """{"error":"竞赛不存在"}"""
+
+                else -> error("unexpected ${request.method} ${request.path}")
+            }
+        }
+
+        val info = cnApi.fetchContestInfo("weekly-contest-521")
+
+        assertEquals("第 521 场周赛", info.title)
+        assertEquals("weekly-contest-521", info.titleSlug)
+        assertEquals(1790476200L, info.startTimeSeconds)
+        assertEquals(5400L, info.durationSeconds)
+        assertEquals(2, info.questions.size)
+        // 2026-10-03 实测字段:questions 行为 snake_case title_slug/title(非 spec 预估的 question__title_slug)
+        assertEquals("rearrange-array-by-removing-distinct-values", info.questions[0].titleSlug)
+        assertEquals("移除不同值重排数组", info.questions[0].title)
+        assertEquals("maximum-equal-adjacent-pairs-after-at-most-one-replacement", info.questions[1].titleSlug)
+
+        // 不存在:HTTP 200 + body error 字段(实测形态)→ 领域异常
+        assertFailsWith<OJException> { cnApi.fetchContestInfo("not-exist") }
+    }
+
+    @Test
+    fun `contestInfo degrades missing questions to empty list`() = runBlocking {
+        restHandler = { _ ->
+            """{"contest":{"id":1415,"title":"第 521 场周赛","title_slug":"weekly-contest-521",
+               "start_time":1790476200,"duration":5400}}"""
+        }
+
+        val info = cnApi.fetchContestInfo("weekly-contest-521")
+
+        assertTrue(info.questions.isEmpty()) // 题目缺失降级空列表,不致败详情
+    }
+
+    // -------------------------------------------------------------------
     // 题目列表:CN 站点
     // -------------------------------------------------------------------
 
@@ -711,5 +835,22 @@ class LeetCodeApiTest {
         assertFailsWith<OJException> {
             runBlocking { api.fetchUserStatus() }
         }
+    }
+
+    private companion object {
+        /** contest/api/info 真实响应样例(2026-10-03,weekly-contest-521;仅保留消费字段)。 */
+        private const val CONTEST_INFO_SAMPLE =
+            """
+            {"contest":{"id":1415,"title":"第 521 场周赛","title_slug":"weekly-contest-521",
+              "start_time":1790476200,"duration":5400},
+             "questions":[
+              {"id":10898,"question_id":4429,"credit":3,"title":"移除不同值重排数组",
+               "english_title":"Rearrange Array by Removing Distinct Values",
+               "title_slug":"rearrange-array-by-removing-distinct-values","category_slug":"algorithms","difficulty":1},
+              {"id":10899,"question_id":4420,"credit":5,"title":"至多一次替换后的最大相邻相等元素对数",
+               "english_title":"Maximum Equal Adjacent Pairs After at Most One Replacement",
+               "title_slug":"maximum-equal-adjacent-pairs-after-at-most-one-replacement",
+               "category_slug":"algorithms","difficulty":2}]}
+            """
     }
 }

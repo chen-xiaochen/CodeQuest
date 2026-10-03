@@ -51,4 +51,10 @@ enum class LeetCodeVariant(
     /** 我的收藏夹清单端点(WP56,REST 备选,旧插件端点事实;匿名 404,登录态探测)。 */
     val listFavoritesUrl: String
         get() = "https://$domain/api/list_favorites/"
+
+    /**
+     * 竞赛详情端点(1.8.0 F2,REST GET,CN 站竞赛回顾)。2026-10-03 实测:
+     * 竞赛不存在时 HTTP 仍 200 + `{"error":"竞赛不存在"}`(以 body error 判缺失)。
+     */
+    fun contestInfoUrl(contestSlug: String): String = "https://$domain/contest/api/info/$contestSlug/"
 }

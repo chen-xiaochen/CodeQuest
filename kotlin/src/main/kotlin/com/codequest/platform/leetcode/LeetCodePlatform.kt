@@ -8,6 +8,11 @@ import com.codequest.spi.CompanyProblemPage
 import com.codequest.spi.CompanyProblemQuery
 import com.codequest.spi.CompanyQueryCapable
 import com.codequest.spi.CompanyTag
+import com.codequest.spi.ContestCapable
+import com.codequest.spi.ContestDetail
+import com.codequest.spi.ContestSummary
+import com.codequest.spi.DailyQuestion
+import com.codequest.spi.DailyQuestionCapable
 import com.codequest.spi.FavoriteList
 import com.codequest.spi.FavoriteProblemPage
 import com.codequest.spi.FavoriteQueryCapable
@@ -46,8 +51,11 @@ import kotlinx.coroutines.flow.Flow
  * auth / problem / company(WP42)/ favorite(WP56)/ submission / solutions /
  * submission detail(WP36)/ test evaluation(WP53)/ user contest(1.7.0 F1)/
  * submission history(1.7.0 F2)。
+ *
+ * 1.8.0 起 CN 变体的竞赛回顾/每日一题由子类 [LeetCodeCnPlatform] 追加实现
+ * (COM 站无对应 API,能力探测按实例类型区分,基础能力类保持不变)。
  */
-class LeetCodePlatform(
+open class LeetCodePlatform(
     private val variant: LeetCodeVariant,
     transport: OJTransport,
     credentialStore: OJCredentialStore,
@@ -182,11 +190,34 @@ class LeetCodeProvider : OJPlatformProvider {
         )
 }
 
-/** leetcode.cn 注册。 */
+/**
+ * 力扣 CN 平台(1.8.0 F1/F2):[LeetCodePlatform] + 竞赛回顾与每日一题能力。
+ * 以子类而非基类直接实现,是**能力探测的硬约束**——COM 变体无竞赛/每日一题
+ * API,`is ContestCapable` / `is DailyQuestionCapable` 必须为 false(REST
+ * /api/contests、/api/daily-question 按实例类型探测)。[contestService] 自建
+ * [LeetCodeApi] 实例:api 无状态(cookie 在 transport 会话),与父类私有
+ * api 实例零分裂。
+ */
+class LeetCodeCnPlatform(
+    transport: OJTransport,
+    credentialStore: OJCredentialStore,
+    cookiePrompt: LeetCodeAuth.CookiePrompt = LeetCodeAuth.CookiePrompt { null },
+) : LeetCodePlatform(LeetCodeVariant.LEETCODE_CN, transport, credentialStore, cookiePrompt),
+    ContestCapable,
+    DailyQuestionCapable {
+    private val contestService = LeetCodeContestService(LeetCodeApi(LeetCodeVariant.LEETCODE_CN, transport))
+
+    override fun contests(): Flow<ContestSummary> = contestService.contests()
+
+    override suspend fun contestDetail(remoteId: String): ContestDetail = contestService.contestDetail(remoteId)
+
+    override suspend fun fetchDailyQuestion(): DailyQuestion? = contestService.fetchDailyQuestion()
+}
+
+/** leetcode.cn 注册(CN 变体,附竞赛回顾/每日一题能力)。 */
 class LeetCodeCnProvider : OJPlatformProvider {
-    override fun create(): LeetCodePlatform =
-        LeetCodePlatform(
-            variant = LeetCodeVariant.LEETCODE_CN,
+    override fun create(): LeetCodeCnPlatform =
+        LeetCodeCnPlatform(
             transport = OJRuntime.transport(),
             credentialStore = OJRuntime.credentialStore(),
         )

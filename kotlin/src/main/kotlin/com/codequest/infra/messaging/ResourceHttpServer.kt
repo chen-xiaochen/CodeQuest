@@ -44,13 +44,15 @@ import java.util.logging.Logger
  *   复习端点(1.7.0 F3,经 [reviewApi] 注入后启用):`GET /api/review/today`、
  *   `POST /api/review/problems/{problemId}/add`、`POST /api/review/problems/{problemId}/complete`、
  *   `GET|PUT /api/review/config`;
+ *   每日一题端点(1.8.0 F1,经 [dailyQuestionApi] 注入后启用):
+ *   `GET /api/daily-question?platform=`;
  *   自定义 CSS 端点(WP39,经 [customCss] provider 注入):`GET /api/custom.css`
  *   返回 text/css(未设置空体);
  *   其余骨架 404
  * - 监听 `127.0.0.1` 随机端口(端口 0 由 OS 分配)
  * - [start]/[stop] 幂等,可重复调用
  */
-@Suppress("LongParameterList") // API 端点 DI 直通构造,聚合封装不值
+@Suppress("LongParameterList", "LargeClass") // 端点 DI 直通构造 + 路由家族聚合(WP20 起逐 WP 追加),拆分只会复制请求底座与路由表
 class ResourceHttpServer(
     private val resourceRoot: String = DEFAULT_RESOURCE_ROOT,
     private val problemApi: ProblemApi? = null,
@@ -71,6 +73,9 @@ class ResourceHttpServer(
      *  `POST /api/review/problems/{problemId}/add`、`POST /api/review/problems/{problemId}/complete`、
      *  `GET|PUT /api/review/config`。 */
     private val reviewApi: ReviewApi? = null,
+    /** 每日一题端点(1.8.0 F1,经 [dailyQuestionApi] 注入后启用):
+     *  `GET /api/daily-question?platform=`(当日进程内缓存)。 */
+    private val dailyQuestionApi: DailyQuestionApi? = null,
     /** WP39:题面自定义 CSS(按请求现读设置,改设置即刻对新请求生效);缺省空 = 未设置。 */
     private val customCss: () -> String = { "" },
 ) {
@@ -203,6 +208,7 @@ class ResourceHttpServer(
                         { handleCatalogRoutes(exchange, path, query) },
                         { handleRatingRoutes(exchange, path, query) },
                         { handleReviewRoutes(exchange, path) },
+                        { handleDailyQuestionRoutes(exchange, path, query) },
                     )
                 if (families.none { it() }) {
                     respond(exchange, STATUS_NOT_FOUND, "application/json; charset=UTF-8", NOT_FOUND_RESPONSE.toByteArray())
@@ -466,6 +472,32 @@ class ResourceHttpServer(
         block: suspend (ReviewApi) -> ProblemApiResponse,
     ) {
         val api = reviewApi
+        val response =
+            if (api == null) {
+                ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
+            } else {
+                runBlocking { block(api) }
+            }
+        respondJson(exchange, response.status, response.json, response.headers)
+    }
+
+    /** 每日一题端点路由(1.8.0 F1 单端点;形态同 [handleRatingRoutes])。 */
+    private fun handleDailyQuestionRoutes(
+        exchange: HttpExchange,
+        path: String,
+        query: Map<String, String>,
+    ): Boolean {
+        if (path != "/api/daily-question" || !exchange.isGet()) return false
+        runDailyQuestionApi(exchange) { api -> api.dailyQuestion(query) }
+        return true
+    }
+
+    /** 执行 [DailyQuestionApi] 调用并回写应答(形态同 [runRatingApi],1.8.0 F1)。 */
+    private fun runDailyQuestionApi(
+        exchange: HttpExchange,
+        block: suspend (DailyQuestionApi) -> ProblemApiResponse,
+    ) {
+        val api = dailyQuestionApi
         val response =
             if (api == null) {
                 ProblemApiResponse(STATUS_SERVICE_UNAVAILABLE, """{"error":"api-not-configured"}""")
