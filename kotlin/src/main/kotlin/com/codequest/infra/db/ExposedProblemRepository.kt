@@ -124,6 +124,7 @@ class ExposedProblemRepository(
                 it[problemId] = detail.problemId.value
                 it[contentMd] = detail.contentMd
                 it[contentFormat] = detail.contentFormat.name
+                it[questionId] = detail.questionId
             }
             Unit
         }
@@ -139,6 +140,7 @@ class ExposedProblemRepository(
                         problemId = ProblemId(row[ProblemContents.problemId]),
                         contentMd = row[ProblemContents.contentMd],
                         contentFormat = ContentFormat.valueOf(row[ProblemContents.contentFormat]),
+                        questionId = row[ProblemContents.questionId],
                     )
                 }
         }

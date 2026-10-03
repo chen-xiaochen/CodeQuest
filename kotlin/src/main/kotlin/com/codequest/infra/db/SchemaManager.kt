@@ -18,7 +18,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
  * 由调用侧降级 LIKE([FtsSupport])。
  */
 object SchemaManager {
-    const val CURRENT_VERSION: Int = 3
+    const val CURRENT_VERSION: Int = 4
 
     fun createAll(db: Database) {
         transaction(db) {
@@ -53,6 +53,8 @@ object SchemaManager {
                     // v1→v2(1.6.0):problem/tag 补列(新库由 SchemaUtils.create 直接建全,
                     // 仅旧库走 ALTER)。SQLite 无 ADD COLUMN IF NOT EXISTS,按版本号门控幂等
                     if (existingVersion < 2) MIGRATIONS_V2.forEach { exec(it) }
+                    // v3→v4(1.9.0):problem_content 补 question_id(收藏写寻址;新库已建全)
+                    if (existingVersion < SCHEMA_VERSION_V4) MIGRATIONS_V4.forEach { exec(it) }
                     exec("UPDATE schema_version SET version = $CURRENT_VERSION")
                 }
             }
@@ -106,6 +108,15 @@ private val MIGRATIONS_V3 =
             CONSTRAINT pk_review_schedule PRIMARY KEY (problem_id)
         )
         """,
+    )
+
+/** v4 版本号门控值(SQLite 无 ADD COLUMN IF NOT EXISTS,按版本号幂等)。 */
+private const val SCHEMA_VERSION_V4 = 4
+
+/** v3→v4(1.9.0)增量 DDL:problem_content 补平台数字主档 id 列(nullable,旧行 null,首个 remote 拉取补全)。 */
+private val MIGRATIONS_V4 =
+    listOf(
+        "ALTER TABLE problem_content ADD COLUMN question_id VARCHAR(128)",
     )
 
 private const val CREATE_PROBLEM_CONTENT_FTS = """

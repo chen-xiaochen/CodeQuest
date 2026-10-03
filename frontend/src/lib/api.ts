@@ -53,6 +53,12 @@ export interface ProblemDetail {
   content: string
   contentFormat: 'HTML' | 'MARKDOWN'
   source: 'cache' | 'remote'
+  /**
+   * 1.9.0:平台侧题目数字主档 id(LC questionData.questionId,POST
+   * /api/favorite/toggle 寻址);平台无此概念与旧缓存行为 null/缺失
+   * (收藏星标中性降级隐藏)。
+   */
+  questionId?: string | null
 }
 
 export class ApiError extends Error {
@@ -228,6 +234,47 @@ export function fetchProblemDetail(
   return getJson<ProblemDetail>(
     `/api/problem/${encodeURIComponent(remoteId)}?${params.toString()}`,
   )
+}
+
+// ---------------------------------------------------------------------------
+// 1.9.0(WP73):收藏写 + 题目提示(FavoriteWriteApi 端点)
+// ---------------------------------------------------------------------------
+
+/** POST /api/favorite/toggle 成功响应。 */
+export interface FavoriteToggleResult {
+  ok: boolean
+}
+
+/**
+ * WP73:加入/移出平台默认收藏夹(POST /api/favorite/toggle)。questionId 为
+ * 平台数字主档 id(题面 detail 响应透出,非 slug);未登录 401 auth-expired、
+ * 站方拒绝 502、无能力平台 404(均抛 ApiError,页面乐观切换后回滚)。
+ */
+export function toggleFavorite(
+  platformId: string,
+  questionId: string,
+  add: boolean,
+): Promise<FavoriteToggleResult> {
+  return sendJson<FavoriteToggleResult>(
+    '/api/favorite/toggle',
+    'POST',
+    JSON.stringify({ platformId, questionId, add }),
+  )
+}
+
+/**
+ * WP73:题目提示(GET /api/problem/{remoteId}/hints?platform=)。后端 SPI 层
+ * 失败已降级空表(200),仅无能力平台/未知平台抛 ApiError(404)——页面按
+ * 「无提示」兜底;hints 原文可含 HTML 实体(`&lt;code&gt;` 等),按文本渲染。
+ */
+export function fetchProblemHints(
+  platform: string,
+  remoteId: string,
+): Promise<string[]> {
+  const params = new URLSearchParams({ platform })
+  return getJson<{ hints: string[] }>(
+    `/api/problem/${encodeURIComponent(remoteId)}/hints?${params.toString()}`,
+  ).then((body) => body.hints)
 }
 
 /** WP26:题解引用(WP31 起点击在应用内展开正文;url 为站外浏览器兜底出口)。 */

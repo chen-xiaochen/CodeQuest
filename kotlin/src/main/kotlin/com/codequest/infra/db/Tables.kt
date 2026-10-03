@@ -38,6 +38,9 @@ internal object ProblemContents : Table("problem_content") {
     val contentMd = text("content_md")
     val contentFormat = varchar("content_format", ENUM_LEN)
 
+    /** 1.9.0:平台数字主档 id(LC questionData.questionId,收藏写寻址);无概念平台与迁移前旧行 null。 */
+    val questionId = varchar("question_id", ID_LEN).nullable()
+
     override val primaryKey = PrimaryKey(problemId)
 }
 

@@ -383,15 +383,19 @@ class ProblemApiHttpTest {
         assertEquals("<p>Given an array...</p>", first["content"]!!.jsonPrimitive.content)
         // 未经列表页直达:主档为桩记录,标题回退为 remoteId(列表浏览后会 upsert 补全)
         assertEquals("two-sum", first["title"]!!.jsonPrimitive.content)
+        // 1.9.0:questionData.questionId 透出(收藏写寻址),remote 与 cache 两路径同值
+        assertEquals("1", first["questionId"]!!.jsonPrimitive.content)
         val callsAfterFirst = transport.recorded.size
 
-        // 题面已落 problem_content
+        // 题面已落 problem_content(含 question_id 列)
         val savedDetail = runBlocking { repo.findDetail(ProblemId("leetcode:two-sum")) }
         assertNotNull(savedDetail)
         assertEquals("<p>Given an array...</p>", savedDetail.contentMd)
+        assertEquals("1", savedDetail.questionId)
 
         val second = getJson("/api/problem/two-sum?platform=leetcode")
         assertEquals("cache", second["source"]!!.jsonPrimitive.content)
+        assertEquals("1", second["questionId"]!!.jsonPrimitive.content)
         assertEquals(callsAfterFirst, transport.recorded.size)
     }
 

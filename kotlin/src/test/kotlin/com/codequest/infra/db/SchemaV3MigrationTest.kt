@@ -9,10 +9,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * [integration] v2→v3 迁移测试(WP59):模拟 v2 旧库升级——三张新表建立、既有表数据
- * 不丢、版本号 2→3;重复执行迁移幂等。
+ * [integration] v2 旧库升级测试(WP59,1.9.0 起升级目标为 v4):模拟 v2 旧库升级——
+ * v3 三张新表建立、v4 补 question_id 列、既有表数据不丢、版本号 2→4;重复执行迁移幂等。
  *
- * v2 库构造方式:全新库建好后删除 v3 三表、版本号回落 2(等效于 1.6.0 时代的库形态)。
+ * v2 库构造方式:全新库建好后删除 v3 三表、去掉 v4 补列、版本号回落 2
+ * (等效于 1.6.0 时代的库形态)。
  */
 class SchemaV3MigrationTest {
     private suspend fun downgradeToV2(db: CodeQuestDatabase) {
@@ -20,6 +21,8 @@ class SchemaV3MigrationTest {
             exec("DROP TABLE IF EXISTS problem_rating")
             exec("DROP TABLE IF EXISTS remote_submission")
             exec("DROP TABLE IF EXISTS review_schedule")
+            // v4 补列回落(新库 SchemaUtils.create 已建全列,移除还原 v2 时代形态)
+            exec("ALTER TABLE problem_content DROP COLUMN question_id")
             exec("UPDATE schema_version SET version = 2")
             // 旧表种子数据(升级前后都必须完好)
             exec(
@@ -41,11 +44,17 @@ class SchemaV3MigrationTest {
         downgradeToV2(db)
         SchemaManager.createAll(db.database)
 
-        assertSchemaVersion(db, 3)
+        assertSchemaVersion(db, 4)
         val tables = db.sqliteMasterNames("table")
         listOf("problem_rating", "remote_submission", "review_schedule").forEach { name ->
             assertTrue(name in tables, "升级后缺少表 $name,实际: $tables")
         }
+        // 1.9.0(v4):problem_content 补 question_id 列(收藏写寻址)
+        assertEquals(
+            1L,
+            db.queryLong("SELECT COUNT(*) FROM pragma_table_info('problem_content') WHERE name='question_id'"),
+            "升级后 problem_content 缺 question_id 列",
+        )
         assertEquals(1L, db.queryLong("SELECT COUNT(*) FROM problem"), "升级后旧 problem 数据丢失")
         assertEquals(1L, db.queryLong("SELECT COUNT(*) FROM submission"), "升级后旧 submission 数据丢失")
     }
@@ -85,7 +94,7 @@ class SchemaV3MigrationTest {
         SchemaManager.createAll(db.database)
         SchemaManager.createAll(db.database) // 重复执行:不报错、版本不变、数据不翻倍
 
-        assertSchemaVersion(db, 3)
+        assertSchemaVersion(db, 4)
         assertEquals(1L, db.queryLong("SELECT COUNT(*) FROM problem"))
         assertEquals(1L, db.queryLong("SELECT COUNT(*) FROM submission"))
     }

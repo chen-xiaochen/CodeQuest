@@ -312,8 +312,15 @@ class ProblemApi(
                     tags = emptyList(),
                     fetchedAt = now(),
                 ).also { store().save(it) }
-        store().saveDetail(ProblemDetail(problemId = problem.id, contentMd = statement.content, contentFormat = statement.contentFormat))
-        return ok(problem.toDetailDto(ProblemDetail(problem.id, statement.content, statement.contentFormat), source = SOURCE_REMOTE))
+        val savedDetail =
+            ProblemDetail(
+                problemId = problem.id,
+                contentMd = statement.content,
+                contentFormat = statement.contentFormat,
+                questionId = statement.questionId,
+            )
+        store().saveDetail(savedDetail)
+        return ok(problem.toDetailDto(savedDetail, source = SOURCE_REMOTE))
     }
 
     // ------------------------------------------------------------------
@@ -565,6 +572,7 @@ private fun Problem.toDetailDto(
     url = url,
     content = detail.contentMd,
     contentFormat = detail.contentFormat.name,
+    questionId = detail.questionId,
     source = source,
 )
 
@@ -674,6 +682,12 @@ private data class ProblemDetailResponseDto(
     val content: String,
     /** ContentFormat.name:HTML / MARKDOWN。 */
     val contentFormat: String,
+    /**
+     * 1.9.0:平台侧题目数字主档 id(LC `questionData.questionId`,POST
+     * /api/favorite/toggle 寻址);平台无此概念与迁移前缓存旧行为 null
+     * (前端收藏星标中性降级隐藏)。
+     */
+    val questionId: String? = null,
     /** cache = 本地库命中;remote = 平台拉取(已落库)。 */
     val source: String,
 )

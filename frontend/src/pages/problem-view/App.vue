@@ -21,6 +21,9 @@
  * 重置);订阅 `submission:updated`(payload WP65 起含 platformId/problemRemoteId),
  * 命中当前题且 AC → 停表定格 + toast「本题耗时 xx」。会话级,开关
  * localStorage `cq-problem-timer-enabled`(默认开);网页直接提交不停表,属预期。
+ * WP73(1.9.0 F1/F2):header 收藏星标两态(questionData 协议无收藏态字段,
+ * 中性空心 + localStorage 本地记忆,点击乐观切换)+ 题目提示折叠区(懒加载,
+ * 点击才发请求,逐条 details 默认收起)。
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
@@ -30,9 +33,11 @@ import {
   addReviewProblem,
   fetchCustomCss,
   fetchProblemDetail,
+  fetchProblemHints,
   fetchProblemSolutions,
   fetchReviewToday,
   fetchSolutionArticleContent,
+  toggleFavorite,
   type ProblemDetail,
   type SolutionArticle,
   type SolutionArticleContent,
@@ -218,6 +223,80 @@ const SOLUTION_ORDER_OPTIONS = [
   { value: 'oldest', label: '最早' },
 ]
 const solutionOrder = ref('hot')
+
+/** WP73:收藏星标(1.9.0 F1)——questionData 协议无收藏态字段(WP72 双站实测),
+ * 初始态走中性空心 + localStorage 本地记忆(`cq-fav-<platform>-<remoteId>`),
+ * 点击乐观切换,POST toggle 成功保持+写记忆,失败回滚+按钮旁提示。 */
+const favStorageKey = `cq-fav-${platform}-${remoteId}`
+const favorited = ref(localStorage.getItem(favStorageKey) === '1')
+const favPending = ref(false)
+const favError = ref('')
+/** 星标仅在题面携带 questionId(LC 数字主档 id)时可用;缺失(无概念平台/旧缓存)中性隐藏。 */
+const favoriteAvailable = computed(() => Boolean(detail.value?.questionId))
+
+async function toggleFavoriteStar(): Promise<void> {
+  const current = detail.value
+  if (favPending.value || !current?.questionId) return
+  const target = !favorited.value
+  favPending.value = true
+  favorited.value = target
+  favError.value = ''
+  try {
+    await toggleFavorite(current.platform, current.questionId, target)
+    if (target) {
+      localStorage.setItem(favStorageKey, '1')
+    } else {
+      localStorage.removeItem(favStorageKey)
+    }
+  } catch (cause) {
+    favorited.value = !target
+    favError.value =
+      cause instanceof ApiError && cause.code === 'auth-expired'
+        ? '请先登录'
+        : describeError(cause)
+  } finally {
+    favPending.value = false
+  }
+}
+
+/** WP73:题目提示(1.9.0 F2,仅 LC 系平台有该能力)——懒加载,未点击零请求;
+ * null = 未拉取过(首次点击拉取并展开,再点收起,再点展开不重拉)。 */
+const supportsHints = LEETCODE_PLATFORM_IDS.has(platform)
+const hintsOpen = ref(false)
+const hints = ref<string[] | null>(null)
+const hintsLoading = ref(false)
+
+async function toggleHints(): Promise<void> {
+  if (!hintsOpen.value && hints.value === null) {
+    if (hintsLoading.value) return
+    hintsLoading.value = true
+    try {
+      hints.value = await fetchProblemHints(platform, remoteId)
+    } catch {
+      hints.value = [] // 无能力平台(404)等附属失败按「无提示」兜底,不阻塞题面
+    } finally {
+      hintsLoading.value = false
+    }
+    hintsOpen.value = true
+    return
+  }
+  hintsOpen.value = !hintsOpen.value
+}
+
+/** hints 原文可含 HTML 实体(`&lt;code&gt;` 等,站方转义形态),文本渲染前解码
+ * 为字面文本(纯文本插值无 v-html,零注入面;双转义序列不二次解码,如实)。 */
+const HTML_ENTITIES: Record<string, string> = {
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&nbsp;': ' ',
+  '&amp;': '&',
+}
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:lt|gt|quot|#39|nbsp|amp);/g, (match) => HTML_ENTITIES[match] ?? match)
+}
 
 /** 排序变更即重拉列表(阅读器态无列表,重拉只更新底层数据,返回列表即见)。 */
 function onOrderChange(event: Event): void {
@@ -506,6 +585,28 @@ onUnmounted(() => {
                   : '加入复习'
             }}
           </button>
+          <!-- WP73:收藏星标两态(协议无收藏态字段,中性空心+本地记忆;乐观切换,失败回滚) -->
+          <button
+            v-if="favoriteAvailable"
+            type="button"
+            class="statement-header__fav"
+            :class="{ 'statement-header__fav--on': favorited }"
+            :disabled="favPending"
+            :title="favorited ? '移出默认收藏夹' : '加入默认收藏夹'"
+            :aria-label="favorited ? '移出默认收藏夹' : '加入默认收藏夹'"
+            :aria-pressed="favorited"
+            @click="toggleFavoriteStar"
+          >{{ favorited ? '★' : '☆' }}</button>
+          <span v-if="favError" class="statement-header__start-msg" role="alert">{{ favError }}</span>
+          <!-- WP73:题目提示(懒加载,点击才发请求;再点收起整个区块) -->
+          <button
+            v-if="supportsHints"
+            type="button"
+            class="statement-header__hints"
+            :class="{ 'statement-header__hints--open': hintsOpen }"
+            title="查看题目提示(逐条展开)"
+            @click="toggleHints"
+          >提示</button>
           <span v-if="reviewError" class="statement-header__start-msg" role="alert">{{ reviewError }}</span>
           <span v-if="startMsg" class="statement-header__start-msg" role="alert">{{ startMsg }}</span>
           <a
@@ -524,6 +625,16 @@ onUnmounted(() => {
 
       <!-- eslint-disable-next-line vue/no-v-html — 内容经 renderStatement 白名单清洗 -->
       <article class="statement" v-html="renderedHtml"></article>
+
+      <!-- WP73:题目提示(懒加载折叠区,题面与题解之间;逐条 details 默认收起) -->
+      <section v-if="hintsOpen" class="hints" aria-label="题目提示">
+        <p v-if="hintsLoading" class="hints__state">正在加载提示…</p>
+        <p v-else-if="!hints || hints.length === 0" class="hints__state">无提示</p>
+        <details v-else v-for="(hint, index) in hints" :key="index" class="hints__item">
+          <summary class="hints__summary">提示 {{ index + 1 }}</summary>
+          <p class="hints__text">{{ decodeEntities(hint) }}</p>
+        </details>
+      </section>
 
       <!-- WP26/WP31:题解区块——列表 ↔ 应用内正文阅读器切换 + 浏览器风格导航工具栏 -->
       <section class="solutions" aria-label="题解">
@@ -811,6 +922,77 @@ onUnmounted(() => {
 .statement-header__review:disabled {
   opacity: 0.75;
   cursor: default;
+}
+
+/* WP73:收藏星标两态(空心中性/实心 accent;协议无收藏态字段,本地记忆) */
+.statement-header__fav {
+  min-width: 26px;
+  padding: 1px 6px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.statement-header__fav--on {
+  color: var(--cq-accent);
+  border-color: var(--cq-accent);
+}
+
+.statement-header__fav:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* WP73:题目提示按钮(与星标同区;展开态 accent 描边示开) */
+.statement-header__hints {
+  padding: 1px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.statement-header__hints--open {
+  color: var(--cq-accent);
+  border-color: var(--cq-accent);
+}
+
+/* WP73:题目提示折叠区(题面与题解之间;逐条 details 默认收起) */
+.hints {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px dashed var(--cq-border);
+  border-radius: 8px;
+}
+
+.hints__state {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cq-muted);
+}
+
+.hints__item {
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.hints__summary {
+  color: var(--cq-accent);
+  cursor: pointer;
+  user-select: none;
+}
+
+.hints__text {
+  margin: 4px 0 6px;
+  color: var(--cq-fg);
+  overflow-wrap: anywhere;
 }
 
 .statement-header__start-msg {

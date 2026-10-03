@@ -60,4 +60,9 @@ data class ProblemDetail(
     /** 题面原文;内容形态由 [contentFormat] 决定(Markdown 或 HTML)。 */
     val contentMd: String,
     val contentFormat: ContentFormat,
+    /**
+     * 1.9.0:平台侧题目数字主档 id(LC `questionData.questionId`,收藏写 mutation
+     * 寻址);平台无此概念(CF/AtCoder 等以 remoteId 寻址)与迁移前旧行为 null。
+     */
+    val questionId: String? = null,
 )
