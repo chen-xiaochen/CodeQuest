@@ -39,6 +39,7 @@ import {
   clearUserContestCache,
   fetchAuthStatus,
   fetchCompanies,
+  fetchDailyQuestion,
   fetchFavorites,
   fetchPlatforms,
   fetchProblems,
@@ -48,6 +49,7 @@ import {
   refreshRating,
   type AuthStatusItem,
   type CompanySummary,
+  type DailyQuestion,
   type FavoritesResult,
   type PlatformSummary,
   type ProblemListItem,
@@ -143,6 +145,43 @@ const selectedTags = ref<string[]>([])
 
 /** 力扣双站点(知识点 chips 仅对 leetcode/leetcodecn 平台渲染)。 */
 const isLeetCode = computed(() => platform.value === 'leetcode' || platform.value === 'leetcodecn')
+
+// ---------------------------------------------------------------------
+// WP69(1.8.0):力扣 CN 每日一题横幅(附属能力,静默降级)
+// ---------------------------------------------------------------------
+
+const dailyQuestion = ref<DailyQuestion | null>(null)
+
+/**
+ * 按平台拉每日一题(仅力扣 CN;照题单/公司下拉能力探测惯例,404/失败/
+ * 全 null 降级置 null,不渲染不报错——非关键路径)。
+ */
+async function refreshDailyQuestion(): Promise<void> {
+  if (platform.value !== 'leetcodecn') {
+    dailyQuestion.value = null
+    return
+  }
+  try {
+    dailyQuestion.value = await fetchDailyQuestion('leetcodecn')
+  } catch {
+    dailyQuestion.value = null
+  }
+}
+
+/** 有效数据才渲染(title/titleSlug 为开题面必需,降级态全 null 隐藏)。 */
+const showDailyQuestion = computed(
+  () =>
+    subview.value === 'platform' &&
+    dailyQuestion.value?.title != null &&
+    dailyQuestion.value.titleSlug != null,
+)
+
+/** 点击横幅开题面(remoteId = titleSlug,与题库行同源同款桥调用)。 */
+function openDailyQuestion(): void {
+  const question = dailyQuestion.value
+  if (!question?.titleSlug) return
+  bridge.send(TOPIC_NAV_OPEN_PROBLEM, { platformId: 'leetcodecn', remoteId: question.titleSlug })
+}
 
 /** 行内/结果行标签展示名:中文优先,英文兜底。 */
 function tagLabel(tag: ProblemTag): string {
@@ -528,6 +567,7 @@ async function handlePlatformChange(): Promise<void> {
   selectedTags.value = []
   await Promise.all([refreshCompanies(), refreshFavorites()])
   void loadUserContest()
+  void refreshDailyQuestion()
   reload()
 }
 
@@ -594,6 +634,7 @@ onMounted(async () => {
     platform.value = pickDefaultPlatform(visiblePlatforms.value)
     await Promise.all([refreshCompanies(), refreshFavorites()])
     void loadUserContest()
+    void refreshDailyQuestion()
     reload()
   }
 
@@ -708,6 +749,32 @@ onUnmounted(() => {
       <p v-if="showFallbackHint" class="fallback-hint">
         当前无已登录平台,默认展示力扣中国;在上方账号区登录后即可切换其他平台。
       </p>
+
+      <!-- WP69:力扣 CN 今日题目横幅(非 CN/拉取失败/全 null 静默不渲染;点击开题面) -->
+      <button
+        v-if="showDailyQuestion && dailyQuestion"
+        type="button"
+        class="daily"
+        title="打开今日题目题面"
+        @click="openDailyQuestion"
+      >
+        <span class="daily__label">今日题目</span>
+        <span class="daily__date">{{ dailyQuestion.date }}</span>
+        <span class="daily__main">
+          <span class="daily__id">{{ dailyQuestion.frontendQuestionId }}</span>
+          <span class="daily__title">{{ dailyQuestion.title }}</span>
+          <span
+            v-if="dailyQuestion.difficulty"
+            class="diff-badge"
+            :class="difficultyClass(dailyQuestion.difficulty)"
+          >{{ dailyQuestion.difficulty }}</span>
+        </span>
+        <span v-if="dailyQuestion.tags.length > 0" class="daily__tags">
+          <span v-for="tag in dailyQuestion.tags" :key="tag.slug" class="daily__tag">
+            {{ tag.name }}
+          </span>
+        </span>
+      </button>
 
       <form class="filters" @submit.prevent="reload">
         <label class="filters__field">
@@ -1229,6 +1296,84 @@ onUnmounted(() => {
   background: var(--cq-panel);
   color: var(--cq-accent);
   font-size: 12px;
+}
+
+/* WP69:力扣 CN 今日题目横幅(常驻卡片,点击开题面;难度徽标复用 .diff-badge) */
+.daily {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+  text-align: left;
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--cq-accent);
+  border-radius: 8px;
+  background: var(--cq-accent-soft);
+  color: var(--cq-fg);
+  cursor: pointer;
+}
+
+.daily:hover {
+  border-color: var(--cq-accent);
+  background: var(--cq-panel-raised);
+}
+
+.daily__label {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--cq-accent);
+  color: var(--cq-accent-fg);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.daily__date {
+  font-size: 11px;
+  color: var(--cq-muted);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  white-space: nowrap;
+}
+
+.daily__main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.daily__id {
+  font-size: 11px;
+  color: var(--cq-muted);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  white-space: nowrap;
+}
+
+.daily__title {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.daily__tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.daily__tag {
+  padding: 1px 8px;
+  border: 1px solid var(--cq-border);
+  border-radius: 999px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-muted);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .filters {

@@ -475,6 +475,17 @@ export function fetchContests(platform: string): Promise<ContestSummary[]> {
   )
 }
 
+/** WP69:竞赛详情(题目引用 + joinable;LC problems[].remoteId = titleSlug 与题库同源)。 */
+export function fetchContestDetail(
+  platform: string,
+  remoteId: string,
+): Promise<ContestDetailResult> {
+  const params = new URLSearchParams({ platform })
+  return getJson<ContestDetailResult>(
+    `/api/contest/${encodeURIComponent(remoteId)}?${params.toString()}`,
+  )
+}
+
 export function fetchContestReminders(platform: string): Promise<ContestReminderItem[]> {
   const params = new URLSearchParams({ platform })
   return getJson<{ platform: string; items: ContestReminderItem[] }>(
@@ -492,6 +503,33 @@ export function unsubscribeContestReminder(
 ): Promise<{ deleted: boolean }> {
   const params = new URLSearchParams({ platform, remoteId })
   return sendJson(`/api/contests/reminders?${params}`, 'DELETE')
+}
+
+// ---------------------------------------------------------------------------
+// WP69(1.8.0):力扣 CN 每日一题(/api/daily-question)
+// ---------------------------------------------------------------------------
+
+/** 每日一题标签(name 原文 + slug)。 */
+export interface DailyQuestionTag {
+  name: string
+  slug: string
+}
+
+/** 每日一题(拉取失败/降级时全字段 null + 空 tags;titleSlug 与题库 remoteId 同源)。 */
+export interface DailyQuestion {
+  /** yyyy-MM-dd;降级 null。 */
+  date: string | null
+  frontendQuestionId: string | null
+  title: string | null
+  titleSlug: string | null
+  difficulty: string | null
+  tags: DailyQuestionTag[]
+}
+
+/** GET /api/daily-question?platform=(无能力/未知平台 404 抛 ApiError;页面静默降级)。 */
+export function fetchDailyQuestion(platform: string): Promise<DailyQuestion> {
+  const params = new URLSearchParams({ platform })
+  return getJson<DailyQuestion>(`/api/daily-question?${params.toString()}`)
 }
 
 // ---------------------------------------------------------------------------

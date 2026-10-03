@@ -7,25 +7,34 @@
  * 如实选型(M4 前置):「参加」为竞赛页外链直开——CF 参加需登录 POST,
  * 平台内交互留 WP24;届时可换桥消息。
  * WP50:平台标签门控(join /api/auth/status,照 WP49 题库页模式)——仅展示
- * 已登录平台;status 失败不门控(防线);全未登录给引导文案,不回落力扣
- * (力扣无竞赛能力)。文案全面中文化。
+ * 已登录平台;status 失败不门控(防线);全未登录给引导文案,不回落力扣。
+ * 文案全面中文化。
+ * WP69(1.8.0):行内「题目」详情展开(GET /api/contest/{remoteId}?platform=,
+ * CF/LC 共用;题目行点击经桥 nav:openProblem 开题面——payload platformId =
+ * 当前平台 tab,LC remoteId = titleSlug 与题库同源)。平台标签数据源为能力
+ * 探测(/api/contests 无参),力扣 CN 接入后自动出现,无需前端改动。
  */
 import { computed, onMounted, ref } from 'vue'
 import AppShell from '../../components/AppShell.vue'
+import { TOPIC_NAV_OPEN_PROBLEM, cqBridge } from '../../bridge/cq-bridge'
 import {
   ApiError,
   fetchAuthStatus,
+  fetchContestDetail,
   fetchContestPlatforms,
   fetchContestReminders,
   fetchContests,
   subscribeContestReminder,
   unsubscribeContestReminder,
   type AuthStatusItem,
+  type ContestDetailResult,
   type ContestPhase,
   type ContestSummary,
   type PlatformSummary,
 } from '../../lib/api'
 import { filterPlatformsByAuth } from '../problems/platformGate'
+
+const bridge = cqBridge()
 
 /** 默认提醒提前量(分钟),与后端 ContestReminderService.DEFAULT_LEAD_TIME_MINUTES 一致。 */
 const DEFAULT_LEAD_TIME_MINUTES = 1440
@@ -44,6 +53,12 @@ const items = ref<ContestSummary[]>([])
 const subscribedIds = ref<Set<string>>(new Set())
 const loading = ref(false)
 const error = ref('')
+
+// WP69:行内详情展开(单槽——同槽再点收起;换行/换平台自动关闭)
+const detailRemoteId = ref('')
+const detail = ref<ContestDetailResult | null>(null)
+const detailLoading = ref(false)
+const detailError = ref('')
 
 // WP50:登录快照门控(照题库页模式;auth 端点失败不门控)
 const authItems = ref<AuthStatusItem[]>([])
@@ -89,6 +104,7 @@ function formatDuration(minutes: number): string {
 
 async function loadPlatform(): Promise<void> {
   if (!platform.value) return
+  closeDetail()
   loading.value = true
   error.value = ''
   try {
@@ -105,6 +121,40 @@ async function loadPlatform(): Promise<void> {
   } finally {
     loading.value = false
   }
+}
+
+/** WP69:关闭详情展开(平台切换/重载时收起)。 */
+function closeDetail(): void {
+  detailRemoteId.value = ''
+  detail.value = null
+  detailError.value = ''
+}
+
+/** WP69:展开/收起竞赛题目详情(同槽再点收起;CF/LC 共用端点与渲染)。 */
+async function toggleDetail(contest: ContestSummary): Promise<void> {
+  if (detailRemoteId.value === contest.remoteId) {
+    closeDetail()
+    return
+  }
+  detailRemoteId.value = contest.remoteId
+  detail.value = null
+  detailError.value = ''
+  detailLoading.value = true
+  try {
+    detail.value = await fetchContestDetail(platform.value, contest.remoteId)
+  } catch (cause) {
+    detailError.value = describeError(cause)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+/**
+ * WP69:详情题目行点击开题面——platformId 用当前平台 tab(CF=codeforces,
+ * LC=leetcodecn),LC remoteId 为 titleSlug,与题库行同源同款桥调用。
+ */
+function openContestProblem(remoteId: string): void {
+  bridge.send(TOPIC_NAV_OPEN_PROBLEM, { platformId: platform.value, remoteId })
 }
 
 function isSubscribed(remoteId: string): boolean {
@@ -188,36 +238,71 @@ onMounted(async () => {
 
     <ul v-if="items.length > 0" class="contests" aria-label="竞赛列表">
       <li v-for="contest in items" :key="contest.remoteId" class="contests__row">
-        <div class="contests__main">
-          <span class="contests__title">
-            <span class="contests__remote">{{ contest.remoteId }}</span>
-            {{ contest.title }}
-          </span>
-          <span class="contests__meta">
-            <span class="contests__time">{{ formatStartTime(contest.startTime) }}</span>
-            <span class="contests__duration">{{ formatDuration(contest.durationMinutes) }}</span>
-            <span class="phase-badge" :class="`phase-badge--${contest.phase}`">
-              {{ PHASE_LABELS[contest.phase] ?? contest.phase }}
+        <div class="contests__line">
+          <div class="contests__main">
+            <span class="contests__title">
+              <span class="contests__remote">{{ contest.remoteId }}</span>
+              {{ contest.title }}
             </span>
-          </span>
+            <span class="contests__meta">
+              <span class="contests__time">{{ formatStartTime(contest.startTime) }}</span>
+              <span class="contests__duration">{{ formatDuration(contest.durationMinutes) }}</span>
+              <span class="phase-badge" :class="`phase-badge--${contest.phase}`">
+                {{ PHASE_LABELS[contest.phase] ?? contest.phase }}
+              </span>
+            </span>
+          </div>
+          <div class="contests__actions">
+            <a
+              class="contests__join"
+              :href="contest.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >打开</a>
+            <button
+              type="button"
+              class="contests__detail-toggle"
+              :aria-expanded="detailRemoteId === contest.remoteId"
+              @click="toggleDetail(contest)"
+            >
+              {{ detailRemoteId === contest.remoteId ? '收起题目' : '题目' }}
+            </button>
+            <label class="contests__remind-label">
+              <input
+                class="contests__remind"
+                type="checkbox"
+                :checked="isSubscribed(contest.remoteId)"
+                :data-remote="contest.remoteId"
+                @change="toggleReminder(contest, ($event.target as HTMLInputElement).checked)"
+              />
+              <span>提前 24 小时提醒</span>
+            </label>
+          </div>
         </div>
-        <div class="contests__actions">
-          <a
-            class="contests__join"
-            :href="contest.url"
-            target="_blank"
-            rel="noopener noreferrer"
-          >打开</a>
-          <label class="contests__remind-label">
-            <input
-              class="contests__remind"
-              type="checkbox"
-              :checked="isSubscribed(contest.remoteId)"
-              :data-remote="contest.remoteId"
-              @change="toggleReminder(contest, ($event.target as HTMLInputElement).checked)"
-            />
-            <span>提前 24 小时提醒</span>
-          </label>
+        <!-- WP69:题目详情展开(CF/LC 共用;题目行点击开题面) -->
+        <div v-if="detailRemoteId === contest.remoteId" class="contests__detail">
+          <p v-if="detailLoading" class="contests__detail-state">正在加载题目…</p>
+          <p
+            v-else-if="detailError"
+            class="contests__detail-state contests__detail-state--error"
+            role="alert"
+          >{{ detailError }}</p>
+          <template v-else-if="detail">
+            <button
+              v-for="(problem, problemIndex) in detail.problems"
+              :key="problem.remoteId"
+              type="button"
+              class="contests__problem"
+              :data-remote="problem.remoteId"
+              @click="openContestProblem(problem.remoteId)"
+            >
+              <span class="contests__problem-index">Q{{ problem.index ?? problemIndex + 1 }}</span>
+              <span class="contests__problem-title">{{ problem.title }}</span>
+            </button>
+            <p v-if="detail.problems.length === 0" class="contests__detail-state">
+              该竞赛暂无题目信息。
+            </p>
+          </template>
         </div>
       </li>
     </ul>
@@ -273,13 +358,20 @@ onMounted(async () => {
 
 .contests__row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 8px 12px;
   border: 1px solid var(--cq-border);
   border-radius: 8px;
   background: var(--cq-panel);
+}
+
+/* WP69:竞赛行首行(主信息 + 操作),原 row 布局下沉到这一层 */
+.contests__line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 
 .contests__main {
@@ -351,6 +443,75 @@ onMounted(async () => {
   align-items: flex-end;
   gap: 6px;
   flex-shrink: 0;
+}
+
+/* WP69:「题目」展开按钮(次级操作,弱于「打开」主按钮) */
+.contests__detail-toggle {
+  padding: 3px 12px;
+  border: 1px solid var(--cq-border);
+  border-radius: 6px;
+  background: var(--cq-panel-raised);
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.contests__detail-toggle:hover {
+  border-color: var(--cq-accent);
+}
+
+/* WP69:详情展开区(题目行列表;行点击开题面) */
+.contests__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--cq-border);
+}
+
+.contests__detail-state {
+  margin: 0;
+  font-size: 12px;
+  color: var(--cq-muted);
+}
+
+.contests__detail-state--error {
+  color: var(--cq-danger);
+}
+
+.contests__problem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--cq-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.contests__problem:hover {
+  border-color: var(--cq-accent);
+  background: var(--cq-panel-raised);
+}
+
+.contests__problem-index {
+  flex: none;
+  min-width: 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cq-accent);
+  font-family: ui-monospace, 'JetBrains Mono', Consolas, monospace;
+}
+
+.contests__problem-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .contests__join {
