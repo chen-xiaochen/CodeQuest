@@ -197,6 +197,8 @@ class LeetCodeApiTest {
 
         val record = graphqlRecord("submissionList")
         assertEquals(LeetCodeGraphQL.SUBMISSION_LIST, envelopeOf(record)["query"]!!.jsonPrimitive.content)
+        // `lastKey: null` 参数字面量是非法 GraphQL 语法,真实站会拒绝(防回归;selection 里的 lastKey 字段合法保留)
+        assertFalse(LeetCodeGraphQL.SUBMISSION_LIST.contains("lastKey:"))
         assertEquals(20, variablesOf(record)["offset"]!!.jsonPrimitive.content.toInt())
         assertEquals(20, variablesOf(record)["limit"]!!.jsonPrimitive.content.toInt())
     }

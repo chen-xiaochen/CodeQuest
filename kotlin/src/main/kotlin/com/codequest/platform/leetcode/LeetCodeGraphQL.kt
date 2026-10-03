@@ -40,14 +40,15 @@ internal object LeetCodeGraphQL {
 
     /**
      * 站内提交历史(submissionList,1.7.0 F2;两站点同构)。
-     * 用户全局倒序列表(不带 questionSlug);`lastKey: null` 固定字面量——分页
-     * 走 offset/limit,响应 `lastKey` 为 null 即无更多(hasMore 判定)。
+     * 用户全局倒序列表(不带 questionSlug);分页纯 offset/limit——不传 lastKey
+     * 参数(null 字面量是非法 GraphQL 语法,真实站会拒绝),响应 `lastKey`
+     * 为 null 即无更多(hasMore 判定)。
      * runtime/memory 为字符串原文("64 ms"/"66.3 MB"),timestamp 为秒级 epoch 字符串。
      */
     val SUBMISSION_LIST: String =
         """
         query submissionList(${'$'}offset: Int!, ${'$'}limit: Int!) {
-          submissionList(offset: ${'$'}offset, limit: ${'$'}limit, lastKey: null) {
+          submissionList(offset: ${'$'}offset, limit: ${'$'}limit) {
             submissions {
               id
               title

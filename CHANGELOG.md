@@ -1,3 +1,12 @@
+## 1.7.0 - 2026-10-02
+### Added
+- 题库页 zerotrac 难度评分:新增「评分」列(数值排序,无分显示 "-"),按用户竞赛分分差五档着色(绿<-200/蓝<-50/紫<50/黄<200/红≥200;无竞赛分自动退化绝对分档 <1400/1400-1799/1800-2199/2200-2599/≥2600,不着色情形保持中性),评分区间 min/max 数字过滤(本地过滤已加载行,同状态列模式),着色模式与列显隐存 localStorage;账号区显示竞赛分徽标(/api/rating/user-contest 会话缓存)+「刷新评分」按钮。数据源 `https://zerotrac.github.io/leetcode_problem_rating/data.json`,内置 2026-10 快照 2596 题兜底(`rating/leetcode-ratings.json`),启动 DB 优先/内置回退,在线刷新失败只提示不破坏 DB(schema v3 新表 `problem_rating`)。
+- 站内提交历史同步:统计页「站内历史:已同步 N 条」+「同步历史」按钮——GraphQL `submissionList` 倒序分页拉取(页 20,遇到已存 (platform_id, remote_id) 即增量停止,200 页/4000 条上限保护),落 schema v3 新表 `remote_submission`(与本地 submission 独立,UNIQUE(platform_id, remote_id) 去重);统计 streak/热力图/AC 计数改为两表并集、同键本地优先,响应新增 `remoteSyncedCount`;新端点 `POST /api/submissions/sync`、`GET /api/submissions/remote`。
+- 间隔重复复习:AC 后自动按 1/4/7/14/28/60 天排期(首 AC 生成,再 AC 移除今天及过去并记录 history;间隔经 `GET|PUT /api/review/config` 存 settings_kv,非法值回退默认);题库页新增「复习」子视图(已过期(红)/今日/未来三分组,入口徽标=今日到期数,行点击开题面),支持间隔配置与「标记完成」;题面页 header「加入复习」按钮(已排期显示目标日期,手动加入从明天零点起全量排)。AC 触发点 runCatching 不阻断提交通知。schema v3 新表 `review_schedule`(plan/history 两列 epoch 秒数组 JSON)。
+- 题目计时器:题面页 header 计时角标 mm:ss(≥1h 显示 h:mm:ss),收到题面数据重置起表;AC 提交命中((platformId, problemRemoteId) 匹配且 verdict=Accepted)停表定格+本题耗时 toast;`enableTimer` localStorage 开关默认开。底层 SubmissionCoordinator 桥单槽改多播列表(单注册行为与旧版一致,多页可同时订阅),payload 增补 platformId/problemRemoteId。
+- REST 端点新增清单:`GET /api/rating/status`、`POST /api/rating/refresh`、`GET /api/rating/user-contest?platform=`、`POST /api/submissions/sync`、`GET /api/submissions/remote`、`GET /api/review/today`、`POST /api/review/problems/{problemId}/add`、`POST /api/review/problems/{problemId}/complete`、`GET|PUT /api/review/config`。
+- 数据库 schema v3 迁移(照 v2 先例,幂等):`problem_rating` / `remote_submission` / `review_schedule` 三表,既有表零改动,旧库自动升级不丢数据。
+
 ## 1.6.0 - 2026-08-26
 ### Added
 - 启动恢复上次题目(题面会话):每次打开题目自动记录(项目级 codequest.xml),重开 IDE 后题面工具窗自动载入昨天的题目——题面走本地 SQLite 缓存,离线可用,不再需要重新搜索题目标题。
