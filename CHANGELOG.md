@@ -1,3 +1,14 @@
+## 1.9.0 - 2026-10-03
+### Added
+- 题面页收藏星标(默认收藏夹写):header 星标两态按钮(空心☆/实心★,CSS 变量两态),点击乐观切换→`POST /api/favorite/toggle`→失败回滚+错误提示(401 auth-expired「请先登录」,其余透传),成功保持并写 localStorage 本地记忆(`cq-fav-{platform}-{remoteId}`)。协议实测注记(2026-10-03 双站):`questionData` 的 QuestionNode 无任何收藏态字段(isFavorited 类)→初始态按中性空心+本地记忆降级,不引入新查询协议;默认夹经 `favoritesLists` 定位——FavoriteNode 无 isDefaultFavorite 标记,按 `name=="Favorite"` 认定+fallback 首个含 idHash 夹(插件源 getUser 锁定),idHash 进程内 @Volatile 缓存;mutation `addQuestionToFavorite(questionId: String!…)` 实为 String! 非 ID!,未登录 CN 站走 errors 信封「用户未登录」(401 透传),ok=false/errors 抛领域异常(502);题目不在夹中移除视为幂等成功。
+- 题面页「提示」折叠(仅 LC 系平台渲染):与题解按钮同区,点击才拉取(懒加载,未点击零请求)→逐条 `<details><summary>提示 N</summary>正文</details>` 默认收起逐条展开,正文文本插值+HTML 实体解码(&lt;code&gt; 等六实体,双转义不二次解码);空数组「无提示」;再点收起整个区块再点展开不重拉。数据走 `GET /api/problem/{remoteId}/hints?platform=`,SPI `ProblemHintsCapable.fetchHints` 失败降级空表不抛(协议变动不致败页,questionHints 匿名可查:two-sum 3 条含 HTML 实体/add-two-numbers 空数组实测)。
+- 编辑器浮动栏第四键「全示例测试」:挑战文件浮动栏在 提交测试/提交 之后新增一键(图标 RunAll,英中文案 bundle)——拉取题面全部 exampleTestcases(与 WP55 questionId 同通道:`fetchProblemDetail` 一次同取)→保序过滤空白元素→`join("\n")` 组装 dataInput→复用云测链路 `watchTestRun` 单次 interpret 收集至终态;门控照「提交测试」键(非挑战文件/平台无 TestEvaluationCapable 隐藏,未登录/同文件云测进行中置灰);空(或全空白)示例通知「无示例测试用例」不发起云测;结果推送右窗「测试用例」tab 展示 X/Y 汇总+每用例输入/期望/实际对比,页标题显示「全部示例测试结果」区分「云端测试结果」(payload 可选 mode 字段,缺省不携带零回归)。
+- REST 端点新增:`POST /api/favorite/toggle`(成功 `{ok:true}`/参数 400/未登录 401 auth-expired/站方失败 502 oj-error/无能力平台 404)、`GET /api/problem/{remoteId}/hints?platform=`(`{hints:[...]}`/SPI 失败降级 200 空表/无能力平台 404)。
+### Changed
+- 数据库 schema v4 迁移(照 v2/v3 先例,幂等):`problem_content` 补 `question_id` 列——题目数字主档 id 随题面落库并经 `GET /api/problem/{remoteId}` 响应透出(前端星标/全示例测试寻址用;迁移前旧缓存行 null,首个 remote 重拉自动补全,旧行为零破坏)。spec 原声明「无迁移」,此为 questionId 前端寻址的最小改动替代案(备选为前端另发新查询),如实记录该适配。
+### 注记(如实适配)
+- 全示例测试结果展示:spec 写「复用 TestRunResultDialog」,该对话框自 1.5.0 起已删除(结果改走右窗「测试用例」tab 桥推送),本次照现状复用桥推送通道,payload 增可选 `mode` 字段区分标题,未新增对话框。
+
 ## 1.8.0 - 2026-10-03
 ### Added
 - 力扣中国每日一题:题库页(CN 平台)顶部「今日题目」常驻横幅卡片——日期+题号+标题+难度徽标(复用 diff-badge)+标签 chips,点击与题库行同源直达题面(nav:openProblem 携 titleSlug)。数据走 CN 站 `questionOfToday` GraphQL(2026-10-03 实测:`todayRecord` 为单元素数组,需 Referer/Origin 头,translatedTitle 优先作中文标题),新 SPI `DailyQuestionCapable` 三态降级(拉取失败/字段缺失返回 null),新端点 `GET /api/daily-question?platform=`(当日 volatile 进程内缓存跨日失效;无能力平台 404,降级 200 全字段 null);前端非 CN/404/全 null 照题单能力探测惯例静默不渲染,挂载+平台切换时刷新,卡片隐藏不致败题库页。
