@@ -1,3 +1,5 @@
+> 本项目属 devtools worktree 体系。新增工具/并行开发/worktree 运维 → Read `reference/worktree-architecture.md`。
+
 
 <!-- tackle-harness -->
 
