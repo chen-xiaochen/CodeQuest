@@ -5,9 +5,9 @@
 
 # CodeQuest 🌟
 
-[![CI](https://github.com/chen-xiaochen/CodeEpiphany/actions/workflows/ci-main.yml/badge.svg)](https://github.com/chen-xiaochen/CodeEpiphany/actions/workflows/ci-main.yml)
-[![License](https://img.shields.io/github/license/chen-xiaochen/CodeEpiphany)](LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/chen-xiaochen/CodeEpiphany)](https://github.com/chen-xiaochen/CodeEpiphany/issues)
+[![CI](https://github.com/chen-xiaochen/CodeQuest/actions/workflows/ci-main.yml/badge.svg)](https://github.com/chen-xiaochen/CodeQuest/actions/workflows/ci-main.yml)
+[![License](https://img.shields.io/github/license/chen-xiaochen/CodeQuest)](LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/chen-xiaochen/CodeQuest)](https://github.com/chen-xiaochen/CodeQuest/issues)
 
 **A multi-platform competitive programming plugin for JetBrains IDEs** — query problems, browse statements, write multiple solutions, submit in one click, and review your statistics, across six OJ platforms from a single plugin.
 
@@ -110,7 +110,7 @@ Gradle never invokes npm: frontend artifacts are not committed, so **run `npm ru
 - **[SPI validation conclusions](docs/spi-validation.md)** (cost of adding an OJ / zero-touch layering evidence / known deviations)
 - Manual acceptance checklists: [M3 first platform](docs/m3-manual-checklist.md) / [M4 four platforms](docs/m4-manual-checklist.md) / [M5 enhancements](docs/m5-manual-checklist.md)
 - **[Release checklist](docs/release-checklist.md)** · **[Contributing](CONTRIBUTING.md)**
-- **[🐛 Report Issues](https://github.com/chen-xiaochen/CodeEpiphany/issues)**
+- **[🐛 Report Issues](https://github.com/chen-xiaochen/CodeQuest/issues)**
 
 ## License
 

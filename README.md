@@ -5,9 +5,9 @@
 
 # CodeQuest 🌟
 
-[![CI](https://github.com/chen-xiaochen/CodeEpiphany/actions/workflows/ci-main.yml/badge.svg)](https://github.com/chen-xiaochen/CodeEpiphany/actions/workflows/ci-main.yml)
-[![License](https://img.shields.io/github/license/chen-xiaochen/CodeEpiphany)](LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/chen-xiaochen/CodeEpiphany)](https://github.com/chen-xiaochen/CodeEpiphany/issues)
+[![CI](https://github.com/chen-xiaochen/CodeQuest/actions/workflows/ci-main.yml/badge.svg)](https://github.com/chen-xiaochen/CodeQuest/actions/workflows/ci-main.yml)
+[![License](https://img.shields.io/github/license/chen-xiaochen/CodeQuest)](LICENSE)
+[![GitHub issues](https://img.shields.io/github/issues/chen-xiaochen/CodeQuest)](https://github.com/chen-xiaochen/CodeQuest/issues)
 
 **JetBrains IDE 多平台刷题插件**——查询题目、浏览题面、编写多解法、一键提交、统计复盘,六大 OJ 平台一个插件搞定。
 
@@ -110,7 +110,7 @@ Gradle 不直接调用 npm:前端产物不入库,请**先 `npm run build` 再跑
 - **[SPI 实证验证结论](docs/spi-validation.md)**(新增 OJ 成本/分层零触碰/已知偏差)
 - 手动验收清单:[M3 首平台](docs/m3-manual-checklist.md) / [M4 四平台](docs/m4-manual-checklist.md) / [M5 增强层](docs/m5-manual-checklist.md)
 - **[发布清单](docs/release-checklist.md)** · **[贡献指引](CONTRIBUTING.md)**
-- **[🐛 提交问题](https://github.com/chen-xiaochen/CodeEpiphany/issues)**
+- **[🐛 提交问题](https://github.com/chen-xiaochen/CodeQuest/issues)**
 
 ## 许可
 
