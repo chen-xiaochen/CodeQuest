@@ -82,6 +82,12 @@ intellijPlatform {
             untilBuild = provider { null }
         }
     }
+    // JetBrains Marketplace 发布(publishPlugin 任务):
+    // token 取自 plugins.jetbrains.com/author/me → Upload token;
+    // 版本号无 -beta/-eap 后缀即发 default(stable) 频道
+    publishing {
+        token = providers.environmentVariable("JB_MARKETPLACE_TOKEN")
+    }
 }
 
 // ---------------------------------------------------------------------------

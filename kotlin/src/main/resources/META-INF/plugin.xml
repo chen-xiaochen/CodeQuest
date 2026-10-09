@@ -1,21 +1,27 @@
 <idea-plugin>
     <id>com.codequest</id>
     <name>CodeQuest</name>
-    <vendor>CodeQuest Team</vendor>
+    <vendor email="894259167@qq.com">CodeQuest Team</vendor>
     <description><![CDATA[
     CodeQuest is a competitive programming assistant for JetBrains IDEs.
     Query problems, browse statements, submit solutions and track statistics
     across LeetCode, LeetCode CN, CodeForces, AtCoder, Luogu and HackerRank.
     ]]></description>
 
-    <!-- 1.1.0:原版设计对齐九项(详情/状态列/账号/模板/CSS/回看/排序/缩放/公司题);详见 CHANGELOG.md -->
+    <!-- 1.9.0:首次上架 JetBrains Marketplace;完整历史见 CHANGELOG.md -->
     <change-notes><![CDATA[
-    1.1.0 — legacy-parity release: submission result details (LeetCode/CN error test
-    cases) with code review tabs, problem status column (AC/tried/paid) with local
-    filtering, account menu with logout, per-language code templates and custom CSS,
-    solution ordering dropdown, webview zoom toolbar, and LeetCode company question
-    lists. Browse flows also gained a login entry and LeetCode CN shows Chinese
-    titles again. See CHANGELOG.md for details.
+    1.9.0 — initial JetBrains Marketplace release, containing all features
+    accumulated through 1.9.0: problem favorites with star toggle, lazy-loaded
+    hints, run-all-example-tests in one click, LeetCode CN daily question banner
+    and contest history, problem list sorting (id/difficulty/rating) with
+    zerotrac difficulty ratings column and filters (status/knowledge
+    points/hide-solved), site submission history sync, spaced repetition review
+    scheduling (1/4/7/14/28/60 days), per-problem timer, last-problem session
+    restore, bilingual (CN/EN) problem lists, study plans with member/paid
+    markers, per-language code templates with ${challenge.packageName}, JCEF
+    webview tool window with tabs for statement / test cases / submissions.
+
+    See CHANGELOG.md for the complete version history.
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
